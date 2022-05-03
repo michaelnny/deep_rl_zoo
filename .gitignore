@@ -1,0 +1,19 @@
+# Mac/OSX
+.DS_Store
+
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+.vscode
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+
+# logs and big files
+logs/*
+runs/*
+recordings/*
+checkpoints/*

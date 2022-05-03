@@ -1,0 +1,30 @@
+# This list of dependencies was generated with `pip3 freeze`
+
+# Logging and parse args
+absl-py==1.0.0
+
+# Gym environment
+gym==0.23.1
+ale-py==0.7.4
+AutoROM==0.4.2
+AutoROM.accept-rom-license==0.4.2
+box2d-py==2.3.8
+pyglet==1.5.21
+pygame==2.1.2
+
+# PyTorch
+torch==1.11.0
+torchsummary==1.5.1
+torchvision==0.12.0
+
+# Tensorboard
+tensorboard==2.8.0
+
+# Utilities
+numpy==1.22.2
+opencv-python==4.5.5.62
+python-snappy==0.6.0
+
+# Coding styles and others
+pre-commit==2.17.0
+black==22.1.0
