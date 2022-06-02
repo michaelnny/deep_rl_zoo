@@ -8,7 +8,6 @@ This repository contains a collection of Deep RL algorightms to solve openAI Gym
 * Only support problems with discrete action space.
 * Focus on algorithm implementation rather than speed or creating a library.
 * We try to follow the original paper as close as possible for each implementation, but hyper-parameters and network architectures are not fine-tuned.
-* No major change to the code structure or new features is expected, but we may add new algorithms in the future.
 * All agents have been fully tested on cpu with M1 Mac (either CartPole or LunarLander), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
 * Some of the agents are not fully tested on Atari games, as we don't have access to powerful machine and GPUs.
 * We can not guarantee it's bug free.
@@ -180,7 +179,6 @@ Before you test the agent, make sure you have a valid checkpoint file for the sp
 By valid checkpoint file, we mean saved by either the `run_classic.py` or `run_atari.py` module.
 By default, it will record a single episode of agent's self-play at the `recordings` directory.
 
-### CartPole, LunarLander, and MountainCar
 ```
 python3 -m deep_rl_zoo.dqn.eval_agent
 
@@ -188,11 +186,6 @@ python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=MountainCar-v0
 
 # load checkpoint file from a specific checkpoint file
 python3 -m deep_rl_zoo.dqn.eval_agent --checkpoint_path=checkpoints/dqn/CartPole-v1_iteration_0.ckpt
-```
-
-### Atari environment
-```
-python3 -m deep_rl_zoo.dqn.eval_agent
 ```
 
 ## Monitoring performance and statistics with Tensorboard
@@ -257,7 +250,7 @@ If you reference or use our project in your research, please cite:
 
 ```
 @software{deep_rl_zoo2022github,
-  title = {{Deep RL Zoo}: A collections of Deep RL algorightms implemented with PyTorch},
+  title = {{Deep RL Zoo}: A collections of Deep RL algorithms implemented with PyTorch},
   author = {Michael Hu},
   url = {https://github.com/michaelnny/deep_rl_zoo},
   version = {1.0.0},
