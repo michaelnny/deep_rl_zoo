@@ -198,7 +198,7 @@ class PrioritizedReplay(Generic[ReplayStructure]):
         """Adds a single item with a given priority to the replay buffer."""
         if not 0.0 < priority:
             # raise RuntimeError(f'Expect priority to be greater than 0, got {priority}')
-            priority = 1e-8  # Avoid NaNs
+            priority = 1e-4  # Avoid NaNs
 
         index = self._num_added % self._capacity
         self._priorities[index] = priority
@@ -222,10 +222,10 @@ class PrioritizedReplay(Generic[ReplayStructure]):
             weights = np.ones_like(indices, dtype=np.float32)
         else:
             # code copied from seed_rl
-            probs = self._priorities[: self.size] ** self._priority_exponent
-            probs = np.clip(probs, a_min=0.000000001, a_max=99999999)  # Avoid probabilities contain NaN
-            probs /= np.sum(probs)
-            # probs = np.asarray(probs).astype('float64') # Avoid probabilities do not sum to 1
+            priorities = self._priorities[: self.size]
+            priorities = np.nan_to_num(priorities, nan=1e-4)  # Avoid NaN
+            priorities = priorities**self._priority_exponent
+            probs = priorities / np.sum(priorities)
             indices = np.random.choice(np.arange(probs.shape[0]), size=batch_size, replace=True, p=probs)
 
             # Importance weights.
@@ -237,11 +237,11 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 
     def update_priorities(self, indices: Sequence[int], priorities: Sequence[float]) -> None:
         """Updates indices with given priorities."""
-        for i, p in zip(indices, priorities):
-            if not 0.0 < p:
+        for index, priority in zip(indices, priorities):
+            if priority <= 0:
                 # raise RuntimeError(f'Expect priority to be greater than 0, got {p}')
-                p = 0.1  # Avoid NaNs
-            self._priorities[i] = p
+                priority = 1e-4  # Avoid NaNs
+            self._priorities[index] = priority
 
     @property
     def stack_dim(self) -> int:
