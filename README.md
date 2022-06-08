@@ -1,7 +1,7 @@
 # Deep RL Zoo
 ## A collection of Deep RL algorithms implemented with PyTorch
 
-This repository contains a collection of Deep RL algorightms to solve openAI Gym problems like CartPole, LunarLander, and Atari games.
+This repository contains a collection of Deep RL algorithms to solve openAI Gym problems like CartPole, LunarLander, and Atari games.
 
 
 ## Note
@@ -10,7 +10,7 @@ This repository contains a collection of Deep RL algorightms to solve openAI Gym
 * We try to follow the original paper as close as possible for each implementation, but hyper-parameters and network architectures are not fine-tuned.
 * All agents have been fully tested on cpu with M1 Mac (either CartPole or LunarLander), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
 * Some of the agents are not fully tested on Atari games, as we don't have access to powerful machine and GPUs.
-* We can not guarantee it's bug free.
+* We can not guarantee its bug free.
 
 
 ## Environment and requirements
@@ -61,7 +61,7 @@ This repository contains a collection of Deep RL algorightms to solve openAI Gym
 <!-- mdformat on -->
 Notes:
 * `P` means support parallel training with multiple actors on a single machine.
-* `*` means not fully tested on Atari games due to lack of access powerfull machine and GPUs.
+* `*` means not fully tested on Atari games due to lack of access powerful machine and GPUs.
 
 
 ## Code structure
@@ -76,7 +76,7 @@ Notes:
 *   `main_loop.py` contains functions to run single thread and parallel traning loops.
 *   `networks` contains both policy networks and q networks used by the agents.
 *   `trackers.py` is used to accumulating statistics during training and testing/evaluation,
-    it also writes log to tensorboard if desired.
+    it also writes log to Tensorboard if desired.
 *   `replay.py` contains functions and classes relating to experience replay.
 *   `value_learning.py` contains functions to calculate q learning loss.
 *   `policy_gradient.py` contains functions to calculate policy gradient loss.
@@ -165,11 +165,11 @@ python3 -m deep_rl_zoo.dqn.run_atari
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-### Atari environment multiple actors (on single machine)
-When runing multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
+### Multiple actors (on single machine)
+When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
 
 ```
-python3 -m deep_rl_zoo.a2c.run_atari --num_actors=16
+python3 -m deep_rl_zoo.a2c.run_classic --num_actors=16
 
 python3 -m deep_rl_zoo.impala.run_atari --num_actors=16
 ```
@@ -189,7 +189,7 @@ python3 -m deep_rl_zoo.dqn.eval_agent --checkpoint_path=checkpoints/dqn/CartPole
 ```
 
 ## Monitoring performance and statistics with Tensorboard
-By default, both training, evaluation, and testing will log to tensorboard at the `runs` directory.
+By default, both training, evaluation, and testing will log to Tensorboard at the `runs` directory.
 To disable this, use the option `--notensorboard`.
 
 ```
@@ -200,11 +200,11 @@ The main logic to write to tensorboard is implemented in `trackers.py`,
 mainly the classes `TensorboardEpisodTracker`, `TensorboardStepRateTracker`, and `TensorboardAgentStatisticsTracker`.
 
 * we only write logs after episode terminates
-* we seperate trainning and evaluation logs
-* we don't write loss to tensorboard, as in RL the loss is not used to assess agent performance
-* for agents that support parallel training, only log the first and last actors, this is controled by `run_parallel_training_iterations` in `main_loop.py` module
+* we separate training and evaluation logs
+* we don't write loss to Tensorboard, as in RL the loss is not used to assess agent performance
+* for agents that support parallel training, only log the first and last actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
 
-Here are the performance meassurements available on tensorboard:
+Here are the performance measurements available on Tensorboard:
 * `episode_return` the last episode return
 * `episode_steps` the last episode steps
 * `num_episodes` how many episodes have been conducted
@@ -218,7 +218,7 @@ In addition, it'll log whatever is exposed in the `agent.statistics` such as lea
 ![Tensorboard agent statistics](../main/screenshots/tensorboard_02.png)
 
 
-### Add tags to tensorboard
+### Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances
 ```
 python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag=LSTM-LR0.001
