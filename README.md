@@ -5,11 +5,12 @@ This repository contains a collection of Deep RL algorithms to solve openAI Gym 
 
 
 ## Note
-* Only support problems with discrete action space.
-* Focus on algorithm implementation rather than speed or creating a library.
-* We try to follow the original paper as close as possible for each implementation, but hyper-parameters and network architectures are not fine-tuned.
-* All agents have been fully tested on cpu with M1 Mac (either CartPole or LunarLander), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
-* Some of the agents are not fully tested on Atari games, as we don't have access to powerful machine and GPUs.
+* Only support episodic problems with discrete action space.
+* We focus on study the individual algorithm and implementation, rather than creating a library.
+* We try to follow the original paper as close as possible for each implementation, but may change some hyper-parameters to speed up training.
+* The hyper-parameters and network architectures are not fine-tuned.
+* Most agents have been fully tested on classic control problems like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
+* For Atari games, we only run partially tests on Pong, there are some agents are not tested on Atari due to lack of access to powerful machine and GPUs.
 * We can not guarantee its bug free.
 
 
@@ -17,7 +18,7 @@ This repository contains a collection of Deep RL algorithms to solve openAI Gym 
 * Python        3.9.12
 * pip           22.0.3
 * PyTorch       1.11.0
-* openAI Gym    0.23.1
+* openAI Gym    0.24.1
 * tensorboard   2.8.0
 * numpy         1.22.2
 
@@ -28,8 +29,8 @@ This repository contains a collection of Deep RL algorithms to solve openAI Gym 
 
 | Directory            | Reference Paper                                                                                                               | Note |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---- |
-| `reinforce`          | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   |      |
-| `reinforce_baseline` | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   |      |
+| `reinforce`          | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
+| `reinforce_baseline` | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
 | `actor_critic`       | [Actor-Critic Algorithms](https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)          |      |
 | `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)                                      | P    |
 |                      | [synchronous, deterministic variant of A3C](https://openai.com/blog/baselines-acktr-a2c/)                                     |      |
@@ -52,7 +53,7 @@ This repository contains a collection of Deep RL algorithms to solve openAI Gym 
 | `c51_dqn`            | [A Distributional Perspective on Reinforcement Learning](https://arxiv.org/abs/1707.06887)                    |      |
 | `rainbow_dqn`        | [Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)            |      |
 | `qr_dqn`             | [Distributional Reinforcement Learning with Quantile Regression](https://arxiv.org/abs/1710.10044)            |      |
-| `iqn`                | [Implicit Quantile Networks for Distributional Reinforcement Learning](https://arxiv.org/abs/1806.06923)      |      |
+| `iqn`                | [Implicit Quantile Networks for Distributional Reinforcement Learning](https://arxiv.org/abs/1806.06923)      | *    |
 | `drqn`               | [Deep Recurrent Q-Learning for Partially Observable MDPs](https://arxiv.org/abs/1507.06527)                   | *    |
 | `r2d2`               | [Recurrent Experience Replay in Distributed Reinforcement Learning](https://openreview.net/pdf?id=r1lyTjAqYX) | P    |
 | `ngu`                | [Never Give Up: Learning Directed Exploration Strategies](https://arxiv.org/abs/2002.06038)                   | P *  |
@@ -61,7 +62,7 @@ This repository contains a collection of Deep RL algorithms to solve openAI Gym 
 <!-- mdformat on -->
 Notes:
 * `P` means support parallel training with multiple actors on a single machine.
-* `*` means not fully tested on Atari games due to lack of access powerful machine and GPUs.
+* `*` means not tested on Atari games due to lack of access to powerful machine and GPUs.
 
 
 ## Code structure
@@ -83,7 +84,6 @@ Notes:
 *   `gym_env.py` contains components for standard Atari environment preprocessing.
 *   `greedy_actors.py` contains all the greedy actors for testing/evaluation.
     for example `EpsilonGreedyActor` for DQN agents, `PolicyGreedyActor` for general policy gradient agents.
-
 
 
 ## Quick start
@@ -126,13 +126,6 @@ pip3 install -r requirements.txt
 
 ## Train agents
 
-Note:
-* The hyper-parameters are not fully tuned for each agent.
-* Note for some agents (like advanced DQN agents, most of the policy gradient agents),
-it's impossible to solve MountainCar due to sparse reward.
-* Some of the advanced agents may not perform well on CartPole (like NGU, Agent57), but do well on LunarLander.
-
-
 ### CartPole, LunarLander, and MountainCar
 By default, we have the following settings for all `run_classic.py` file:
 
@@ -141,6 +134,10 @@ By default, we have the following settings for all `run_classic.py` file:
 * `num_eval_steps: 1e5`
 
 For some problem like LunarLander and MountainCar, you may need to increase the `num_train_steps`.
+
+#### Note
+* For some agents (like advanced DQN agents, most of the policy gradient agents), it's impossible to solve MountainCar due to the nature of the problem (sparse reward).
+* For some of the advanced agents (like NGU, Agent57) will only converge on LunarLander, to make it work on CartPole, you may need to fine-tune the hyper-parameters. 
 
 ```
 python3 -m deep_rl_zoo.dqn.run_classic
@@ -157,6 +154,11 @@ By default, we have the following settings for all `run_atari.py` file:
 
 For Atari, we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
 By default, it uses `NoFrameskip-v4` for the specified game.
+
+#### Note
+* For Atari games, we scale the observation with the atari wrappers BEFORE store the states into experience replay, as a reference 100000 samples some times can use ~14GB of RAM, pay attention if you want to increase the size of experience replay.
+* Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 50000 instead of 1000000.
+* To speed up training on Atari games with DQN (and the enhancements like double Q, rainbow, IQN, etc.), we use 1000 instead of 10000 as interval to update target Q network.
 
 ```
 python3 -m deep_rl_zoo.dqn.run_atari
@@ -204,7 +206,7 @@ mainly the classes `TensorboardEpisodTracker`, `TensorboardStepRateTracker`, and
 * we don't write loss to Tensorboard, as in RL the loss is not used to assess agent performance
 * for agents that support parallel training, only log the first and last actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
 
-Here are the performance measurements available on Tensorboard:
+Here are the performance measurements (measured over env steps) available on Tensorboard:
 * `episode_return` the last episode return
 * `episode_steps` the last episode steps
 * `num_episodes` how many episodes have been conducted
@@ -213,16 +215,25 @@ Here are the performance measurements available on Tensorboard:
 
 In addition, it'll log whatever is exposed in the `agent.statistics` such as learning rate, discount, updates etc.
 
-### Example of DQN agent
-![Tensorboard performance](../main/screenshots/tensorboard_01.png)
-![Tensorboard agent statistics](../main/screenshots/tensorboard_02.png)
-
-
 ### Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances
 ```
 python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag=LSTM-LR0.001
 ```
+
+### Example of DQN agent
+
+#### CartPole (training on CPU)
+![Tensorboard performance](../main/screenshots/DQN_on_CartPole_01.png)
+![Tensorboard agent statistics](../main/screenshots/DQN_on_CartPole_02.png)
+
+#### Pong (training on CPU)
+![Tensorboard performance](../main/screenshots/DQN_on_Pong_01.png)
+![Tensorboard agent statistics](../main/screenshots/DQN_on_Pong_02.png)
+
+#### Breakout (training on CPU)
+![Tensorboard performance](../main/screenshots/DQN_on_Breakout_01.png)
+![Tensorboard agent statistics](../main/screenshots/DQN_on_Breakout_02.png)
 
 
 ## Acknowledgments

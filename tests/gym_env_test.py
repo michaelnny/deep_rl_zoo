@@ -71,7 +71,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
             for _ in range(100):  # each game 100 steps
                 obs, r, done, _ = env.step(env.action_space.sample())
                 # obs = np.asarray(obs)
-                self.assertEqual(obs.dtype, np.uint8)
+                self.assertEqual(obs.dtype, np.float32)
                 self.assertEqual(obs.shape, (frame_stack, 210, 160))
                 self.assertTrue(obs.flags['C_CONTIGUOUS'])
                 if done:
@@ -97,7 +97,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
             for _ in range(100):  # each game 100 steps
                 obs, r, done, _ = env.step(env.action_space.sample())
                 # obs = np.asarray(obs)
-                self.assertEqual(obs.dtype, np.uint8)
+                self.assertEqual(obs.dtype, np.float32)
                 self.assertEqual(obs.shape, (210, 160, frame_stack))
                 self.assertTrue(obs.flags['C_CONTIGUOUS'])
                 if done:
@@ -112,15 +112,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
         env = env = gym.make(full_env_name)
         env.seed(seed)
         env = BumpUpReward(env)
-        env = gym_env.AtariPreprocessing(
-            env,
-            screen_height=84,
-            screen_width=84,
-            frame_skip=4,
-            done_on_life_loss=False,
-            channel_first=True,
-            clip_reward=clip_reward,
-        )
+        env = gym_env.ClipRewardWithBound(env, 1.0)
 
         for _ in range(5):  # 5 games
             obs = env.reset()
@@ -154,7 +146,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
             for _ in range(100):  # each game 100 steps
                 obs, r, done, _ = env.step(env.action_space.sample())
                 # obs = np.asarray(obs)
-                self.assertEqual(obs.dtype, np.uint8)
+                self.assertEqual(obs.dtype, np.float32)
                 self.assertEqual(obs.shape, (1, 210, 160))
                 self.assertEqual(len(obs.shape), 3)
                 self.assertTrue(obs.flags['C_CONTIGUOUS'])

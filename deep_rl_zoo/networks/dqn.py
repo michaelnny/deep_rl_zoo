@@ -649,7 +649,7 @@ class DqnConvNet(nn.Module):
             raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
         super().__init__()
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -658,7 +658,7 @@ class DqnConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
         """Given state, return state-action value for all possible actions"""
-        x = x.float() / 255.0
+        # x = x.float() / 255.0
         features = self.body(x)
         q_values = self.value_head(features)  # [batch_size, num_actions]
         return DqnNetworkOutputs(q_values=q_values)
@@ -687,7 +687,7 @@ class C51DqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -696,7 +696,6 @@ class C51DqnConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
-        x = x.float() / 255.0
         x = self.body(x)
         q_logits = self.value_head(x)
         q_logits = q_logits.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
@@ -735,7 +734,7 @@ class RainbowDqnConvNet(nn.Module):
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         self.advantage_head = nn.Sequential(
             common.NoisyLinear(self.body.out_features, 512),
@@ -750,7 +749,6 @@ class RainbowDqnConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
-        x = x.float() / 255.0
         x = self.body(x)
         advantages = self.advantage_head(x)
         values = self.value_head(x)
@@ -803,7 +801,7 @@ class QRDqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.taus = quantiles
         self.num_taus = quantiles.size(0)
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -812,7 +810,6 @@ class QRDqnConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> QRDqnNetworkOutputs:
         """Given state, return state-action value for all possible actions"""
-        x = x.float() / 255.0
         x = self.body(x)
         q_dist = self.value_head(x)
         # No softmax as the model is trying to approximate the 'whole' probability distributions
@@ -851,7 +848,7 @@ class IqnConvNet(nn.Module):
 
         self.pis = torch.arange(1, self.latent_dim + 1).float() * 3.141592653589793  # [latent_dim]
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.embedding_layer = nn.Linear(latent_dim, self.body.out_features)
 
         self.value_head = nn.Sequential(
@@ -878,7 +875,6 @@ class IqnConvNet(nn.Module):
         """
         batch_size = x.shape[0]
 
-        x = x.float() / 255.0
         # Apply ConvDQN to embed state.
         features = self.body(x)
 
@@ -930,7 +926,7 @@ class DrqnConvNet(nn.Module):
 
         super().__init__()
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         self.lstm = nn.LSTM(input_size=self.body.out_features, hidden_size=512, num_layers=1, batch_first=True)
 
@@ -957,8 +953,6 @@ class DrqnConvNet(nn.Module):
         assert len(x.shape) == 5
         B = x.shape[0]
         T = x.shape[1]
-
-        x = x.float() / 255.0
 
         x = torch.flatten(x, 0, 1)  # Merge batch and time dimension.
 
@@ -1000,7 +994,7 @@ class R2d2DqnConvNet(nn.Module):
         super().__init__()
         self.num_actions = num_actions
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         # Feature representation output size + one-hot of last action + last reward.
         out_size = self.body.out_features + self.num_actions + 1
@@ -1044,7 +1038,6 @@ class R2d2DqnConvNet(nn.Module):
 
         T, B, *_ = s_t.shape  # [T, B, state_shape]
         x = torch.flatten(s_t, 0, 1)  # Merge batch and time dimension.
-        x = x.float() / 255.0
 
         x = self.body(x)
         x = x.view(T * B, -1)
@@ -1091,7 +1084,7 @@ class NguDqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.num_policies = num_policies  # intrinsic reward scale betas
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         # Core input includes:
         # feature representation output size
@@ -1144,6 +1137,8 @@ class NguDqnConvNet(nn.Module):
 
         T, B, *_ = s_t.shape  # [T, B, state_shape]
         x = torch.flatten(s_t, 0, 1)  # Merge batch and time dimension.
+
+        # The states for NGU and Agent57 are not pre-scaled.
         x = x.float() / 255.0
         x = self.body(x)
         x = x.view(T * B, -1)

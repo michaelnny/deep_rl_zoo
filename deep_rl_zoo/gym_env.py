@@ -1,16 +1,29 @@
-# Copyright 2022 The Deep RL Zoo Authors. All Rights Reserved.
+# The MIT License
+
+# Copyright (c) 2017 OpenAI (http://openai.com)
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Code adapted from openAI baselines:
+# https://github.com/openai/baselines/blob/master/baselines/common/atari_wrappers.py
+# Made changes to adapting coding styles, also add new function to support recording video.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 # ==============================================================================
 """gym environment processing components."""
 
@@ -34,284 +47,245 @@ import deep_rl_zoo.types as types_lib
 CLASSIC_ENV_NAMES = ['CartPole-v1', 'LunarLander-v2', 'MountainCar-v0']
 
 
-class AtariPreprocessing(gym.Wrapper):
-    r"""Atari 2600 preprocessings.
-    This class follows the guidelines in
-    Machado et al. (2018), "Revisiting the Arcade Learning Environment:
-    Evaluation Protocols and Open Problems for General Agents".
-
-    Specifically:
-        * NoopReset: obtain initial state by taking random number of no-ops on reset.
-        * Frame skipping (defaults to 4).
-        * Terminal signal when a life is lost (off by default).
-        * Grayscale and max-pooling of the last two frames.
-        * Downsample the screen to a square image (defaults to 84x84).
-        * Clip reward into in the range [-1, 1] (optional)
-
+class NoopReset(gym.Wrapper):
+    """Sample initial states by taking random number of no-ops on reset.
+    No-op is assumed to be action 0.
     """
 
-    def __init__(
-        self,
-        env: gym.Env,
-        noop_max: int = 0,
-        screen_height: int = 84,
-        screen_width: int = 84,
-        frame_skip: int = 4,
-        done_on_life_loss: bool = False,
-        clip_reward: bool = False,
-        channel_first: bool = False,
-    ):
-        """
-        Args:
-            env: Gym environment whose observations are preprocessed.
-            noop_max: maximum number of no-ops to apply at the beginning
-                of each episode to reduce determinism. These no-ops are applied at a
-                low-level, before frame skipping.
-            screen_height: resize height of Atari frame
-            screen_width: resize width of Atari frame
-            frame_skip: the frequency at which the agent experiences the game.
-            done_on_life_loss: if True, then step() returns done=True whenever a
-                life is lost.
-            clip_reward: if True, use np.sign() to scale summed reward into in the range [-1, 1].
-            channel_first: if True, put channel at the first dimension, this is used for PyTorch only.
+    def __init__(self, env, noop_max=30):
 
-        Raises:
-            RuntimeError: if opencv not installed.
-            ValueError: if frame_skip or screen_height, screen_width, frame_skip, noop_max are not strictly positive.
-        """
-        super().__init__(env)
-        if cv2 is None:
-            raise RuntimeError(
-                'opencv-python package not installed! Try running pip install gym[atari] to get dependencies  for atari'
-            )
-
-        if frame_skip <= 0:
-            raise ValueError(f'Expect frame_skip to be positive integer, got {frame_skip}')
-        if screen_height <= 0:
-            raise ValueError(f'Expect screen_height to be positive integer, got {screen_height}')
-        if screen_width <= 0:
-            raise ValueError(f'Expect screen_width to be positive integer, got {screen_width}')
-        if frame_skip <= 0:
-            raise ValueError(f'Expect frame_skip to be positive integer, got {frame_skip}')
-
-        if frame_skip > 1:
-            if 'NoFrameskip' not in env.spec.id and getattr(env.unwrapped, '_frameskip', None) != 1:
-                raise ValueError(
-                    'Disable frame-skipping in the original env. Otherwise, more than one'
-                    ' frame-skip will happen as through this wrapper'
-                )
+        gym.Wrapper.__init__(self, env)
         self.noop_max = noop_max
-        if env.unwrapped.get_action_meanings()[0] != 'NOOP':
-            raise RuntimeError(f'Expect first action to be NOOP, got {env.unwrapped.get_action_meanings()[0]}')
+        self.override_num_noops = None
+        self.noop_action = 0
+        assert env.unwrapped.get_action_meanings()[0] == 'NOOP'
 
-        self.screen_height = screen_height
-        self.screen_width = screen_width
-        self.frame_skip = frame_skip
-        self.done_on_life_loss = done_on_life_loss
-        self.clip_reward = clip_reward
-        self.channel_first = channel_first
-
-        # buffer of most recent two observations for max pooling
-        self.obs_buffer = [
-            np.empty(env.observation_space.shape[:2], dtype=np.uint8),
-            np.empty(env.observation_space.shape[:2], dtype=np.uint8),
-        ]
-
-        self.lives = 0
-        self.game_over = False
-
-        # The channel of observation shape is 1 as we always grayscale and max-pool last two frames
-        if self.channel_first:
-            obs_shape = (1, screen_height, screen_width)
+    def reset(self, **kwargs):
+        """Do no-op action for a number of steps in [1, noop_max]."""
+        self.env.reset(**kwargs)
+        if self.override_num_noops is not None:
+            noops = self.override_num_noops
         else:
-            obs_shape = (screen_height, screen_width, 1)
-        self.observation_space = Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
+            noops = self.unwrapped.np_random.integers(1, self.noop_max + 1)  # pylint: disable=E1101
+        assert noops > 0
+        obs = None
+        for _ in range(noops):
+            obs, _, done, _ = self.env.step(self.noop_action)
+            if done:
+                obs = self.env.reset(**kwargs)
+        return obs
 
     def step(self, action):
-        accumulated_reward = 0.0
+        return self.env.step(action)
 
-        for t in range(self.frame_skip):
-            _, reward, done, info = self.env.step(action)
 
-            accumulated_reward += reward
-            self.game_over = done
+class FireOnReset(gym.Wrapper):
+    """Take fire action on reset for environments like Breakout."""
 
-            if self.done_on_life_loss:
-                new_lives = self.ale.lives()
-                done = done or new_lives < self.lives
-                self.lives = new_lives
+    def __init__(self, env):
 
+        gym.Wrapper.__init__(self, env)
+        assert env.unwrapped.get_action_meanings()[1] == 'FIRE'
+        assert len(env.unwrapped.get_action_meanings()) >= 3
+
+    def reset(self, **kwargs):
+        self.env.reset(**kwargs)
+        obs, _, done, _ = self.env.step(1)
+        if done:
+            self.env.reset(**kwargs)
+        obs, _, done, _ = self.env.step(2)
+        if done:
+            self.env.reset(**kwargs)
+        return obs
+
+    def step(self, action):
+        return self.env.step(action)
+
+
+class DoneOnLifeLoss(gym.Wrapper):
+    """Make end-of-life == end-of-episode, but only reset on true game over.
+    Done by DeepMind for the DQN and co. since it helps value estimation.
+    """
+
+    def __init__(self, env):
+
+        gym.Wrapper.__init__(self, env)
+        self.lives = 0
+        self.was_real_done = True
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        self.was_real_done = done
+        # check current lives, make loss of life terminal,
+        # then update lives to handle bonus lives
+        lives = self.env.unwrapped.ale.lives()
+        if lives < self.lives and lives > 0:
+            # for Qbert sometimes we stay in lives == 0 condition for a few frames
+            # so it's important to keep lives > 0, so that we only reset once
+            # the environment advertises done.
+            done = True
+        self.lives = lives
+        return obs, reward, done, info
+
+    def reset(self, **kwargs):
+        """Reset only when lives are exhausted.
+        This way all states are still reachable even though lives are episodic,
+        and the learner need not know about any of this behind-the-scenes.
+        """
+        if self.was_real_done:
+            obs = self.env.reset(**kwargs)
+        else:
+            # no-op step to advance from terminal/lost life state
+            obs, _, _, _ = self.env.step(0)
+        self.lives = self.env.unwrapped.ale.lives()
+        return obs
+
+
+class MaxAndSkip(gym.Wrapper):
+    """Return only every `skip`-th frame"""
+
+    def __init__(self, env, skip=4):
+
+        gym.Wrapper.__init__(self, env)
+        # most recent raw observations (for max pooling across time steps)
+        self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
+        self._skip = skip
+
+    def step(self, action):
+        """Repeat action, sum reward, and max over last observations."""
+        total_reward = 0.0
+        done = None
+        for i in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            if i == self._skip - 2:
+                self._obs_buffer[0] = obs
+            if i == self._skip - 1:
+                self._obs_buffer[1] = obs
+            total_reward += reward
             if done:
                 break
-            if t == self.frame_skip - 2:
-                self.ale.getScreenGrayscale(self.obs_buffer[1])
-            elif t == self.frame_skip - 1:
-                self.ale.getScreenGrayscale(self.obs_buffer[0])
+        # Note that the observation on the done=True frame
+        # doesn't matter
+        max_frame = self._obs_buffer.max(axis=0)
 
-        # Pool the last two observations.
-        observation = self._pool_and_resize()
-
-        # Clip summed rewards.
-        if self.clip_reward:
-            accumulated_reward = np.sign(accumulated_reward)
-
-        return observation, accumulated_reward, done, info
+        return max_frame, total_reward, done, info
 
     def reset(self, **kwargs):
-        # NoopReset
-        if kwargs.get('return_info', False):
-            _, reset_info = self.env.reset(**kwargs)
-        else:
-            _ = self.env.reset(**kwargs)
-            reset_info = {}
-
-        reset_info = self._apply_random_noops(kwargs, reset_info)
-
-        self.lives = self.ale.lives()
-        # We bypass the Gym observation altogether and directly fetch the
-        # grayscale image from the ALE. This is a little faster.
-        self.ale.getScreenGrayscale(self.obs_buffer[0])
-        self.obs_buffer[1].fill(0)
-
-        if kwargs.get('return_info', False):
-            return self._pool_and_resize(), reset_info
-        else:
-            return self._pool_and_resize()
-
-    @property
-    def ale(self):
-        """Fix cannot pickle 'ale_py._ale_py.ALEInterface' object error in multiprocessing."""
-        return self.env.unwrapped.ale
-
-    def _apply_random_noops(self, kwargs, reset_info):
-        """Steps environment with random no-ops.
-        No-op is assumed to be action 0."""
-        if self.noop_max <= 0:
-            return reset_info
-
-        noops = self.env.unwrapped.np_random.integers(1, self.noop_max + 1)
-        for _ in range(noops):
-            _, _, done, step_info = self.env.step(0)
-            reset_info.update(step_info)
-            if done:
-                if kwargs.get('return_info', False):
-                    _, reset_info = self.env.reset(**kwargs)
-                else:
-                    _ = self.env.reset(**kwargs)
-                    reset_info = {}
-        return reset_info
-
-    def _pool_and_resize(self):
-        """Returns resized observation with shape (height, width)"""
-        if self.frame_skip > 1:  # more efficient in-place pooling
-            np.maximum(self.obs_buffer[0], self.obs_buffer[1], out=self.obs_buffer[0])
-
-        # cv2.resize() takes (width, height)
-        # pylint: disable=no-member
-        transformed_image = cv2.resize(
-            self.obs_buffer[0],
-            (self.screen_width, self.screen_height),
-            interpolation=cv2.INTER_AREA,
-        )
-        # pylint: disable=no-member
-
-        obs = np.asarray(transformed_image, dtype=np.uint8)
-        # Add a channel axis
-        if self.channel_first:
-            return np.expand_dims(obs, axis=0)  # shape (1, height, width)
-        else:
-            return np.expand_dims(obs, axis=2)  # shape (height, width, 1)
+        return self.env.reset(**kwargs)
 
 
-class FrameStackWrapper(gym.ObservationWrapper):
-    r"""Observation wrapper that stacks the observations in a rolling manner.
-
-    Example::
-        >>> import gym
-        >>> env = gym.make('PongNoFrameskip-v0')
-        >>> env = gym.wrappers.AtariPreprocessing(env)
-        >>> env = FrameStackWrapper(env, 4)
-        >>> env.observation_space
-        Box(210, 160, 4)
-    Args:
-        env (Env): environment object
-        num_stack (int): number of stacks
+class ResizeAndGrayscaleFrame(gym.ObservationWrapper):
+    """
+    Resize frames to 84x84, and grascale image as done in the Nature paper.
+    If the environment uses dictionary observations, `dict_space_key` can be specified which indicates which
+    observation should be warped.
     """
 
-    def __init__(self, env, num_stack, channel_first):
-        super().__init__(env)
-        self.num_stack = num_stack
-        self.frames = deque([], maxlen=num_stack)
-        self.channel_first = channel_first
-        old_obs_shape = env.observation_space.shape
+    def __init__(self, env, width=84, height=84, grayscale=True, dict_space_key=None):
 
-        if self.channel_first:
-            obs_shape = (old_obs_shape[0] * num_stack, old_obs_shape[1], old_obs_shape[2])
+        super().__init__(env)
+        self._width = width
+        self._height = height
+        self._grayscale = grayscale
+        self._key = dict_space_key
+        if self._grayscale:
+            num_colors = 1
         else:
-            obs_shape = (old_obs_shape[0], old_obs_shape[1], old_obs_shape[-1] * num_stack)
-        self.observation_space = Box(
+            num_colors = 3
+
+        new_space = Box(
             low=0,
             high=255,
-            shape=obs_shape,
-            dtype=env.observation_space.dtype,
+            shape=(self._height, self._width, num_colors),
+            dtype=np.uint8,
         )
+        if self._key is None:
+            original_space = self.observation_space
+            self.observation_space = new_space
+        else:
+            original_space = self.observation_space.spaces[self._key]  # pylint: disable=no-member
+            self.observation_space.spaces[self._key] = new_space  # pylint: disable=no-member
+        assert original_space.dtype == np.uint8 and len(original_space.shape) == 3
 
-    def observation(self):  # pylint: disable=arguments-differ
-        assert len(self.frames) == self.num_stack, (len(self.frames), self.num_stack)
-        return LazyFrames(list(self.frames), self.channel_first)
+    def observation(self, observation):
+        if self._key is None:
+            frame = observation
+        else:
+            frame = observation[self._key]
 
-    def step(self, action):
-        observation, reward, done, info = self.env.step(action)
-        self.frames.append(observation)
-        return self.observation(), reward, done, info
+        # pylint: disable=no-member
+        if self._grayscale:
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        frame = cv2.resize(frame, (self._width, self._height), interpolation=cv2.INTER_AREA)
+        # pylint: disable=no-member
+
+        if self._grayscale:
+            frame = np.expand_dims(frame, -1)
+
+        if self._key is None:
+            obs = frame
+        else:
+            obs = obs.copy()
+            obs[self._key] = frame
+        return obs
+
+
+class FrameStack(gym.Wrapper):
+    """Stack k last frames.
+    Returns lazy array, which is much more memory efficient.
+    See Also
+    --------
+    baselines.common.atari_wrappers.LazyFrames
+    """
+
+    def __init__(self, env, k):
+
+        gym.Wrapper.__init__(self, env)
+        self.k = k
+        self.frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        self.observation_space = Box(low=0, high=255, shape=(shp[:-1] + (shp[-1] * k,)), dtype=env.observation_space.dtype)
 
     def reset(self, **kwargs):
-        if kwargs.get('return_info', False):
-            obs, info = self.env.reset(**kwargs)
-        else:
-            obs = self.env.reset(**kwargs)
-            info = None  # Unused
-        for _ in range(self.num_stack):
-            self.frames.append(obs)
+        ob = self.env.reset(**kwargs)
+        for _ in range(self.k):
+            self.frames.append(ob)
+        return self._get_ob()
 
-        if kwargs.get('return_info', False):
-            return self.observation(), info
-        else:
-            return self.observation()
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        self.frames.append(ob)
+        return self._get_ob(), reward, done, info
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k
+        return LazyFrames(list(self.frames))
 
 
-class LazyFrames:
+class LazyFrames(object):
     """This object ensures that common frames between the observations are only stored once.
     It exists purely to optimize memory usage which can be huge for DQN's 1M frames replay
     buffers.
     This object should only be converted to numpy array before being passed to the model.
     You'd not believe how complex the previous solution was."""
 
-    def __init__(self, frames, channel_first):
-
+    def __init__(self, frames):
         self.dtype = frames[0].dtype
-        self.channel_first = channel_first
-        if self.channel_first:
-            self.shape = (len(frames), frames[0].shape[1], frames[0].shape[2])
-        else:
-            self.shape = (frames[0].shape[0], frames[0].shape[1], len(frames))
+        self.shape = (frames[0].shape[0], frames[0].shape[1], len(frames))
         self._frames = frames
         self._out = None
 
     def _force(self):
         if self._out is None:
-            if self.channel_first:
-                self._out = np.concatenate(self._frames, axis=0)
-            else:
-                self._out = np.concatenate(self._frames, axis=-1)
+            self._out = np.concatenate(self._frames, axis=-1)
             self._frames = None
         return self._out
 
     def __array__(self, dtype=None):
-        arr = self[:]
+        out = self._force()
         if dtype is not None:
-            return arr.astype(dtype)
-        return arr
+            out = out.astype(dtype)
+        return out
 
     def __len__(self):
         return len(self._force())
@@ -327,7 +301,20 @@ class LazyFrames:
         return self._force()[..., i]
 
 
-class ObscureObservationWrapper(gym.ObservationWrapper):
+class ScaledFloatFrame(gym.ObservationWrapper):
+    """Scale frame by devide 255."""
+
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+
+    def observation(self, observation):
+        # careful! This undoes the memory optimization, use
+        # with smaller replay buffers only.
+        return np.array(observation).astype(np.float32) / 255.0
+
+
+class ObscureObservation(gym.ObservationWrapper):
     """Make the environment POMDP by obscure the state with probability epsilon.
     this should be used as the very first"""
 
@@ -343,49 +330,7 @@ class ObscureObservationWrapper(gym.ObservationWrapper):
         return observation
 
 
-class FireOnResetWrapper(gym.Wrapper):
-    """Some environments requires the agent to press the 'FIRE' button to start the game,
-    this wrapper will automatically take the 'FIRE' action when calls reset().
-    """
-
-    def __init__(self, env):
-
-        super().__init__(env)
-        assert env.unwrapped.get_action_meanings()[1] == 'FIRE'
-        assert len(env.unwrapped.get_action_meanings()) >= 3
-
-    def reset(self, **kwargs):
-        """Try to take the 'FIRE' action."""
-        self.env.reset(**kwargs)
-        obs, _, done, _ = self.env.step(1)
-        if done:
-            self.env.reset(**kwargs)
-        obs, _, done, _ = self.env.step(2)
-        if done:
-            self.env.reset(**kwargs)
-        return obs
-
-    def step(self, action):
-        return self.env.step(action)
-
-
-class ObservationChannelFirstWrapper(gym.ObservationWrapper):
-    """Make observation image channel first, this is for PyTorch only."""
-
-    def __init__(self, env):
-        super().__init__(env)
-        old_shape = self.observation_space.shape
-        new_shape = (old_shape[-1], old_shape[0], old_shape[1])
-        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=new_shape, dtype=np.float32)
-
-    def observation(self, observation):
-        # permute [H, W, C] array to in the range [C, H, W]
-        obs = np.array(observation).transpose(2, 0, 1)
-        # make sure it's C-contiguous for compress state
-        return np.ascontiguousarray(obs, dtype=obs.dtype)
-
-
-class ClipRewardWithBoundWrapper(gym.RewardWrapper):
+class ClipRewardWithBound(gym.RewardWrapper):
     'Clip reward to in the range [-bound, bound]'
 
     def __init__(self, env, bound):
@@ -396,7 +341,32 @@ class ClipRewardWithBoundWrapper(gym.RewardWrapper):
         return None if reward is None else max(min(reward, self._bound), -self._bound)
 
 
-class ObservationToNumpyWrapper(gym.ObservationWrapper):
+class ClipRewardWithSign(gym.RewardWrapper):
+    """Clip reward to {+1, 0, -1} by using np.sign() function."""
+
+    def reward(self, reward):
+        return np.sign(reward)
+
+
+class ObservationChannelFirst(gym.ObservationWrapper):
+    """Make observation image channel first, this is for PyTorch only."""
+
+    def __init__(self, env, scale_obs):
+        super().__init__(env)
+        old_shape = self.observation_space.shape
+        new_shape = (old_shape[-1], old_shape[0], old_shape[1])
+        _low, _high = (0.0, 255) if not scale_obs else (0.0, 1.0)
+        _dtype = np.int8 if not scale_obs else np.float32
+        self.observation_space = Box(low=_low, high=_high, shape=new_shape, dtype=_dtype)
+
+    def observation(self, observation):
+        # permute [H, W, C] array to in the range [C, H, W]
+        obs = np.asanyarray(observation).transpose(2, 0, 1)
+        # make sure it's C-contiguous for compress state
+        return np.ascontiguousarray(obs, dtype=obs.dtype)
+
+
+class ObservationToNumpy(gym.ObservationWrapper):
     """Make the observation into numpy ndarrays."""
 
     def observation(self, observation):
@@ -414,8 +384,9 @@ def create_atari_environment(
     max_episode_steps: int = 108000,
     obscure_epsilon: float = 0.0,
     sticky_actions: bool = False,
-    done_on_life_loss: bool = False,
+    terminal_on_life_loss: bool = False,
     clip_reward: bool = False,
+    scale_obs: bool = True,
     channel_first: bool = True,
 ) -> gym.Env:
     """
@@ -436,12 +407,13 @@ def create_atari_environment(
         obscure_epsilon: with epsilon probability [0.0, 1.0) obscure the state to make it POMDP.
         sticky_actions: if True, use sticky version of the atari game,
                 which will repeat the last action with 0.25 probability.
-        done_on_life_loss: if True, mark end of game when loss a life, default off.
+        terminal_on_life_loss: if True, mark end of game when loss a life, default off.
         clip_reward: clip reward in the range of [-1, 1], default off.
+        scale_obs: scale the frame by devide 255, default on.
         channel_first: if True, change observation image from shape [H, W, C] to in the range [C, H, W], this is for PyTorch only, default on.
 
     Returns:
-        preprocessed gym.Env for Atari games, note the obersevations are not scaled to in the range [0, 1].
+        preprocessed gym.Env for Atari games, note the obersevations are NOT scaled to the range [0, 1].
     """
     if 'NoFrameskip' in env_name:
         raise ValueError(f'Environment name should not include NoFrameskip, got {env_name}')
@@ -450,32 +422,34 @@ def create_atari_environment(
     full_env_name = f'{env_name}NoFrameskip-{version}'
 
     env = gym.make(full_env_name)
-    env.reset(seed=seed)
+    env.seed(seed)
+    # env.reset(seed=seed)
 
     # Change TimeLimit wrapper to 108,000 steps (30 min) as default in the
     # litterature instead of OpenAI Gym's default of 100,000 steps.
     env = gym.wrappers.TimeLimit(env.env, max_episode_steps=max_episode_steps)
 
+    env = NoopReset(env, noop_max=noop_max)
+    env = MaxAndSkip(env, skip=frame_skip)
+
     # Obscure observation with obscure_epsilon probability
     if obscure_epsilon > 0.0:
-        env = ObscureObservationWrapper(env, obscure_epsilon)
-
-    # Returns processes env with observation space shape (height, width)
-    env = AtariPreprocessing(
-        env=env,
-        screen_height=screen_height,
-        screen_width=screen_width,
-        frame_skip=frame_skip,
-        noop_max=noop_max,
-        done_on_life_loss=done_on_life_loss,
-        clip_reward=clip_reward,
-        channel_first=channel_first,
-    )
-
+        env = ObscureObservation(env, obscure_epsilon)
+    if terminal_on_life_loss:
+        env = DoneOnLifeLoss(env)
+    if 'FIRE' in env.unwrapped.get_action_meanings():
+        env = FireOnReset(env)
+    env = ResizeAndGrayscaleFrame(env, width=screen_width, height=screen_height)
+    if scale_obs:
+        env = ScaledFloatFrame(env)
+    if clip_reward:
+        env = ClipRewardWithBound(env, 1.0)
     if frame_stack > 1:
-        env = FrameStackWrapper(env, num_stack=frame_stack, channel_first=channel_first)
-    env = ObservationToNumpyWrapper(env)
-
+        env = FrameStack(env, frame_stack)
+    if channel_first:
+        env = ObservationChannelFirst(env, scale_obs)
+    else:
+        env = ObservationToNumpy(env)
     return env
 
 
@@ -499,15 +473,16 @@ def create_classic_environment(
     """
 
     env = gym.make(env_name)
-    env.reset(seed=seed)
+    env.seed(seed)
+    # env.reset(seed=seed)
 
     # Clip reward to max absolute reward bound
     if max_abs_reward is not None:
-        env = ClipRewardWithBoundWrapper(env, abs(max_abs_reward))
+        env = ClipRewardWithBound(env, abs(max_abs_reward))
 
     # Obscure observation with obscure_epsilon probability
     if obscure_epsilon > 0.0:
-        env = ObscureObservationWrapper(env, obscure_epsilon)
+        env = ObscureObservation(env, obscure_epsilon)
 
     return env
 
@@ -515,7 +490,6 @@ def create_classic_environment(
 def play_and_record_video(
     agent: types_lib.Agent,
     env: gym.Env,
-    max_episode_steps: int = 0,
     save_dir: str = 'recordings',
     auto_fire: bool = True,
 ) -> None:
@@ -524,7 +498,6 @@ def play_and_record_video(
     Args:
         env: the gym environment to play.
         agent: the agent which should have step() method to return action for a given state.
-        max_episode_steps: maximun steps per episode, default 0.
         save_dir: the recording video file directory, default save to 'recording/some_time_stamp'.
         auto_fire: if True, take 'FIRE' action after loss a life, default off.
     """
@@ -578,10 +551,6 @@ def play_and_record_video(
         if should_fire and not done and lives != info['lives']:
             lives = info['lives']
             observation = take_fire_action(env)
-
-        if max_episode_steps > 0 and t >= max_episode_steps:
-            assert t == max_episode_steps
-            done = True
 
         if done:
             break

@@ -104,7 +104,7 @@ def qlearning(
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target - qa_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
     return base.LossOutput(loss, QExtra(target, td_error))
 
 
@@ -170,7 +170,7 @@ def double_qlearning(
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target - qa_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
     return base.LossOutput(loss, DoubleQExtra(target, td_error, best_action))
 
 
@@ -671,6 +671,6 @@ def retrace(
     q_a_tm1 = base.batched_index(q_tm1, a_tm1)
 
     td_error = target_tm1 - q_a_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
 
     return base.LossOutput(loss, QExtra(target=target_tm1, td_error=td_error))

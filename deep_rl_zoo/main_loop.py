@@ -41,9 +41,7 @@ from deep_rl_zoo import gym_env
 
 
 def run_loop(
-    agent: types_lib.Agent,
-    env: gym.Env,
-    max_episode_steps: int = 0,
+    agent: types_lib.Agent, env: gym.Env
 ) -> Iterable[Tuple[gym.Env, types_lib.TimeStep, types_lib.Agent, types_lib.Action]]:
     """Repeatedly alternates step calls on environment and agent.
 
@@ -53,8 +51,6 @@ def run_loop(
     Args:
       agent: Agent to be run, has methods `step(timestep)` and `reset()`.
       env: Environment to run, has methods `step(action)` and `reset()`.
-      max_episode_steps: If positive, when time t reaches this value within an
-        episode, the episode is truncated.
 
     Yields:
       Tuple `(env, timestep_t, agent, a_t)` where
@@ -87,12 +83,7 @@ def run_loop(
             a_tm1 = a_t
 
             observation, reward, done, _ = env.step(a_tm1)
-
             first_step = False
-
-            if max_episode_steps > 0 and t >= max_episode_steps:
-                assert t == max_episode_steps
-                done = True
 
             if done:
                 # if we don't add additonal step to agent, with our way of construct the run loop,
@@ -105,7 +96,6 @@ def run_loop(
 
 def run_some_steps(
     num_steps: int,
-    max_episode_steps: int,
     agent: types_lib.Agent,
     env: gym.Env,
     tb_log_dir: str = None,
@@ -113,7 +103,6 @@ def run_some_steps(
     """Run some steps and return the statistics, this could be either training, evaluation, or testing steps.
 
     Args:
-        num_train_steps: number of steps to run.
         max_episode_steps: maximum steps per episode.
         agent: agent to run, expect the agent to have step(), reset(), and a agent_name property.
         train_env: training environment.
@@ -123,7 +112,7 @@ def run_some_steps(
         A Dict contains statistics about the result.
 
     """
-    seq = run_loop(agent, env, max_episode_steps)
+    seq = run_loop(agent, env)
     seq_truncated = itertools.islice(seq, num_steps)
     trackers = trackers_lib.make_default_trackers(run_log_dir=tb_log_dir)
     stats = trackers_lib.generate_statistics(trackers, seq_truncated)
@@ -143,8 +132,7 @@ def run_single_thread_training_iterations(
     csv_file: str,
     tensorboard: bool,
     tag: str = None,
-    max_episode_steps: int = 0,
-):
+) -> None:
     """Runs single-thread training and evaluation for N iterations.
     The same code structure is shared by most single-threaded DQN agents,
     and some policy gradients agents like reinforce, actor-critic.
@@ -162,7 +150,6 @@ def run_single_thread_training_iterations(
         csv_file: csv log file path and name.
         tensorboard: if True, use tensorboard to log the runs.
         tag: tensorboard run log tag.
-        max_episode_steps: maximum steps per episode.
 
     """
 
@@ -190,7 +177,7 @@ def run_single_thread_training_iterations(
         train_tb_log_dir = f'{train_tb_log_prefix}-{state.iteration}' if tensorboard else None
 
         # Run training steps.
-        train_stats = run_some_steps(num_train_steps, max_episode_steps, train_agent, train_env, train_tb_log_dir)
+        train_stats = run_some_steps(num_train_steps, train_agent, train_env, train_tb_log_dir)
 
         checkpoint.save()
 
@@ -213,7 +200,7 @@ def run_single_thread_training_iterations(
             eval_tb_log_dir = f'{eval_tb_log_prefix}-{state.iteration}' if tensorboard else None
 
             # Run some evaluation steps.
-            eval_stats = run_some_steps(num_eval_steps, max_episode_steps, eval_agent, eval_env, eval_tb_log_dir)
+            eval_stats = run_some_steps(num_eval_steps, eval_agent, eval_env, eval_tb_log_dir)
 
             # Logging evaluation statistics.
             eval_output = [
@@ -231,7 +218,6 @@ def run_single_thread_training_iterations(
     writer.close()
 
 
-# BUG, hangs at process.join() after run evaluation
 def run_parallel_training_iterations(
     num_iterations: int,
     num_train_steps: int,
@@ -247,8 +233,7 @@ def run_parallel_training_iterations(
     csv_file: str,
     tensorboard: bool,
     tag: str = None,
-    max_episode_steps: int = 0,
-):
+) -> None:
     """Run parallel traning with multiple actors processes, single learner process.
 
     Args:
@@ -266,7 +251,6 @@ def run_parallel_training_iterations(
         csv_file: csv log file path and name.
         tensorboard: if True, use tensorboard to log the runs.
         tag: tensorboard run log tag.
-        max_episode_steps: maximum steps per episode.
 
     Raises:
         RuntimeError if the `learner_agent` do not have a callable run_train_loop().
@@ -309,7 +293,6 @@ def run_parallel_training_iterations(
             stop_event,
             checkpoint,
             eval_tb_log_prefix,
-            max_episode_steps,
         ),
     )
     learner.start()
@@ -331,7 +314,6 @@ def run_parallel_training_iterations(
                 actor_env,
                 data_queue,
                 log_queue,
-                max_episode_steps,
                 num_train_steps,
                 iteration_count,
                 start_iteration_event,
@@ -359,7 +341,6 @@ def run_actor(
     actor_env: gym.Env,
     data_queue: multiprocessing.Queue,
     log_queue: multiprocessing.SimpleQueue,
-    max_episode_steps: int,
     num_train_steps: int,
     iteration_count: multiprocessing.Value,
     start_iteration_event: multiprocessing.Event,
@@ -380,7 +361,6 @@ def run_actor(
         data_queue: multiprocessing.Queue used for transfering data from actor to learner.
         log_queue: multiprocessing.SimpleQueue used for transfering training statistics from actor,
             this is only for write to csv file, not for tensorboard.
-        max_episode_steps: max steps to run for a single episode.
         num_train_steps: number of training steps to run for one iteration.
         iteration: a counter which is updated by the main process.
         start_iteration_event: start training signal, set by the main process, clear by actor.
@@ -404,7 +384,7 @@ def run_actor(
         train_tb_log_dir = f'{tb_log_prefix}-{iteration}' if tb_log_prefix is not None else None
 
         # Run training steps.
-        train_stats = run_some_steps(num_train_steps, max_episode_steps, actor, actor_env, train_tb_log_dir)
+        train_stats = run_some_steps(num_train_steps, actor, actor_env, train_tb_log_dir)
 
         # Mark work done to avoid infinite loop in learner `run_train_loop`,
         # also possible multiprocessing.Queue deadlock.
@@ -442,8 +422,7 @@ def run_learner(
     stop_event: multiprocessing.Event,
     checkpoint: PyTorchCheckpoint,
     eval_tb_log_prefix: str = None,
-    max_episode_steps: int = 0,
-):
+) -> None:
     """Run learner for N iterations.
 
     At the begining of every iteration, learner will set the `start_iteration_event` to True, to signal actors to start training.
@@ -461,7 +440,6 @@ def run_learner(
         start_iteration_event: a multiprocessing.Event signal to actors for start training.
         checkpoint: checkpoint object.
         eval_tb_log_prefix: tensorboard evaluation run log prefix.
-        max_episode_steps: maximum steps per episode.
     """
     networks = []
     if isinstance(network, List):
@@ -498,7 +476,7 @@ def run_learner(
             eval_tb_log_dir = f'{eval_tb_log_prefix}-{state.iteration}' if eval_tb_log_prefix is not None else None
 
             # Run some evaluation steps.
-            eval_stats = run_some_steps(num_eval_steps, max_episode_steps, eval_agent, eval_env, eval_tb_log_dir)
+            eval_stats = run_some_steps(num_eval_steps, eval_agent, eval_env, eval_tb_log_dir)
 
             # Logging evaluation statistics
             log_output = [
@@ -552,7 +530,6 @@ def run_test_iterations(
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
     tensorboard: bool,
-    max_episode_steps: int = 0,
     recording_video_dir: str = None,
 ):
     """Testing an agent restored from checkpoint.
@@ -563,7 +540,6 @@ def run_test_iterations(
         eval_agent: evaluation agent, expect the agent has step(), reset(), and agent_name property.
         eval_env: evaluation environment.
         tensorboard: if True, use tensorboard to log the runs.
-        max_episode_steps: maximum steps per episode.
         recording_video_dir: folder to store agent self-play video for one episode.
     """
 
@@ -576,7 +552,7 @@ def run_test_iterations(
         eval_tb_log_dir = f'{test_tb_log_prefix}-{iteration}' if tensorboard else None
 
         # Run some testing steps.
-        eval_stats = run_some_steps(num_eval_steps, max_episode_steps, eval_agent, eval_env, eval_tb_log_dir)
+        eval_stats = run_some_steps(num_eval_steps, eval_agent, eval_env, eval_tb_log_dir)
 
         # Logging testing statistics.
         log_output = [
@@ -593,7 +569,7 @@ def run_test_iterations(
         iteration += 1
 
     if recording_video_dir is not None and recording_video_dir != '':
-        gym_env.play_and_record_video(eval_agent, eval_env, max_episode_steps, recording_video_dir)
+        gym_env.play_and_record_video(eval_agent, eval_env, recording_video_dir)
 
 
 def get_tb_log_prefix(env_id: str, agent_name: str, tag: str, suffix: str) -> str:

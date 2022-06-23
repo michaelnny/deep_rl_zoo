@@ -4,13 +4,13 @@
 absl-py==1.0.0
 
 # Gym environment
-gym==0.23.1
-ale-py==0.7.4
+gym==0.24.1
+ale-py==0.7.5
 AutoROM==0.4.2
 AutoROM.accept-rom-license==0.4.2
-box2d-py==2.3.8
+box2d-py==2.3.5
 pyglet==1.5.21
-pygame==2.1.2
+pygame==2.1.0
 
 # PyTorch
 torch==1.11.0
@@ -21,7 +21,7 @@ torchvision==0.12.0
 tensorboard==2.8.0
 
 # Utilities
-numpy==1.22.2
+numpy==1.22.4
 opencv-python==4.5.5.62
 python-snappy==0.6.0
 

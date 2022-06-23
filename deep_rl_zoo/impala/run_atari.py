@@ -20,10 +20,6 @@ https://arxiv.org/abs/1802.01561.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -43,7 +39,7 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
-flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use, consider to use larger number like 32, 64.')
+flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use, consider to use larger number like 32, 64.')
 flags.DEFINE_bool('use_lstm', False, 'Use LSTM layer, default off.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -91,7 +87,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=True,
+            terminal_on_life_loss=True,
             clip_reward=True,
         )
 
@@ -200,7 +196,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

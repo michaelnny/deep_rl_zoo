@@ -41,7 +41,7 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 5000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -59,7 +59,7 @@ flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 
 flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    10000,
+    1000,
     'The frequency (measured in number of online Q network parameter updates) to update target Q networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -91,7 +91,8 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=True,
+            terminal_on_life_loss=True,
+            scale_obs=True,
             clip_reward=True,
         )
 
@@ -180,7 +181,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

@@ -49,7 +49,7 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 32, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 25000, 'Maximum replay size.')
+flags.DEFINE_integer('replay_capacity', 20000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -95,9 +95,9 @@ flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    1500,
+    1000,
     'Number of learner online Q network updates before update target Q networks.',
-)
+)  # 1500
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -132,7 +132,8 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=False,
+            terminal_on_life_loss=False,
+            scale_obs=False,
             clip_reward=False,
         )
 
@@ -322,7 +323,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

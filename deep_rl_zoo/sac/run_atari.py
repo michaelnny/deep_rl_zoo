@@ -50,7 +50,7 @@ flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 5000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate for policy network.')
@@ -96,7 +96,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=True,
+            terminal_on_life_loss=True,
             clip_reward=True,
         )
 
@@ -214,7 +214,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

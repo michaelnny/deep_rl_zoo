@@ -81,8 +81,9 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed,
             noop_max=30,
-            done_on_life_loss=False,
-            clip_reward=False,
+            terminal_on_life_loss=True,
+            scale_obs=False,
+            clip_reward=True,
         )
         input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
         num_actions = eval_env.action_space.n
@@ -114,7 +115,6 @@ def main(argv):
         eval_agent=eval_agent,
         eval_env=eval_env,
         tensorboard=FLAGS.tensorboard,
-        max_episode_steps=FLAGS.max_episode_steps,
         recording_video_dir=FLAGS.recording_video_dir,
     )
 

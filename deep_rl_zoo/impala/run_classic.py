@@ -21,10 +21,6 @@ https://arxiv.org/abs/1802.01561.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -186,7 +182,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 
