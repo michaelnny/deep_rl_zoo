@@ -59,9 +59,9 @@ flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 
 flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    2500,
+    1000,
     'The frequency (measured in number of online Q network parameter updates) to update target Q networks.',
-)  # 10000/4
+)
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')

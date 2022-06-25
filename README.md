@@ -48,7 +48,6 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 | `dqn`                | [Human Level Control Through Deep Reinforcement Learning](https://www.nature.com/articles/nature14236)        |      |
 | `double_dqn`         | [Deep Reinforcement Learning with Double Q-learning](https://arxiv.org/abs/1509.06461)                        |      |
 | `prioritized_dqn`    | [Prioritized Experience Replay](https://arxiv.org/abs/1511.05952)                                             |      |
-| `rainbow`            | [Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)            |      |
 | `drqn`               | [Deep Recurrent Q-Learning for Partially Observable MDPs](https://arxiv.org/abs/1507.06527)                   | *    |
 | `r2d2`               | [Recurrent Experience Replay in Distributed Reinforcement Learning](https://openreview.net/pdf?id=r1lyTjAqYX) | P *  |
 | `ngu`                | [Never Give Up: Learning Directed Exploration Strategies](https://arxiv.org/abs/2002.06038)                   | P *  |
@@ -61,6 +60,7 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 | Directory            | Reference Paper                                                                                               | Note |
 | -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
 | `c51_dqn`            | [A Distributional Perspective on Reinforcement Learning](https://arxiv.org/abs/1707.06887)                    |      |
+| `rainbow`            | [Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)            |      |
 | `qr_dqn`             | [Distributional Reinforcement Learning with Quantile Regression](https://arxiv.org/abs/1710.10044)            | *    |
 | `iqn`                | [Implicit Quantile Networks for Distributional Reinforcement Learning](https://arxiv.org/abs/1806.06923)      | *    |
 
@@ -91,6 +91,7 @@ Notes:
         for example `EpsilonGreedyActor` for DQN agents, `PolicyGreedyActor` for general policy gradient agents.
 *   `tests` directory contains all the code for unit testing and end-to-end testing.
 *   `screenshots` directory contains images of Tensorboard statistics for some of the agent.
+
 
 ## Quick start
 
@@ -134,10 +135,7 @@ pip3 install -r requirements.txt
 
 ### CartPole, LunarLander, and MountainCar
 By default, we have the following settings for all `run_classic.py` file:
-
-* `num_iterations: 2`
-* `num_train_steps: 5e5`
-* `num_eval_steps: 2e5`
+`--num_iterations=2 --num_train_steps=5e5 --num_eval_steps=2e5`
 
 For some problem like LunarLander and MountainCar, you may need to increase the `num_train_steps`.
 
@@ -155,10 +153,7 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 
 ### Atari environment
 By default, we have the following settings for all `run_atari.py` file:
-
-* `num_iterations: 20`
-* `num_train_steps: 1e6`
-* `num_eval_steps: 2e5`
+`--num_iterations=20 --num_train_steps=1e6 --num_eval_steps=2e5`
 
 For Atari, we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
 By default, it uses `NoFrameskip-v4` for the specified game.
@@ -170,22 +165,31 @@ If we do scale before store into replay, it will allocate ~14GB of RAM. But when
 
 #### Note
 * Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 200000 instead of 1000000.
-* To speed up training on Atari games with DQN (and the enhancements like double Q, rainbow, IQN, etc.), we use 2500 instead of 10000 as interval to update target Q network.
-* We experience that, for DQN, using the following configuration will speed up training on Pong (1 million env steps), but may not work on other games.
-    * `--exploration_epsilon_decay_step=500000`
-    * `--min_replay_size=10000`
-    * `--replay_capacity=100000`
-    * `--target_network_update_frequency=2500`
 * As a reference, when using double Q learning, it's best to increase the interval to 2-3x naive DQN when update target Q network.
+* We experience that, for DQN, using the following configuration will speed up training on Pong (1 million env steps), but may not work on other games.
+    - `--exploration_epsilon_decay_step=500000 --min_replay_size=10000 --replay_capacity=100000 --target_network_update_frequency=1000`
 
 ```
-python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Pong --num_iterations=1 --num_train_steps=1000000 --target_network_update_frequency=2500 --min_replay_size=10000 --target_network_update_frequency=2500--replay_capacity=100000 --exploration_epsilon_decay_step=50000
+python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Pong --num_iterations=1 --num_train_steps=1000000 --exploration_epsilon_decay_step=500000 --min_replay_size=10000 --replay_capacity=100000 --target_network_update_frequency=1000
 
 # Train DQN on Breakout may take 20-50 million env steps, and the hyper-parameters are not tuned.
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-### Multiple actors (on single machine)
+#### Experiment DQN on Pong (M1 Mac on CPU)
+One interesting fact regarding the impact of hyper-parameters on DQN when run training on Pong, we use the following common settings across multiple experiences:
+`--num_train_steps=500000 --exploration_epsilon_decay_step=500000 --learning_rate=0.00025 --discount=0.99 --n_step=3 --replay_capacity=100000`
+
+With the following different configuration and labels
+* replay[10k-100k]-target-q[1k] for `--min_replay_size=10000 --target_network_update_frequency=1000`
+* replay[10k-100k]-target-q[2k] for `--min_replay_size=10000 --target_network_update_frequency=2000`
+* replay[50k-100k]-target-q[1k] for `--min_replay_size=50000 --target_network_update_frequency=1000`
+
+And here's the results for first ~300k env steps.
+![DQN on Pong experiment](../main/screenshots/DQN_on_Pong_experiments.png)
+
+
+### Training with multiple actors (on single machine)
 When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
 
 ```
@@ -194,10 +198,10 @@ python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
 python3 -m deep_rl_zoo.impala.run_atari --num_actors=8
 ```
 
-## Test agents
-Before you test the agent, make sure you have a valid checkpoint file for the specific agent and environment.
-By valid checkpoint file, we mean saved by either the `run_classic.py` or `run_atari.py` module.
-By default, it will record a single episode of agent's self-play at the `recordings` directory.
+
+## Evaluate agents
+Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
+By default, it will record a video of agent's self-play at the `recordings` directory.
 
 ```
 python3 -m deep_rl_zoo.dqn.eval_agent
@@ -207,6 +211,7 @@ python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=MountainCar-v0
 # load checkpoint file from a specific checkpoint file
 python3 -m deep_rl_zoo.dqn.eval_agent --checkpoint_path=checkpoints/dqn/CartPole-v1_iteration_0.ckpt
 ```
+
 
 ## Monitoring performance and statistics with Tensorboard
 By default, both training, evaluation, and testing will log to Tensorboard at the `runs` directory.
@@ -252,6 +257,7 @@ python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag
 #### Pong
 ![DQN on Pong](../main/screenshots/DQN_on_Pong.png)
 
+
 ## Acknowledgments
 
 ### This project is based on the work of DeepMind's projects.
@@ -264,6 +270,7 @@ python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag
 * [OpenAI Spinning Up](https://github.com/openai/spinningup) (for basic policy gradient agents)
 * [SEED RL](https://github.com/google-research/seed_rl) (for IMPALA, R2D2 and more)
 * [TorchBeast](https://github.com/facebookresearch/torchbeast) (for IMPALA)
+
 
 ## License
 
