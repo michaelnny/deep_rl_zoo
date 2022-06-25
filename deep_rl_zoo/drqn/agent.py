@@ -140,10 +140,11 @@ class Drqn(types_lib.Agent):
 
         self._lstm_state = None  # Stores nn.LSTM hidden state and cell state
 
-        # Counters
+        # Counters and stats
         self._step_t = -1
         self._update_t = -1
         self._target_update_t = -1
+        self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Given current timestep, do a action selection and a series of learn related activities"""
@@ -220,6 +221,9 @@ class Drqn(types_lib.Agent):
         self._optimizer.step()
         self._update_t += 1
 
+        # For logging only.
+        self._loss_t = loss.detach().cpu().item()
+
     def _calc_loss(self, transitions: replay_lib.Transition) -> torch.Tensor:
         """Calculate loss for a given batch of transitions"""
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [B, T, state_shape]
@@ -281,6 +285,7 @@ class Drqn(types_lib.Agent):
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
+            'loss': self._loss_t,
             'discount': self._discount,
             'updates': self._update_t,
             'target_updates': self._target_update_t,

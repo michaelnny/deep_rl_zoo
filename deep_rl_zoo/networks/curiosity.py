@@ -131,6 +131,8 @@ class IcmNatureConvNet(nn.Module):
         a_tm1_onehot = F.one_hot(a_tm1, self.num_actions).float()
 
         # Get feature vectors of s_tm1 and s_t
+        s_tm1 = s_tm1.float() / 255.0
+        s_t = s_t.float() / 255.0
         features_tm1 = self.body(s_tm1)
         features_t = self.body(s_t)
 
@@ -206,7 +208,7 @@ class RndConvNet(nn.Module):
         """Given raw state x, returns the feature embedding."""
         # RND normalizes state using a running mean and std instead of devide by 255.
         x = self.net(x)
-        return F.relu(self.fc(x))
+        return self.fc(x)
 
 
 class NguEmbeddingMlpNet(nn.Module):
@@ -272,10 +274,9 @@ class NguEmbeddingConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given state x, return the embedding."""
-        # The states for NGU and Agent57 are not pre-scaled.
         x = x.float() / 255.0
         x = self.net(x)
-        return F.relu(self.fc(x))
+        return self.fc(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
         """Given combined embedding features of (s_tm1 + s_t), returns the predicted action a_tm1."""

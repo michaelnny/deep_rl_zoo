@@ -306,7 +306,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
 
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
-        self.observation_space = gym.spaces.Box(low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=env.observation_space.shape, dtype=np.float32)
 
     def observation(self, observation):
         # careful! This undoes the memory optimization, use
@@ -353,24 +353,24 @@ class ObservationChannelFirst(gym.ObservationWrapper):
 
     def __init__(self, env, scale_obs):
         super().__init__(env)
-        old_shape = self.observation_space.shape
+        old_shape = env.observation_space.shape
         new_shape = (old_shape[-1], old_shape[0], old_shape[1])
         _low, _high = (0.0, 255) if not scale_obs else (0.0, 1.0)
-        _dtype = np.int8 if not scale_obs else np.float32
-        self.observation_space = Box(low=_low, high=_high, shape=new_shape, dtype=_dtype)
+        new_dtype = env.observation_space.dtype if not scale_obs else np.float32
+        self.observation_space = Box(low=_low, high=_high, shape=new_shape, dtype=new_dtype)
 
     def observation(self, observation):
         # permute [H, W, C] array to in the range [C, H, W]
-        obs = np.asanyarray(observation).transpose(2, 0, 1)
+        obs = np.asarray(observation).transpose(2, 0, 1)
         # make sure it's C-contiguous for compress state
-        return np.ascontiguousarray(obs, dtype=obs.dtype)
+        return np.ascontiguousarray(obs, dtype=self.observation_space.dtype)
 
 
 class ObservationToNumpy(gym.ObservationWrapper):
     """Make the observation into numpy ndarrays."""
 
     def observation(self, observation):
-        return np.asarray(observation, dtype=observation.dtype)
+        return np.asarray(observation, dtype=self.observation_space.dtype)
 
 
 def create_atari_environment(
@@ -383,14 +383,13 @@ def create_atari_environment(
     noop_max: int = 30,
     max_episode_steps: int = 108000,
     obscure_epsilon: float = 0.0,
-    sticky_actions: bool = False,
     terminal_on_life_loss: bool = False,
-    clip_reward: bool = False,
-    scale_obs: bool = True,
+    clip_reward: bool = True,
+    scale_obs: bool = False,
     channel_first: bool = True,
 ) -> gym.Env:
     """
-    Process gym env for Atari games
+    Process gym env for Atari games according to the Nature DQN paper.
 
     Args:
         env_name: the environment name without 'NoFrameskip' and version.
@@ -404,30 +403,25 @@ def create_atari_environment(
                 of each episode to reduce determinism. These no-ops are applied at a
                 low-level, before frame skipping.
         max_episode_steps: maximum steps for an episode.
-        obscure_epsilon: with epsilon probability [0.0, 1.0) obscure the state to make it POMDP.
-        sticky_actions: if True, use sticky version of the atari game,
-                which will repeat the last action with 0.25 probability.
+        obscure_epsilon: with epsilon probability [0.0, 1.0), obscure the state to make it POMDP.
         terminal_on_life_loss: if True, mark end of game when loss a life, default off.
-        clip_reward: clip reward in the range of [-1, 1], default off.
-        scale_obs: scale the frame by devide 255, default on.
+        clip_reward: clip reward in the range of [-1, 1], default on.
+        scale_obs: scale the frame by devide 255, turn this on may require 4-5x more RAM when using experience replay, default off.
         channel_first: if True, change observation image from shape [H, W, C] to in the range [C, H, W], this is for PyTorch only, default on.
 
     Returns:
-        preprocessed gym.Env for Atari games, note the obersevations are NOT scaled to the range [0, 1].
+        preprocessed gym.Env for Atari games.
     """
     if 'NoFrameskip' in env_name:
         raise ValueError(f'Environment name should not include NoFrameskip, got {env_name}')
 
-    version = 'v0' if sticky_actions else 'v4'
-    full_env_name = f'{env_name}NoFrameskip-{version}'
-
-    env = gym.make(full_env_name)
+    env = gym.make(f'{env_name}NoFrameskip-v4')
     env.seed(seed)
     # env.reset(seed=seed)
 
     # Change TimeLimit wrapper to 108,000 steps (30 min) as default in the
     # litterature instead of OpenAI Gym's default of 100,000 steps.
-    env = gym.wrappers.TimeLimit(env.env, max_episode_steps=max_episode_steps)
+    env = gym.wrappers.TimeLimit(env.env, max_episode_steps=None if max_episode_steps <= 0 else max_episode_steps)
 
     env = NoopReset(env, noop_max=noop_max)
     env = MaxAndSkip(env, skip=frame_skip)
@@ -448,7 +442,8 @@ def create_atari_environment(
         env = FrameStack(env, frame_stack)
     if channel_first:
         env = ObservationChannelFirst(env, scale_obs)
-    else:
+    elif frame_stack > 1:
+        # This is required as LazeFrame object is not numpy.array.
         env = ObservationToNumpy(env)
     return env
 
@@ -531,6 +526,8 @@ def play_and_record_video(
     env = gym.wrappers.RecordVideo(env, full_save_dir)
 
     observation = env.reset()
+    agent.reset()
+
     reward = 0.0
     done = False
     first_step = True

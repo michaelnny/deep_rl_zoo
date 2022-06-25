@@ -17,6 +17,7 @@
 From the paper "Actor-Critic Algorithms"
 https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf.
 """
+import numpy as np
 import torch
 from torch import nn
 
@@ -91,9 +92,10 @@ class ActorCritic(types_lib.Agent):
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        # Counters
+        # Counters and stats
         self._step_t = -1
         self._update_t = -1
+        self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
@@ -147,6 +149,9 @@ class ActorCritic(types_lib.Agent):
         self._policy_optimizer.step()
         self._update_t += 1
 
+        # For logging only.
+        self._loss_t = loss.detach().cpu().item()
+
     def _calc_loss(self, transitions: replay_lib.Transition) -> torch.Tensor:
         """Calculate loss sumed over the trajectories of a single episode"""
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
@@ -199,6 +204,7 @@ class ActorCritic(types_lib.Agent):
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            'loss': self._loss_t,
             'discount': self._discount,
             'updates': self._update_t,
         }

@@ -164,7 +164,6 @@ def run_single_thread_training_iterations(
 
     # Tensorboard log dir prefix.
     train_tb_log_prefix = get_tb_log_prefix(train_env.spec.id, train_agent.agent_name, tag, 'train')
-    eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval')
 
     state = checkpoint.state
     # Start training
@@ -192,6 +191,8 @@ def run_single_thread_training_iterations(
         ]
 
         if num_eval_steps > 0 and eval_agent is not None and eval_env is not None:
+            eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval')
+
             # Set netwrok in eval mode.
             for net in networks:
                 net.eval()
@@ -269,14 +270,6 @@ def run_parallel_training_iterations(
     # To get training statistics from each actor and the learner. We use a single writer to write to csv file.
     log_queue = multiprocessing.SimpleQueue()
 
-    # Tensorboard log dir prefix. Only log to tensorboard for first and last actors.
-    actor_tb_log_prefixs = [None for _ in range(len(actors))]
-    eval_tb_log_prefix = None
-    if tensorboard:
-        actor_tb_log_prefixs[0] = get_tb_log_prefix(actor_envs[0].spec.id, actors[0].agent_name, tag, 'train')
-        actor_tb_log_prefixs[-1] = get_tb_log_prefix(actor_envs[-1].spec.id, actors[-1].agent_name, tag, 'train')
-        eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval')
-
     # Run learner train loop on a new thread.
     learner = threading.Thread(
         target=run_learner,
@@ -292,7 +285,8 @@ def run_parallel_training_iterations(
             start_iteration_event,
             stop_event,
             checkpoint,
-            eval_tb_log_prefix,
+            tensorboard,
+            tag,
         ),
     )
     learner.start()
@@ -305,6 +299,12 @@ def run_parallel_training_iterations(
     logger.start()
 
     # Create and start actor processes once, this will preserve actor's internal state like steps etc.
+    # Tensorboard log dir prefix. Only log to tensorboard for first and last actors.
+    actor_tb_log_prefixs = [None for _ in range(len(actors))]
+    if tensorboard:
+        actor_tb_log_prefixs[0] = get_tb_log_prefix(actor_envs[0].spec.id, actors[0].agent_name, tag, 'train')
+        actor_tb_log_prefixs[-1] = get_tb_log_prefix(actor_envs[-1].spec.id, actors[-1].agent_name, tag, 'train')
+
     processes = []
     for actor, actor_env, tb_log_prefix in zip(actors, actor_envs, actor_tb_log_prefixs):
         p = multiprocessing.Process(
@@ -421,7 +421,8 @@ def run_learner(
     start_iteration_event: multiprocessing.Event,
     stop_event: multiprocessing.Event,
     checkpoint: PyTorchCheckpoint,
-    eval_tb_log_prefix: str = None,
+    tensorboard: bool,
+    tag: str = None,
 ) -> None:
     """Run learner for N iterations.
 
@@ -439,7 +440,9 @@ def run_learner(
         log_queue: a multiprocessing.SimpleQueue used send evaluation statistics to logger.
         start_iteration_event: a multiprocessing.Event signal to actors for start training.
         checkpoint: checkpoint object.
-        eval_tb_log_prefix: tensorboard evaluation run log prefix.
+        tensorboard: if True, use tensorboard to log the runs.
+        tag: tensorboard run log tag.
+
     """
     networks = []
     if isinstance(network, List):
@@ -468,6 +471,10 @@ def run_learner(
 
         # Run evaluation steps.
         if num_eval_steps > 0 and eval_agent is not None and eval_env is not None:
+            eval_tb_log_prefix = None
+            if tensorboard:
+                eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval')
+
             # Set netwrok in eval mode.
             for net in networks:
                 net.eval()
@@ -495,7 +502,7 @@ def run_learner(
         # Update shared iteration count.
         iteration_count.value += 1
 
-        time.sleep(2)
+        time.sleep(5)
 
     # Signal actors training session ended.
     stop_event.set()

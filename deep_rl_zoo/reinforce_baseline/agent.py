@@ -19,6 +19,7 @@ https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-
 """
 from typing import Tuple
 import collections
+import numpy as np
 import torch
 from torch import nn
 
@@ -80,9 +81,11 @@ class ReinforceBaseline(types_lib.Agent):
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        # Counters
+        # Counters and stats
         self._step_t = -1
         self._update_t = -1
+        self._baseline_loss_t = np.nan
+        self._policy_loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
@@ -129,10 +132,10 @@ class ReinforceBaseline(types_lib.Agent):
         self._baseline_optimizer.zero_grad()
         self._policy_optimizer.zero_grad()
 
-        policy_loss, critic_loss = self._calc_loss(transitions)
+        policy_loss, baseline_loss = self._calc_loss(transitions)
 
         # Backpropagate value network
-        critic_loss.backward()
+        baseline_loss.backward()
         if self._clip_grad:
             torch.nn.utils.clip_grad_norm_(
                 self._baseline_network.parameters(),
@@ -151,6 +154,10 @@ class ReinforceBaseline(types_lib.Agent):
             )
         self._policy_optimizer.step()
         self._update_t += 1
+
+        # For logging only.
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._policy_loss_t = policy_loss.detach().cpu().item()
 
     def _calc_loss(self, transitions: replay_lib.Transition) -> Tuple[torch.Tensor, torch.Tensor]:
         """Calculate loss sumed over the trajectories of a single episode"""
@@ -200,6 +207,8 @@ class ReinforceBaseline(types_lib.Agent):
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'baseline_learning_rate': self._baseline_optimizer.param_groups[0]['lr'],
+            'baseline_loss': self._baseline_loss_t,
+            'policy_loss': self._policy_loss_t,
             'discount': self._discount,
             'updates': self._update_t,
         }

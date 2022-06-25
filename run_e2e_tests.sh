@@ -17,9 +17,9 @@ python3 -m tests.prioritized_dqn.run_atari_test
 python3 -m tests.c51_dqn.run_classic_test
 python3 -m tests.c51_dqn.run_atari_test
 # python3 -m tests.c51_dqn.eval_agent_test
-python3 -m tests.rainbow_dqn.run_classic_test
-python3 -m tests.rainbow_dqn.run_atari_test
-# python3 -m tests.rainbow_dqn.eval_agent_test
+python3 -m tests.rainbow.run_classic_test
+python3 -m tests.rainbow.run_atari_test
+# python3 -m tests.rainbow.eval_agent_test
 python3 -m tests.qr_dqn.run_classic_test
 python3 -m tests.qr_dqn.run_atari_test
 # python3 -m tests.qr_dqn.eval_agent_test

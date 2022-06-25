@@ -51,8 +51,8 @@ flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distan
 flags.DEFINE_float('max_similarity', 8.0, 'K-nearest neighbors custer distance.')
 
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string(
@@ -103,7 +103,6 @@ def main(argv):
             obscure_epsilon=FLAGS.obscure_epsilon,
             noop_max=30,
             terminal_on_life_loss=False,
-            scale_obs=False,
             clip_reward=False,
         )
         input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)

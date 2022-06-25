@@ -71,7 +71,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
             for _ in range(100):  # each game 100 steps
                 obs, r, done, _ = env.step(env.action_space.sample())
                 # obs = np.asarray(obs)
-                self.assertEqual(obs.dtype, np.float32)
+                self.assertEqual(obs.dtype, np.uint8)
                 self.assertEqual(obs.shape, (frame_stack, 210, 160))
                 self.assertTrue(obs.flags['C_CONTIGUOUS'])
                 if done:
@@ -97,7 +97,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
             for _ in range(100):  # each game 100 steps
                 obs, r, done, _ = env.step(env.action_space.sample())
                 # obs = np.asarray(obs)
-                self.assertEqual(obs.dtype, np.float32)
+                self.assertEqual(obs.dtype, np.uint8)
                 self.assertEqual(obs.shape, (210, 160, frame_stack))
                 self.assertTrue(obs.flags['C_CONTIGUOUS'])
                 if done:
@@ -127,6 +127,33 @@ class AtariEnvironmentTest(parameterized.TestCase):
                     break
         env.close()
 
+    def test_scale_observation(self):
+        environment_name = 'Pong'
+        seed = 1
+        env = gym_env.create_atari_environment(
+            env_name=environment_name,
+            seed=seed,
+            screen_height=210,
+            screen_width=160,
+            frame_skip=4,
+            frame_stack=4,
+            scale_obs=True,
+            channel_first=False,
+        )
+
+        for _ in range(5):  # 5 games
+            obs = env.reset()
+            for _ in range(30):  # each game 100 steps
+                obs, r, done, _ = env.step(env.action_space.sample())
+                self.assertEqual(obs.dtype, np.float32)
+                self.assertLessEqual(np.max(obs), 1.0)
+                self.assertGreaterEqual(np.min(obs), 0.0)
+                self.assertEqual(obs.shape, (210, 160, 4))
+                self.assertTrue(obs.flags['C_CONTIGUOUS'])
+                if done:
+                    break
+        env.close()
+
     def test_obscure_observation(self):
         environment_name = 'Pong'
         seed = 1
@@ -138,7 +165,6 @@ class AtariEnvironmentTest(parameterized.TestCase):
             frame_skip=4,
             frame_stack=1,
             channel_first=True,
-            clip_reward=True,
             obscure_epsilon=0.5,
         )
         for _ in range(5):  # 5 games
@@ -146,7 +172,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
             for _ in range(100):  # each game 100 steps
                 obs, r, done, _ = env.step(env.action_space.sample())
                 # obs = np.asarray(obs)
-                self.assertEqual(obs.dtype, np.float32)
+                self.assertEqual(obs.dtype, np.uint8)
                 self.assertEqual(obs.shape, (1, 210, 160))
                 self.assertEqual(len(obs.shape), 3)
                 self.assertTrue(obs.flags['C_CONTIGUOUS'])
@@ -167,7 +193,6 @@ class AtariEnvironmentTest(parameterized.TestCase):
                 frame_skip=4,
                 frame_stack=1,
                 channel_first=True,
-                clip_reward=True,
                 obscure_epsilon=obscure_epsilon,
             )
 

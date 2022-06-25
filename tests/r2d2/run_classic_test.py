@@ -30,7 +30,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.tensorboard = False
         FLAGS.replay_capacity = 100
         FLAGS.min_replay_size = 4
-        FLAGS.max_episode_steps = 500
 
     @flagsaver.flagsaver
     def test_can_run_agent(self):

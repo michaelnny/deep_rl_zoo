@@ -26,10 +26,6 @@ Does not work at all on MountainCar.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -67,15 +63,16 @@ flags.DEFINE_integer('batch_size', 8, 'Batch size for learning.')
 
 flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.6, 'Importance sampling exponent value.')
+flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
+flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 
 flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
 flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible value rescaling for n-step targets.')
 flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
 
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(2e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 0, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
     100,
@@ -149,9 +146,12 @@ def main(argv):
 
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
-        structure=agent.TransitionStructure,
+        structure=replay_lib.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
+        uniform_sample_probability=FLAGS.uniform_sample_probability,
+        normalize_weights=FLAGS.normalize_weights,
+        random_state=random_state,
         time_major=True,
     )
 

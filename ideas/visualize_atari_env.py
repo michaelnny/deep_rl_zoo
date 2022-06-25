@@ -27,8 +27,6 @@ def main(argv):
             seed=1,
             noop_max=30,
             terminal_on_life_loss=True,
-            # scale_obs=False,
-            clip_reward=True,
         )
 
     env = environment_builder()
@@ -43,11 +41,11 @@ def main(argv):
         if done:
             break
 
-    plt.title("Game image")
+    plt.title('Game image')
     plt.imshow(env.render(mode='rgb_array'))
     plt.show()
 
-    plt.title("Agent observation (4 frames left to right)")
+    plt.title('Agent observation (4 frames left to right)')
     obs = obs.transpose(1, 2, 0)  # switch to channel last
     plt.imshow(obs.transpose([0, 2, 1]).reshape([obs.shape[0], -1]))
     plt.show()

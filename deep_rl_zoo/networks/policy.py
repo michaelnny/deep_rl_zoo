@@ -324,6 +324,7 @@ class ActorConvNet(nn.Module):
     def forward(self, x: torch.Tensor) -> ActorNetworkOutputs:
         """Given raw state x, predict the action probability distribution."""
         # Extract features from raw input state
+        x = x.float() / 255.0
         features = self.body(x)
 
         # Predict action distributions wrt policy
@@ -347,6 +348,7 @@ class CriticConvNet(nn.Module):
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
         """Given raw state x, predict the state-value."""
         # Extract features from raw input state
+        x = x.float() / 255.0
         features = self.body(x)
 
         # Predict state-value
@@ -376,6 +378,7 @@ class ActorCriticConvNet(nn.Module):
         """Given raw state x, predict the action probability distribution
         and baseline state-value."""
         # Extract features from raw input state
+        x = x.float() / 255.0
         features = self.body(x)
 
         # Predict action distributions wrt policy
@@ -455,8 +458,7 @@ class ImpalaActorCriticConvNet(nn.Module):
 
         T, B, *_ = s_t.shape  # [T, B, input_shape].
         x = torch.flatten(s_t, 0, 1)  # Merge time and batch.
-        # x = x.float() / 255.0
-
+        x = x.float() / 255.0
         # Extract features from raw input state
         x = self.body(x)
         features = x.view(T * B, -1)

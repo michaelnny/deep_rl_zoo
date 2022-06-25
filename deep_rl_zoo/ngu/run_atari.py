@@ -21,10 +21,6 @@ https://arxiv.org/abs/2002.06038.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -84,9 +80,9 @@ flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioriti
 flags.DEFINE_float('importance_sampling_exponent', 0.0, 'Importance sampling exponent value.')
 flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
 
-flags.DEFINE_integer('num_iterations', 10, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
@@ -128,7 +124,6 @@ def main(argv):
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
             terminal_on_life_loss=False,
-            scale_obs=False,
             clip_reward=False,
         )
 

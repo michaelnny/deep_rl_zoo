@@ -129,10 +129,11 @@ class PrioritizedDqn(types_lib.Agent):
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        # Counters
+        # Counters and stats
         self._step_t = -1
         self._update_t = -1
         self._target_update_t = -1
+        self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Given current timestep, do a action selection and a series of learn related activities"""
@@ -195,7 +196,8 @@ class PrioritizedDqn(types_lib.Agent):
 
         if priorities.shape != (self._batch_size,):
             raise RuntimeError(f'Expect priorities has shape {self._batch_size}, got {priorities.shape}')
-        self._max_seen_priority = np.max([self._max_seen_priority, np.nanmax(priorities)])  # Avoid NaN
+        priorities = np.abs(priorities)
+        self._max_seen_priority = np.max([self._max_seen_priority, np.max(priorities)])
         self._replay.update_priorities(indices, priorities)
 
     def _update(self, transitions: replay_lib.Transition, weights: np.ndarray) -> np.ndarray:
@@ -212,6 +214,10 @@ class PrioritizedDqn(types_lib.Agent):
             torch.nn.utils.clip_grad_norm_(self._online_network.parameters(), self._max_grad_norm, error_if_nonfinite=True)
         self._optimizer.step()
         self._update_t += 1
+
+        # For logging only.
+        self._loss_t = loss.detach().cpu().item()
+
         return priorities
 
     def _calc_loss(self, transitions: replay_lib.Transition) -> Tuple[torch.Tensor, np.ndarray]:
@@ -263,6 +269,7 @@ class PrioritizedDqn(types_lib.Agent):
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
+            'loss': self._loss_t,
             'discount': self._discount,
             'updates': self._update_t,
             'target_updates': self._target_update_t,

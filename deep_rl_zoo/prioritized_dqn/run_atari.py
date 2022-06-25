@@ -39,31 +39,33 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
-flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
+flags.DEFINE_integer('replay_capacity', 200000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 50000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
-flags.DEFINE_float('exploration_epsilon_end_value', 0.05, 'End (decayed) value of the exploration rate in e-greedy policy.')
-flags.DEFINE_float('exploration_epsilon_decay_step', 500000, 'Total steps to decay value of the exploration rate.')
+flags.DEFINE_float('exploration_epsilon_end_value', 0.1, 'End (decayed) value of the exploration rate in e-greedy policy.')
+flags.DEFINE_float('exploration_epsilon_decay_step', 1000000, 'Total steps to decay value of the exploration rate.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
 flags.DEFINE_float('priority_exponent', 0.6, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent_begin_value', 0.4, 'Importance sampling exponent begin value.')
 flags.DEFINE_float('importance_sampling_exponent_end_value', 1.0, 'Importance sampling exponent end value after decay.')
+flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
+flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 
 flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_integer('num_iterations', 10, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    1000,
+    5000,
     'The frequency (measured in number of online Q network parameter updates) to update target Q networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -96,7 +98,6 @@ def main(argv):
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
             terminal_on_life_loss=True,
-            clip_reward=True,
         )
 
     env = environment_builder()
@@ -142,6 +143,9 @@ def main(argv):
         structure=replay_lib.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
+        uniform_sample_probability=FLAGS.uniform_sample_probability,
+        normalize_weights=FLAGS.normalize_weights,
+        random_state=random_state,
     )
 
     # Create PrioritizedDqn agent instance

@@ -168,14 +168,14 @@ class R2d2EpsilonGreedyActor(EpsilonGreedyActor):
             device,
             'R2D2-greedy',
         )
-        self._a_tm1 = None
+        self._last_action = None
         self._lstm_state = None
 
     @torch.no_grad()
     def _select_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Samples action from eps-greedy policy wrt Q-values at given state."""
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._a_tm1).to(device=self._device, dtype=torch.int64)
+        a_tm1 = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
         r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
         hidden_s = tuple(s.to(device=self._device) for s in self._lstm_state)
 
@@ -190,11 +190,13 @@ class R2d2EpsilonGreedyActor(EpsilonGreedyActor):
         q_t = network_output.q_values
         self._lstm_state = network_output.hidden_s
 
-        return apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
+        a_t = apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
+        self._last_action = a_t
+        return a_t
 
     def reset(self) -> None:
         """Reset hidden state to zeros at new episodes."""
-        self._a_tm1 = 0  # During the first step of a new episode, use 'fake' previous action for network pass
+        self._last_action = 0  # During the first step of a new episode, use 'fake' previous action for network pass
         self._lstm_state = self._network.get_initial_hidden_state(batch_size=1)
 
 
@@ -245,7 +247,7 @@ class NguEpsilonGreedyActor(EpsilonGreedyActor):
             device=device,
         )
 
-        self._a_tm1 = None
+        self._last_action = None
         self._episodic_bonus_t = None
         self._lifelong_bonus_t = None
         self._lstm_state = self._network.get_initial_hidden_state(batch_size=1)
@@ -254,7 +256,6 @@ class NguEpsilonGreedyActor(EpsilonGreedyActor):
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Give current timestep, return best action"""
         a_t = self._select_action(timestep)
-
         s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
 
         # Compute lifelong intrinsic bonus
@@ -262,14 +263,13 @@ class NguEpsilonGreedyActor(EpsilonGreedyActor):
 
         # Compute episodic intrinsic bonus
         self._episodic_bonus_t = self._episodic_module.compute_bonus(s_t)
-
         return a_t
 
     @torch.no_grad()
     def _select_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Samples action from eps-greedy policy wrt Q-values at given state."""
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._a_tm1).to(device=self._device, dtype=torch.int64)
+        a_tm1 = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
         ext_r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
         int_r_t = torch.tensor(self.intrinsic_reward).to(device=self._device, dtype=torch.float32)
         policy_index = torch.tensor(self._policy_index).to(device=self._device, dtype=torch.int64)
@@ -289,12 +289,14 @@ class NguEpsilonGreedyActor(EpsilonGreedyActor):
         q_t = pi_output.q_values
         self._lstm_state = pi_output.hidden_s
 
-        return apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
+        a_t = apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
+        self._last_action = a_t
+        return a_t
 
     def reset(self) -> None:
         """Reset hidden state to zeros at new episodes."""
         self._episodic_module.reset()
-        self._a_tm1 = 0  # Initialize a_tm1 to 0.
+        self._last_action = 0  # Initialize a_tm1 to 0.
         self._episodic_bonus_t = 0.0
         self._lifelong_bonus_t = 0.0
         self._lstm_state = self._network.get_initial_hidden_state(batch_size=1)
@@ -355,7 +357,7 @@ class Agent57EpsilonGreedyActor(types_lib.Agent):
             device=device,
         )
 
-        self._a_tm1 = None
+        self._last_action = None
         self._episodic_bonus_t = None
         self._lifelong_bonus_t = None
         self._ext_lstm_state = None  # Stores nn.LSTM hidden state and cell state. for extrinsic Q network
@@ -379,7 +381,7 @@ class Agent57EpsilonGreedyActor(types_lib.Agent):
     def reset(self) -> None:
         """Reset hidden state to zeros at new episodes."""
         self._episodic_module.reset()
-        self._a_tm1 = 0  # Initialize a_tm1 to 0.
+        self._last_action = 0  # Initialize a_tm1 to 0.
         self._episodic_bonus_t = 0.0
         self._lifelong_bonus_t = 0.0
         self._ext_lstm_state = self._ext_q_network.get_initial_hidden_state(batch_size=1)
@@ -401,13 +403,15 @@ class Agent57EpsilonGreedyActor(types_lib.Agent):
         self._ext_lstm_state = pi_ext_output.hidden_s
         self._int_lstm_state = pi_int_output.hidden_s
 
-        return apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
+        a_t = apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
+        self._last_action = a_t
+        return a_t
 
     def _prepare_network_input(self, timestep: types_lib.TimeStep, hidden_state: HiddenState) -> NguDqnNetworkInputs:
         # NGU network expect input shape [T, B, state_shape],
         # and additionally 'last action', 'extrinsic reward for last action', last intrinsic reward, and intrinsic reward scale beta index.
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._a_tm1).to(device=self._device, dtype=torch.int64)
+        a_tm1 = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
         ext_r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
         int_r_t = torch.tensor(self.intrinsic_reward).to(device=self._device, dtype=torch.float32)
         policy_index = torch.tensor(self._policy_index).to(device=self._device, dtype=torch.int64)
@@ -492,7 +496,7 @@ class ImpalaGreedyActor(PolicyGreedyActor):
             'IMPALA',
         )
 
-        self._a_tm1 = None
+        self._last_action = None
         self._hidden_s = self._network.get_initial_hidden_state(batch_size=1)
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -500,7 +504,7 @@ class ImpalaGreedyActor(PolicyGreedyActor):
         a_t = self.act(timestep)
 
         # Update local states after create the transition
-        self._a_tm1 = a_t
+        self._last_action = a_t
 
         return a_t
 
@@ -511,7 +515,7 @@ class ImpalaGreedyActor(PolicyGreedyActor):
 
     def reset(self) -> None:
         """This method should be called at the beginning of every episode before take any action."""
-        self._a_tm1 = 0  # During the first step of a new episode, use 'fake' previous action for network pass
+        self._last_action = 0  # During the first step of a new episode, use 'fake' previous action for network pass
         self._hidden_s = self._network.get_initial_hidden_state(batch_size=1)
 
     @torch.no_grad()
@@ -520,7 +524,7 @@ class ImpalaGreedyActor(PolicyGreedyActor):
         # IMPALA network requires more than just the state input, but also last action, and reward for last action
         # optionally the last hidden state from LSTM and done mask if using LSTM
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._a_tm1).to(device=self._device, dtype=torch.int64)
+        a_tm1 = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
         r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
         done = torch.tensor(timestep.done).to(device=self._device, dtype=torch.bool)
 
