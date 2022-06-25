@@ -28,7 +28,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.checkpoint_path = ''
         FLAGS.results_csv_path = ''
         FLAGS.tensorboard = False
-        FLAGS.max_episode_steps = 50
 
     @flagsaver.flagsaver
     def test_can_run_agent(self):

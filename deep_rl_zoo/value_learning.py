@@ -100,11 +100,15 @@ def qlearning(
     with torch.no_grad():
         target = r_t + discount_t * torch.max(q_t, dim=1)[0]
     qa_tm1 = base.batched_index(q_tm1, a_tm1)
+    # B = q_tm1.shape[0]
+    # qa_tm1 = q_tm1[torch.arange(0, B), a_tm1]
 
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target - qa_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
+
+    # loss = F.smooth_l1_loss(qa_tm1, target, reduction='none')
     return base.LossOutput(loss, QExtra(target, td_error))
 
 
@@ -161,16 +165,22 @@ def double_qlearning(
 
     # double Q-learning op.
     # Build target and select head to update.
+
     best_action = torch.argmax(q_t_selector, dim=1)
+    # B = q_tm1.shape[0]
+    # double_q_bootstrapped = q_t_value[torch.arange(0, B), best_action]
     double_q_bootstrapped = base.batched_index(q_t_value, best_action)
+
     with torch.no_grad():
         target = r_t + discount_t * double_q_bootstrapped
+
+    # qa_tm1 = q_tm1[torch.arange(0, B), a_tm1]
     qa_tm1 = base.batched_index(q_tm1, a_tm1)
 
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target - qa_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
     return base.LossOutput(loss, DoubleQExtra(target, td_error, best_action))
 
 
@@ -671,6 +681,6 @@ def retrace(
     q_a_tm1 = base.batched_index(q_tm1, a_tm1)
 
     td_error = target_tm1 - q_a_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
 
     return base.LossOutput(loss, QExtra(target=target_tm1, td_error=td_error))

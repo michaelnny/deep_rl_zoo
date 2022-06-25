@@ -16,7 +16,7 @@
 from absl import flags
 from absl.testing import flagsaver
 from absl.testing import absltest
-from deep_rl_zoo.rainbow_dqn import run_classic
+from deep_rl_zoo.rainbow import run_classic
 
 FLAGS = flags.FLAGS
 
@@ -27,7 +27,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.checkpoint_path = ''
         FLAGS.results_csv_path = ''
         FLAGS.tensorboard = False
-        FLAGS.max_episode_steps = 50
 
     @flagsaver.flagsaver
     def test_can_run_agent(self):

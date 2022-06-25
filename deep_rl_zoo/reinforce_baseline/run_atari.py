@@ -45,9 +45,9 @@ flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients 
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate for policy network.')
 flags.DEFINE_float('value_learning_rate', 0.0005, 'Learning rate for value network.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_integer('num_iterations', 10, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
@@ -77,8 +77,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=True,
-            clip_reward=True,
+            terminal_on_life_loss=True,
         )
 
     env = environment_builder()
@@ -154,7 +153,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

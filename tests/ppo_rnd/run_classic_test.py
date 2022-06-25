@@ -29,7 +29,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.results_csv_path = ''
         FLAGS.tensorboard = False
         FLAGS.observation_norm_steps = 10
-        FLAGS.max_episode_steps = 500
 
     @flagsaver.flagsaver
     def test_can_run_agent(self):

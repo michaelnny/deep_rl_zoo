@@ -47,35 +47,29 @@ HiddenState = Tuple[torch.Tensor, torch.Tensor]
 
 
 class R2d2Transition(NamedTuple):
-    r"""Ideally we want to construct transition in the manner of (s, a, r), this is not the case for gym env.
-    when the agent takes action 'a' in state 's', it does not receive rewards immediately, only at the next time step.
-    so there's going to be one timestep lag between the (s, a, r).
+    """
+    s_t, r_t, done are the tuple from env.step().
 
-    For simplicity reasons, we choose to lag rewards, so (s, a, r) is actually (s', a', r).
-
-    In our case 'a_t', 'done' is for 's_t', while
-    'r_t' is for previous state-action (s_tm1, a_tm1) but received at current timestep.
-
-    Note 'a_tm1' is only used for network pass during learning,
-    'q_t' is only for calculating priority for the unroll sequence when adding into replay."""
+    last_action is the last agent the agent took, before in s_t.
+    """
 
     s_t: Optional[np.ndarray]
+    r_t: Optional[float]
+    done: Optional[bool]
     a_t: Optional[int]
     q_t: Optional[np.ndarray]  # q values for s_t
-    r_t: Optional[float]
-    a_tm1: Optional[int]
-    done: Optional[bool]
+    last_action: Optional[int]
     init_h: Optional[np.ndarray]  # nn.LSTM initial hidden state
     init_c: Optional[np.ndarray]  # nn.LSTM initial cell state
 
 
 TransitionStructure = R2d2Transition(
     s_t=None,
+    r_t=None,
+    done=None,
     a_t=None,
     q_t=None,
-    r_t=None,
-    a_tm1=None,
-    done=None,
+    last_action=None,
     init_h=None,
     init_c=None,
 )
@@ -231,7 +225,7 @@ class Actor(types_lib.Agent):
         epsilons = distributed.get_actor_exploration_epsilon(num_actors)
         self._exploration_epsilon = epsilons[self.rank]
 
-        self._a_tm1 = None
+        self._last_action = None
         self._lstm_state = None  # Stores nn.LSTM hidden state and cell state
 
         self._step_t = -1
@@ -254,12 +248,12 @@ class Actor(types_lib.Agent):
             q_t=q_t,
             r_t=timestep.reward,
             done=timestep.done,
-            a_tm1=self._a_tm1,
+            last_action=self._last_action,
             init_h=self._lstm_state[0].squeeze(1).cpu().numpy(),  # remove batch dimension
             init_c=self._lstm_state[1].squeeze(1).cpu().numpy(),
         )
         unrolled_transition = self._unroll.add(transition, timestep.done)
-        self._a_tm1, self._lstm_state = a_t, hidden_s
+        self._last_action, self._lstm_state = a_t, hidden_s
 
         if unrolled_transition is not None:
             self._put_unroll_onto_queue(unrolled_transition)
@@ -269,7 +263,7 @@ class Actor(types_lib.Agent):
     def reset(self) -> None:
         """This method should be called at the beginning of every episode before take any action."""
         self._unroll.reset()
-        self._a_tm1 = self._random_state.randint(0, self._num_actions)  # Initialize a_tm1 randomly
+        self._last_action = self._random_state.randint(0, self._num_actions)  # Initialize a_tm1 randomly
         self._lstm_state = self._network.get_initial_hidden_state(batch_size=1)
 
     def act(self, timestep: types_lib.TimeStep) -> Tuple[np.ndarray, types_lib.Action, Tuple[torch.Tensor]]:
@@ -298,7 +292,7 @@ class Actor(types_lib.Agent):
         # R2D2 network expect input shape [T, B, state_shape],
         # and additionally 'last action', 'reward for last action', and hidden state from previous timestep.
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._a_tm1).to(device=self._device, dtype=torch.int64)
+        a_tm1 = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
         r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
         hidden_s = tuple(s.to(device=self._device) for s in self._lstm_state)
 
@@ -457,6 +451,7 @@ class Learner:
 
         if priorities.shape != (self._batch_size,):
             raise RuntimeError(f'Expect priorities has shape ({self._batch_size},), got {priorities.shape}')
+        priorities = np.abs(priorities)
         self._replay.update_priorities(indices, priorities)
 
         # Copy online Q network weights to target Q network, every m updates
@@ -501,18 +496,19 @@ class Learner:
         """Calculate loss and priorities for given unroll sequence transitions."""
         s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [T+1, B, state_shape]
         a_t = torch.from_numpy(transitions.a_t).to(device=self._device, dtype=torch.int64)  # [T+1, B]
-        a_tm1 = torch.from_numpy(transitions.a_tm1).to(device=self._device, dtype=torch.int64)  # [T+1, B]
+        last_action = torch.from_numpy(transitions.last_action).to(device=self._device, dtype=torch.int64)  # [T+1, B]
         r_t = torch.from_numpy(transitions.r_t).to(device=self._device, dtype=torch.float32)  # [T+1, B]
         done = torch.from_numpy(transitions.done).to(device=self._device, dtype=torch.bool)  # [T+1, B]
 
         # Rank and dtype checks, note we have a new unroll time dimension, states may be images, which is rank 5.
         base.assert_rank_and_dtype(s_t, (3, 5), torch.float32)
-        base.assert_rank_and_dtype(a_tm1, 2, torch.long)
+        base.assert_rank_and_dtype(a_t, 2, torch.long)
+        base.assert_rank_and_dtype(last_action, 2, torch.long)
         base.assert_rank_and_dtype(r_t, 2, torch.float32)
         base.assert_rank_and_dtype(done, 2, torch.bool)
 
         # Get q values from online Q network
-        q_t = self._online_network(RnnDqnNetworkInputs(s_t=s_t, a_tm1=a_tm1, r_t=r_t, hidden_s=hidden_online_q)).q_values
+        q_t = self._online_network(RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_online_q)).q_values
 
         # Computes raw target q values, use double Q
         with torch.no_grad():
@@ -521,7 +517,7 @@ class Learner:
 
             # Get estimated q values for 's_t' from target Q network, using above best action a*.
             target_q_t = self._target_network(
-                RnnDqnNetworkInputs(s_t=s_t, a_tm1=a_tm1, r_t=r_t, hidden_s=hidden_target_q)
+                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_target_q)
             ).q_values
 
         losses, priorities = calculate_losses_and_priorities(
@@ -544,12 +540,12 @@ class Learner:
     ) -> Tuple[HiddenState, HiddenState]:
         """Unroll both online and target q networks to generate hidden states for LSTM."""
         s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [burn_in, B, state_shape]
-        a_tm1 = torch.from_numpy(transitions.a_tm1).to(device=self._device, dtype=torch.int64)  # [burn_in, B]
+        last_action = torch.from_numpy(transitions.last_action).to(device=self._device, dtype=torch.int64)  # [burn_in, B]
         r_t = torch.from_numpy(transitions.r_t).to(device=self._device, dtype=torch.float32)  # [burn_in, B]
 
         # Rank and dtype checks, note we have a new unroll time dimension, states may be images, which is rank 5.
         base.assert_rank_and_dtype(s_t, (3, 5), torch.float32)
-        base.assert_rank_and_dtype(a_tm1, 2, torch.long)
+        base.assert_rank_and_dtype(last_action, 2, torch.long)
         base.assert_rank_and_dtype(r_t, 2, torch.float32)
 
         hidden_online = tuple(s.clone().to(device=self._device) for s in init_hidden_state)
@@ -558,10 +554,10 @@ class Learner:
         # Burn in to generate hidden states for LSTM, we unroll both online and target Q networks
         with torch.no_grad():
             hidden_online_q = self._online_network(
-                RnnDqnNetworkInputs(s_t=s_t, a_tm1=a_tm1, r_t=r_t, hidden_s=hidden_online)
+                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_online)
             ).hidden_s
             hidden_target_q = self._target_network(
-                RnnDqnNetworkInputs(s_t=s_t, a_tm1=a_tm1, r_t=r_t, hidden_s=hidden_target)
+                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_target)
             ).hidden_s
 
         return (hidden_online_q, hidden_target_q)

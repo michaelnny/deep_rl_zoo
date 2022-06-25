@@ -106,7 +106,7 @@ class IcmNatureConvNet(nn.Module):
         super().__init__()
 
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape, out_features=256)
+        self.body = common.NatureCnnBodyNet(input_shape)
         # Forward model, predict feature vector of s_t from s_tm1 and a_t
         self.forward_net = nn.Sequential(
             nn.Linear(self.body.out_features + self.num_actions, 256),
@@ -195,7 +195,8 @@ class RndConvNet(nn.Module):
             latent_dim: the embedding latent dimension.
         """
         super().__init__()
-        self.net = common.NatureCnnBodyNet(input_shape=input_shape, out_features=latent_dim)
+        self.net = common.NatureCnnBodyNet(input_shape)
+        self.fc = nn.Linear(self.net.out_features, latent_dim)
 
         # Initialize weights.
         for m in self.modules():
@@ -206,7 +207,8 @@ class RndConvNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state x, returns the feature embedding."""
         # RND normalizes state using a running mean and std instead of devide by 255.
-        return self.net(x)
+        x = self.net(x)
+        return self.fc(x)
 
 
 class NguEmbeddingMlpNet(nn.Module):
@@ -261,7 +263,8 @@ class NguEmbeddingConvNet(nn.Module):
         """
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape, out_features=latent_dim)
+        self.net = common.NatureCnnBodyNet(input_shape)
+        self.fc = nn.Linear(self.net.out_features, latent_dim)
 
         self.inverse_head = nn.Sequential(
             nn.Linear(latent_dim * 2, 128),
@@ -272,7 +275,8 @@ class NguEmbeddingConvNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given state x, return the embedding."""
         x = x.float() / 255.0
-        return self.body(x)
+        x = self.net(x)
+        return self.fc(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
         """Given combined embedding features of (s_tm1 + s_t), returns the predicted action a_tm1."""

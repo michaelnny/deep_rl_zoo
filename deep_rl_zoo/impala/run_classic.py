@@ -21,10 +21,6 @@ https://arxiv.org/abs/1802.01561.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -49,14 +45,13 @@ flags.DEFINE_float('rmsprop_momentum', 0.0, 'RMSProp momentum.')
 flags.DEFINE_float('rmsprop_eps', 0.01, 'RMSProp epsilon.')
 flags.DEFINE_float('rmsprop_alpha', 0.99, 'RMSProp alpha.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.00025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
-flags.DEFINE_integer('unroll_length', 20, 'How many agent time step to unroll for actor.')
+flags.DEFINE_integer('unroll_length', 15, 'How many agent time step to unroll for actor.')
 flags.DEFINE_integer('batch_size', 8, 'Batch size for learning.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(2e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 0, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
@@ -186,7 +181,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

@@ -649,7 +649,7 @@ class DqnConvNet(nn.Module):
             raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
         super().__init__()
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -687,7 +687,7 @@ class C51DqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -735,7 +735,7 @@ class RainbowDqnConvNet(nn.Module):
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         self.advantage_head = nn.Sequential(
             common.NoisyLinear(self.body.out_features, 512),
@@ -803,7 +803,7 @@ class QRDqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.taus = quantiles
         self.num_taus = quantiles.size(0)
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -851,7 +851,7 @@ class IqnConvNet(nn.Module):
 
         self.pis = torch.arange(1, self.latent_dim + 1).float() * 3.141592653589793  # [latent_dim]
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.embedding_layer = nn.Linear(latent_dim, self.body.out_features)
 
         self.value_head = nn.Sequential(
@@ -878,8 +878,8 @@ class IqnConvNet(nn.Module):
         """
         batch_size = x.shape[0]
 
-        x = x.float() / 255.0
         # Apply ConvDQN to embed state.
+        x = x.float() / 255.0
         features = self.body(x)
 
         taus = self.sample_taus(batch_size, num_taus).to(device=x.device)
@@ -930,7 +930,7 @@ class DrqnConvNet(nn.Module):
 
         super().__init__()
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         self.lstm = nn.LSTM(input_size=self.body.out_features, hidden_size=512, num_layers=1, batch_first=True)
 
@@ -958,10 +958,8 @@ class DrqnConvNet(nn.Module):
         B = x.shape[0]
         T = x.shape[1]
 
-        x = x.float() / 255.0
-
         x = torch.flatten(x, 0, 1)  # Merge batch and time dimension.
-
+        x = x.float() / 255.0
         x = self.body(x)
         x = x.view(B, T, -1)  # LSTM expect rank 3
 
@@ -1000,7 +998,7 @@ class R2d2DqnConvNet(nn.Module):
         super().__init__()
         self.num_actions = num_actions
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         # Feature representation output size + one-hot of last action + last reward.
         out_size = self.body.out_features + self.num_actions + 1
@@ -1045,7 +1043,6 @@ class R2d2DqnConvNet(nn.Module):
         T, B, *_ = s_t.shape  # [T, B, state_shape]
         x = torch.flatten(s_t, 0, 1)  # Merge batch and time dimension.
         x = x.float() / 255.0
-
         x = self.body(x)
         x = x.view(T * B, -1)
 
@@ -1091,7 +1088,7 @@ class NguDqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.num_policies = num_policies  # intrinsic reward scale betas
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         # Core input includes:
         # feature representation output size

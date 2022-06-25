@@ -23,10 +23,6 @@ https://arxiv.org/abs/1801.01290.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -50,7 +46,7 @@ flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 5000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate for policy network.')
@@ -60,9 +56,9 @@ flags.DEFINE_float('q_target_tau', 0.995, 'Target Q network weights update ratio
 flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
-flags.DEFINE_integer('num_iterations', 10, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
@@ -96,8 +92,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=True,
-            clip_reward=True,
+            terminal_on_life_loss=True,
         )
 
     eval_env = environment_builder()
@@ -214,7 +209,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

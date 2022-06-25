@@ -547,6 +547,7 @@ class Learner:
 
         if priorities.shape != (self._batch_size,):
             raise RuntimeError(f'Expect priorities has shape ({self._batch_size},), got {priorities.shape}')
+        priorities = np.abs(priorities)
         self._replay.update_priorities(indices, priorities)
 
         # Copy online Q network weights to target Q network, every m updates

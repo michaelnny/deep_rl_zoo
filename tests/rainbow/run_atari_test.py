@@ -16,28 +16,30 @@
 from absl import flags
 from absl.testing import flagsaver
 from absl.testing import absltest
-from absl.testing import parameterized
-
-from deep_rl_zoo.rainbow_dqn import eval_agent
+from deep_rl_zoo.rainbow import run_atari
 
 FLAGS = flags.FLAGS
 
 
-class RunEvaluationAgentTest(parameterized.TestCase):
+class RunAtariTest(absltest.TestCase):
     def setUp(self):
         super().setUp()
+        FLAGS.checkpoint_path = ''
+        FLAGS.results_csv_path = ''
         FLAGS.tensorboard = False
-        FLAGS.num_iterations = 1
-        FLAGS.checkpoint_path = '/tmp/no_checkpoint/'
-        FLAGS.recording_video_dir = ''
+        FLAGS.max_episode_steps = 500
 
     @flagsaver.flagsaver
-    def test_can_not_find_checkpoint(self):
+    def test_can_run_agent(self):
         FLAGS.environment_name = 'Pong'
+        FLAGS.num_train_steps = 500
         FLAGS.num_eval_steps = 200
-
-        with self.assertRaisesRegex(RuntimeError, 'Except a valid check point file'):
-            eval_agent.main(None)
+        FLAGS.num_iterations = 1
+        FLAGS.batch_size = 4
+        FLAGS.replay_capacity = 100
+        FLAGS.min_replay_size = 4
+        FLAGS.clip_grad = True
+        run_atari.main(None)
 
 
 if __name__ == '__main__':

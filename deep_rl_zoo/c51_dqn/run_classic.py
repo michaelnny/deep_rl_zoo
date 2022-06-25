@@ -49,6 +49,9 @@ flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in
 flags.DEFINE_float('priority_exponent', 0.6, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent_begin_value', 0.4, 'Importance sampling exponent begin value.')
 flags.DEFINE_float('importance_sampling_exponent_end_value', 1.0, 'Importance sampling exponent end value after decay.')
+flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
+flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
+
 flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the categorical DQN.')
 flags.DEFINE_float('v_min', -50.0, 'Minimum elements value in the support of the categorical DQN.')
 flags.DEFINE_float('v_max', 50.0, 'Maximum elements value in the support of the categorical DQN.')
@@ -57,13 +60,12 @@ flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(2e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 0, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('learn_frequency', 2, 'The frequency (measured in agent steps) to do learning.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    100,
+    200,
     'The frequency (measured in number of online Q network parameter updates) to update target Q networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -137,6 +139,9 @@ def main(argv):
         structure=replay_lib.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
+        uniform_sample_probability=FLAGS.uniform_sample_probability,
+        normalize_weights=FLAGS.normalize_weights,
+        random_state=random_state,
     )
 
     # Create C51Dqn agent instance
@@ -190,7 +195,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

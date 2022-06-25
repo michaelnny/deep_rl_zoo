@@ -43,8 +43,8 @@ flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the 
 flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
 flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string(
@@ -88,7 +88,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed,
             noop_max=30,
-            done_on_life_loss=False,
+            terminal_on_life_loss=False,
             clip_reward=False,
         )
         input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
@@ -123,7 +123,6 @@ def main(argv):
         eval_agent=eval_agent,
         eval_env=eval_env,
         tensorboard=FLAGS.tensorboard,
-        max_episode_steps=FLAGS.max_episode_steps,
         recording_video_dir=FLAGS.recording_video_dir,
     )
 

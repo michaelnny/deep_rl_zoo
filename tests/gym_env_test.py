@@ -112,15 +112,7 @@ class AtariEnvironmentTest(parameterized.TestCase):
         env = env = gym.make(full_env_name)
         env.seed(seed)
         env = BumpUpReward(env)
-        env = gym_env.AtariPreprocessing(
-            env,
-            screen_height=84,
-            screen_width=84,
-            frame_skip=4,
-            done_on_life_loss=False,
-            channel_first=True,
-            clip_reward=clip_reward,
-        )
+        env = gym_env.ClipRewardWithBound(env, 1.0)
 
         for _ in range(5):  # 5 games
             obs = env.reset()
@@ -131,6 +123,33 @@ class AtariEnvironmentTest(parameterized.TestCase):
                 else:
                     self.assertBetween(r, -400, 400)
                 self.assertEqual(obs.dtype, np.uint8)
+                if done:
+                    break
+        env.close()
+
+    def test_scale_observation(self):
+        environment_name = 'Pong'
+        seed = 1
+        env = gym_env.create_atari_environment(
+            env_name=environment_name,
+            seed=seed,
+            screen_height=210,
+            screen_width=160,
+            frame_skip=4,
+            frame_stack=4,
+            scale_obs=True,
+            channel_first=False,
+        )
+
+        for _ in range(5):  # 5 games
+            obs = env.reset()
+            for _ in range(30):  # each game 100 steps
+                obs, r, done, _ = env.step(env.action_space.sample())
+                self.assertEqual(obs.dtype, np.float32)
+                self.assertLessEqual(np.max(obs), 1.0)
+                self.assertGreaterEqual(np.min(obs), 0.0)
+                self.assertEqual(obs.shape, (210, 160, 4))
+                self.assertTrue(obs.flags['C_CONTIGUOUS'])
                 if done:
                     break
         env.close()
@@ -146,7 +165,6 @@ class AtariEnvironmentTest(parameterized.TestCase):
             frame_skip=4,
             frame_stack=1,
             channel_first=True,
-            clip_reward=True,
             obscure_epsilon=0.5,
         )
         for _ in range(5):  # 5 games
@@ -175,7 +193,6 @@ class AtariEnvironmentTest(parameterized.TestCase):
                 frame_skip=4,
                 frame_stack=1,
                 channel_first=True,
-                clip_reward=True,
                 obscure_epsilon=obscure_epsilon,
             )
 

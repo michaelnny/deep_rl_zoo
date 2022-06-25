@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests trained Rainbow agent from checkpoint with a e-greedy actor.
 on classic games like CartPole, MountainCar, or LunarLander, and on Atari."""
-import itertools
 from absl import app
 from absl import flags
 from absl import logging
@@ -26,7 +25,6 @@ from deep_rl_zoo.networks.dqn import RainbowDqnMlpNet, RainbowDqnConvNet
 from deep_rl_zoo import main_loop
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo import gym_env
-from deep_rl_zoo import trackers
 from deep_rl_zoo import greedy_actors
 
 FLAGS = flags.FLAGS
@@ -44,19 +42,19 @@ flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the 
 flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
 flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string(
     'checkpoint_path',
-    'checkpoints/rainbow_dqn',
+    'checkpoints/rainbow',
     'Path for checkpoint directory or a specific checkpoint file, if it is a directory, \
         will try to find latest checkpoint file matching the environment name.',
 )
 flags.DEFINE_string(
     'recording_video_dir',
-    'recordings/rainbow_dqn',
+    'recordings/rainbow',
     'Path for recording a video of agent self-play.',
 )
 
@@ -89,7 +87,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed,
             noop_max=30,
-            done_on_life_loss=False,
+            terminal_on_life_loss=False,
             clip_reward=False,
         )
         input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
@@ -124,7 +122,6 @@ def main(argv):
         eval_agent=eval_agent,
         eval_env=eval_env,
         tensorboard=FLAGS.tensorboard,
-        max_episode_steps=FLAGS.max_episode_steps,
         recording_video_dir=FLAGS.recording_video_dir,
     )
 

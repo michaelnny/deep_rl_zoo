@@ -31,10 +31,10 @@ repos:
         always_run: true
         verbose: true
         pass_filenames: false
-    -   id: run-e2e-tests
-        name: run end-to-end tests script
-        entry: ./run_e2e_tests.sh
-        language: script
-        always_run: true
-        verbose: true
-        pass_filenames: false
+    # -   id: run-e2e-tests
+    #     name: run end-to-end tests script
+    #     entry: ./run_e2e_tests.sh
+    #     language: script
+    #     always_run: true
+    #     verbose: true
+    #     pass_filenames: false

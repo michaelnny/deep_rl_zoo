@@ -42,9 +42,8 @@ flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for policy network.')
 flags.DEFINE_float('value_learning_rate', 0.0005, 'Learning rate for value network.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(2e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 0, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
@@ -139,7 +138,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

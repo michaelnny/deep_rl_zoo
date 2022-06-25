@@ -21,10 +21,6 @@ https://arxiv.org/pdf/2003.13350.
 from absl import app
 from absl import flags
 from absl import logging
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import multiprocessing
 import numpy as np
 import torch
@@ -49,7 +45,7 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 32, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 25000, 'Maximum replay size.')
+flags.DEFINE_integer('replay_capacity', 20000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -87,17 +83,19 @@ flags.DEFINE_bool('transformed_retrace', True, 'Transformed retrace loss, defaul
 
 flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.0, 'Importance sampling exponent value.')
+flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
+flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
 
-flags.DEFINE_integer('num_iterations', 10, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    1500,
+    1000,
     'Number of learner online Q network updates before update target Q networks.',
-)
+)  # 1500
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -132,7 +130,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            done_on_life_loss=False,
+            terminal_on_life_loss=False,
             clip_reward=False,
         )
 
@@ -199,9 +197,12 @@ def main(argv):
 
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
-        structure=agent.TransitionStructure,
+        structure=replay_lib.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
+        uniform_sample_probability=FLAGS.uniform_sample_probability,
+        normalize_weights=FLAGS.normalize_weights,
+        random_state=random_state,
         time_major=True,
     )
 
@@ -322,7 +323,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 

@@ -314,7 +314,7 @@ class ActorConvNet(nn.Module):
     def __init__(self, input_shape: int, num_actions: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.policy_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -338,7 +338,7 @@ class CriticConvNet(nn.Module):
     def __init__(self, input_shape: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.baseline_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -362,7 +362,7 @@ class ActorCriticConvNet(nn.Module):
     def __init__(self, input_shape: tuple, num_actions: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.policy_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
@@ -399,7 +399,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         self.num_actions = num_actions
         self.use_lstm = use_lstm
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
 
         # Feature representation output size + one-hot of last action + last reward.
         out_size = self.body.out_features + self.num_actions + 1
@@ -459,7 +459,6 @@ class ImpalaActorCriticConvNet(nn.Module):
         T, B, *_ = s_t.shape  # [T, B, input_shape].
         x = torch.flatten(s_t, 0, 1)  # Merge time and batch.
         x = x.float() / 255.0
-
         # Extract features from raw input state
         x = self.body(x)
         features = x.view(T * B, -1)
@@ -519,7 +518,7 @@ class RndActorCriticConvNet(nn.Module):
     def __init__(self, input_shape: tuple, num_actions: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape=input_shape)
+        self.body = common.NatureCnnBodyNet(input_shape)
         self.policy_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),

@@ -32,6 +32,7 @@ class RunAtariGameTest(absltest.TestCase):
         FLAGS.min_replay_size = 4
         FLAGS.ucb_window_size = 4
         FLAGS.max_episode_steps = 500
+        FLAGS.episodic_memory_capacity = 20
 
     @flagsaver.flagsaver
     def test_can_run_agent_with_transformed_retrace(self):

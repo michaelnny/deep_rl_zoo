@@ -35,24 +35,6 @@ from torch.utils.tensorboard import SummaryWriter
 import deep_rl_zoo.replay as replay_lib
 
 
-def generate_statistics(
-    trackers: Iterable[Any],
-    timestep_action_sequence: Iterable[Tuple[Optional[replay_lib.Transition]]],
-) -> Mapping[str, Any]:
-    """Generates statistics from a sequence of timestep and actions."""
-    # Only reset at the start, not between episodes.
-    for tracker in trackers:
-        tracker.reset()
-
-    for env, timestep_t, agent, a_t in timestep_action_sequence:
-        for tracker in trackers:
-            tracker.step(env, timestep_t, agent, a_t)
-
-    # Merge all statistics dictionaries into one.
-    statistics_dicts = (tracker.get() for tracker in trackers)
-    return dict(collections.ChainMap(*statistics_dicts))
-
-
 class EpisodeTracker:
     """Tracks episode return and other statistics."""
 
@@ -180,9 +162,9 @@ class TensorboardEpisodTracker(EpisodeTracker):
             episode_step = self._episode_steps[-1]
 
             # tracker per step
-            self._writer.add_scalar('performance/num_episodes', num_episodes, tb_steps)
-            self._writer.add_scalar('performance/episode_return', episode_return, tb_steps)
-            self._writer.add_scalar('performance/episode_steps', episode_step, tb_steps)
+            self._writer.add_scalar('performance(env_steps)/num_episodes', num_episodes, tb_steps)
+            self._writer.add_scalar('performance(env_steps)/episode_return', episode_return, tb_steps)
+            self._writer.add_scalar('performance(env_steps)/episode_steps', episode_step, tb_steps)
 
 
 class TensorboardStepRateTracker(StepRateTracker):
@@ -202,8 +184,8 @@ class TensorboardStepRateTracker(StepRateTracker):
 
             # tracker per step
             tb_steps = self._num_steps_since_reset
-            self._writer.add_scalar('performance/run_duration(minutes)', time_stats['duration'] / 60, tb_steps)
-            self._writer.add_scalar('performance/step_rate(second)', time_stats['step_rate'], tb_steps)
+            self._writer.add_scalar('performance(env_steps)/run_duration(minutes)', time_stats['duration'] / 60, tb_steps)
+            self._writer.add_scalar('performance(env_steps)/step_rate(second)', time_stats['step_rate'], tb_steps)
 
 
 class TensorboardAgentStatisticsTracker:
@@ -226,7 +208,7 @@ class TensorboardAgentStatisticsTracker:
                 if stats:
                     for k, v in stats.items():
                         if isinstance(v, (int, float)):
-                            self._writer.add_scalar(f'statistics(agent)/{k}', v, self._num_steps_since_reset)
+                            self._writer.add_scalar(f'agent_statistics(env_steps)/{k}', v, self._num_steps_since_reset)
             except Exception:
                 pass
 
@@ -264,3 +246,21 @@ def make_default_trackers(run_log_dir=None):
 
     else:
         return [EpisodeTracker(), StepRateTracker()]
+
+
+def generate_statistics(
+    trackers: Iterable[Any],
+    timestep_action_sequence: Iterable[Tuple[Optional[replay_lib.Transition]]],
+) -> Mapping[str, Any]:
+    """Generates statistics from a sequence of timestep and actions."""
+    # Only reset at the start, not between episodes.
+    for tracker in trackers:
+        tracker.reset()
+
+    for env, timestep_t, agent, a_t in timestep_action_sequence:
+        for tracker in trackers:
+            tracker.step(env, timestep_t, agent, a_t)
+
+    # Merge all statistics dictionaries into one.
+    statistics_dicts = (tracker.get() for tracker in trackers)
+    return dict(collections.ChainMap(*statistics_dicts))

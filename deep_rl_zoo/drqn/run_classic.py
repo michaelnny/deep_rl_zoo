@@ -51,9 +51,8 @@ flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('obscure_epsilon', 0.5, 'Make the problem POMDP by obsecure environment state with probability epsilon.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(2e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(1e5), 'Number of evaluation steps per iteration.')
-flags.DEFINE_integer('max_episode_steps', 0, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('learn_frequency', 2, 'The frequency (measured in agent steps) to do learning.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
@@ -171,7 +170,6 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
-        max_episode_steps=FLAGS.max_episode_steps,
     )
 
 
