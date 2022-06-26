@@ -321,6 +321,9 @@ class ActorConvNet(nn.Module):
             nn.Linear(512, num_actions),
         )
 
+        # Initialize weights.
+        common.initialize_weights(self)
+
     def forward(self, x: torch.Tensor) -> ActorNetworkOutputs:
         """Given raw state x, predict the action probability distribution."""
         # Extract features from raw input state
@@ -344,6 +347,9 @@ class CriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
         """Given raw state x, predict the state-value."""
@@ -373,6 +379,9 @@ class ActorCriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
@@ -418,6 +427,9 @@ class ImpalaActorCriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
@@ -534,6 +546,9 @@ class RndActorCriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,

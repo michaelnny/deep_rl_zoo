@@ -121,6 +121,9 @@ class IcmNatureConvNet(nn.Module):
             nn.Linear(256, self.num_actions),
         )
 
+        # Initialize weights.
+        common.initialize_weights(self)
+
     def forward(self, s_tm1: torch.Tensor, a_tm1: torch.Tensor, s_t: torch.Tensor) -> IcmNetworkOutput:
         """Given raw state s_tm1, s_t, and action a_tm1,
         call forward model and inverse model to predict a_tm1 and feature vector of s_t"""
@@ -271,6 +274,9 @@ class NguEmbeddingConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(128, num_actions),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given state x, return the embedding."""

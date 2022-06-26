@@ -29,6 +29,15 @@ def calc_conv2d_output(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
     return h, w
 
 
+def initialize_weights(net) -> None:
+    """Initialize weights for Conv2d and Linear layers using kaming initializer."""
+    assert isinstance(net, nn.Module)
+
+    for m in net.modules():
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+
+
 class NatureCnnBodyNet(nn.Module):
     """DQN Nature paper conv2d layers backbone, returns feature representation vector"""
 
@@ -51,11 +60,6 @@ class NatureCnnBodyNet(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
         )
-
-        # Initialize weights, this is very important for Atari.
-        for m in self.modules():
-            if isinstance(m, (nn.Conv2d, nn.Linear)):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state images, returns feature representation vector"""

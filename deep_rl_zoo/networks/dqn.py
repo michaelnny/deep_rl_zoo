@@ -656,6 +656,9 @@ class DqnConvNet(nn.Module):
             nn.Linear(512, num_actions),
         )
 
+        # Initialize weights.
+        common.initialize_weights(self)
+
     def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
         """Given state, return state-action value for all possible actions"""
         x = x.float() / 255.0
@@ -693,6 +696,9 @@ class C51DqnConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, num_actions * self.num_atoms),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
@@ -747,6 +753,9 @@ class RainbowDqnConvNet(nn.Module):
             nn.ReLU(),
             common.NoisyLinear(512, 1 * self.num_atoms),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
@@ -810,6 +819,9 @@ class QRDqnConvNet(nn.Module):
             nn.Linear(512, num_actions * self.num_taus),
         )
 
+        # Initialize weights.
+        common.initialize_weights(self)
+
     def forward(self, x: torch.Tensor) -> QRDqnNetworkOutputs:
         """Given state, return state-action value for all possible actions"""
         x = x.float() / 255.0
@@ -859,6 +871,9 @@ class IqnConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, num_actions),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def sample_taus(self, batch_size: int, num_taus: int) -> torch.Tensor:
         """Returns sampled batch taus."""
@@ -940,6 +955,9 @@ class DrqnConvNet(nn.Module):
             nn.Linear(512, num_actions),
         )
 
+        # Initialize weights.
+        common.initialize_weights(self)
+
     def forward(self, x: torch.Tensor, hidden_s: None) -> RnnDqnNetworkOutputs:
         """
         Given state, return state-action value for all possible actions.
@@ -1010,11 +1028,15 @@ class R2d2DqnConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, num_actions),
         )
+
         self.value_head = nn.Sequential(
             nn.Linear(out_size, 512),
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, input_: RnnDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
@@ -1105,11 +1127,15 @@ class NguDqnConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, num_actions),
         )
+
         self.value_head = nn.Sequential(
             nn.Linear(core_output_size, 512),
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+        # Initialize weights.
+        common.initialize_weights(self)
 
     def forward(self, input_: NguDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
