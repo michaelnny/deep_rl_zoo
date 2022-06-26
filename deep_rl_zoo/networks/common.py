@@ -36,7 +36,7 @@ class NatureCnnBodyNet(nn.Module):
         super().__init__()
         c, h, w = input_shape
 
-        # Compute the output shape of final conv2d layers
+        # Compute the output shape of final conv2d layer
         h, w = calc_conv2d_output((h, w), 8, 4)
         h, w = calc_conv2d_output((h, w), 4, 2)
         h, w = calc_conv2d_output((h, w), 3, 1)
@@ -51,6 +51,11 @@ class NatureCnnBodyNet(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
         )
+
+        # Initialize weights, this is very important for Atari.
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state images, returns feature representation vector"""

@@ -134,7 +134,7 @@ pip3 install -r requirements.txt
 ## Train agents
 
 ### CartPole, LunarLander, and MountainCar
-By default, we have the following settings for all `run_classic.py` file:
+By default, we have the following settings for all `run_classic.py` module:
 `--num_iterations=2 --num_train_steps=5e5 --num_eval_steps=2e5`
 
 For some problem like LunarLander and MountainCar, you may need to increase the `num_train_steps`.
@@ -152,7 +152,7 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 ```
 
 ### Atari environment
-By default, we have the following settings for all `run_atari.py` file:
+By default, we have the following settings for all `run_atari.py` module:
 `--num_iterations=20 --num_train_steps=1e6 --num_eval_steps=2e5`
 
 For Atari, we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
@@ -165,31 +165,16 @@ If we do scale before store into replay, it will allocate ~14GB of RAM. But when
 
 #### Note
 * Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 200000 instead of 1000000.
-* As a reference, when using double Q learning, it's best to increase the interval to 2-3x naive DQN when update target Q network.
-* We experience that, for DQN, using the following configuration will speed up training on Pong (1 million env steps), but may not work on other games.
-    - `--exploration_epsilon_decay_step=500000 --min_replay_size=10000 --replay_capacity=100000 --target_network_update_frequency=1000`
 
 ```
-python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Pong --num_iterations=1 --num_train_steps=1000000 --exploration_epsilon_decay_step=500000 --min_replay_size=10000 --replay_capacity=100000 --target_network_update_frequency=1000
+python3 -m deep_rl_zoo.dqn.run_atari
 
 # Train DQN on Breakout may take 20-50 million env steps, and the hyper-parameters are not tuned.
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-#### Experiment DQN on Pong (M1 Mac on CPU)
-One interesting fact regarding the impact of hyper-parameters on DQN when run training on Pong, we use the following common settings across multiple experiences:
-`--num_train_steps=500000 --exploration_epsilon_decay_step=500000 --learning_rate=0.00025 --discount=0.99 --n_step=3 --replay_capacity=100000`
 
-With the following different configuration and labels
-* replay[10k-100k]-target-q[1k] for `--min_replay_size=10000 --target_network_update_frequency=1000`
-* replay[10k-100k]-target-q[2k] for `--min_replay_size=10000 --target_network_update_frequency=2000`
-* replay[50k-100k]-target-q[1k] for `--min_replay_size=50000 --target_network_update_frequency=1000`
-
-And here's the results for first ~300k env steps.
-![DQN on Pong experiment](../main/screenshots/DQN_on_Pong_experiments.png)
-
-
-### Training with multiple actors (on single machine)
+### Training with multiple actors and singler learner (on single machine)
 When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
 
 ```
@@ -235,7 +220,7 @@ Here are the performance(env_steps) measurements available on Tensorboard:
 * `run_duration(minutes)` the duration (in minutes) since the start of the session
 * `step_rate(second)` step pre seconds, pre actors
 
-In addition, it'll log whatever is exposed in the `agent.statistics` such as train loss, learning rate, discount, updates etc.
+In addition, it'll log whatever is exposed in the `agent.statistics` property such as train loss, learning rate, discount, updates etc.
 
 ### Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances

@@ -36,7 +36,7 @@ from deep_rl_zoo import replay as replay_lib
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
-flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
+flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 8, 'Sample batch size when do learning.')
 flags.DEFINE_integer('unroll_length', 10, 'The number of agent steps to rollout.')

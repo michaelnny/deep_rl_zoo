@@ -41,8 +41,8 @@ from deep_rl_zoo import replay as replay_lib
 FLAGS = flags.FLAGS
 flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 5000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
+flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for policy network.')
