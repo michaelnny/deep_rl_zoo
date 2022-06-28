@@ -66,9 +66,8 @@ def run_loop(
         raise RuntimeError('Expect agent to have a callable reset(), and step() method.')
 
     while True:  # For each episode.
-        t = 0
         agent.reset()
-        # Think reset is a special 'aciton' the agent take, thus given us some 'zero' reward, and new s_t
+        # Think reset is a special 'aciton' the agent take, thus given us a reward 'zero', and a new state s_t.
         observation = env.reset()
         reward = 0.0
         done = False
@@ -79,9 +78,7 @@ def run_loop(
             a_t = agent.step(timestep_t)
             yield env, timestep_t, agent, a_t
 
-            t += 1
             a_tm1 = a_t
-
             observation, reward, done, _ = env.step(a_tm1)
             first_step = False
 
@@ -98,7 +95,8 @@ def run_some_steps(
     num_steps: int,
     agent: types_lib.Agent,
     env: gym.Env,
-    tb_log_dir: str = None,
+    log_dir: str = None,
+    debug_screenshots_frequency: int = 0,
 ) -> Mapping[Text, float]:
     """Run some steps and return the statistics, this could be either training, evaluation, or testing steps.
 
@@ -106,7 +104,8 @@ def run_some_steps(
         max_episode_steps: maximum steps per episode.
         agent: agent to run, expect the agent to have step(), reset(), and a agent_name property.
         train_env: training environment.
-        tb_log_dir: tensorboard log dir.
+        log_dir: tensorboard runtime log directory.
+        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
     Returns:
         A Dict contains statistics about the result.
@@ -114,7 +113,7 @@ def run_some_steps(
     """
     seq = run_loop(agent, env)
     seq_truncated = itertools.islice(seq, num_steps)
-    trackers = trackers_lib.make_default_trackers(run_log_dir=tb_log_dir)
+    trackers = trackers_lib.make_default_trackers(log_dir, debug_screenshots_frequency)
     stats = trackers_lib.generate_statistics(trackers, seq_truncated)
     return stats
 
@@ -132,6 +131,7 @@ def run_single_thread_training_iterations(
     csv_file: str,
     tensorboard: bool,
     tag: str = None,
+    debug_screenshots_frequency: int = 0,
 ) -> None:
     """Runs single-thread training and evaluation for N iterations.
     The same code structure is shared by most single-threaded DQN agents,
@@ -149,7 +149,8 @@ def run_single_thread_training_iterations(
         checkpoint: checkpoint object.
         csv_file: csv log file path and name.
         tensorboard: if True, use tensorboard to log the runs.
-        tag: tensorboard run log tag.
+        tag: tensorboard run log tag, default None.
+        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
     """
 
@@ -176,7 +177,7 @@ def run_single_thread_training_iterations(
         train_tb_log_dir = f'{train_tb_log_prefix}-{state.iteration}' if tensorboard else None
 
         # Run training steps.
-        train_stats = run_some_steps(num_train_steps, train_agent, train_env, train_tb_log_dir)
+        train_stats = run_some_steps(num_train_steps, train_agent, train_env, train_tb_log_dir, debug_screenshots_frequency)
 
         checkpoint.save()
 
@@ -224,7 +225,7 @@ def run_parallel_training_iterations(
     num_train_steps: int,
     num_eval_steps: int,
     network: torch.nn.Module,
-    learner_agent: types_lib.Agent,
+    learner_agent: types_lib.Learner,
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
     actors: List[types_lib.Agent],
@@ -234,6 +235,7 @@ def run_parallel_training_iterations(
     csv_file: str,
     tensorboard: bool,
     tag: str = None,
+    debug_screenshots_frequency: int = 0,
 ) -> None:
     """Run parallel traning with multiple actors processes, single learner process.
 
@@ -247,17 +249,14 @@ def run_parallel_training_iterations(
         eval_env: evaluation environment.
         actors: list of actor instances we wish to run.
         actor_envs: list of gym.Env for each actor to run.
-        data_queue: a multiprocessing.Queue used to send transitions from actors to learner.
+        data_queue: a multiprocessing.Queue used to receive transition samples from actors.
         checkpoint: checkpoint object.
         csv_file: csv log file path and name.
         tensorboard: if True, use tensorboard to log the runs.
-        tag: tensorboard run log tag.
+         tag: tensorboard run log tag, default None.
+        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
-    Raises:
-        RuntimeError if the `learner_agent` do not have a callable run_train_loop().
     """
-    if not (hasattr(learner_agent, 'run_train_loop') and callable(getattr(learner_agent, 'run_train_loop'))):
-        raise RuntimeError('Expect learner_agent to have a callable run_train_loop() method.')
 
     # Create shared iteration count and start, end training event.
     # start_iteration_event is used to signaling actors to run one training iteration,
@@ -280,11 +279,13 @@ def run_parallel_training_iterations(
             learner_agent,
             eval_agent,
             eval_env,
+            data_queue,
             log_queue,
             iteration_count,
             start_iteration_event,
             stop_event,
             checkpoint,
+            len(actors),
             tensorboard,
             tag,
         ),
@@ -319,6 +320,7 @@ def run_parallel_training_iterations(
                 start_iteration_event,
                 stop_event,
                 tb_log_prefix,
+                debug_screenshots_frequency,
             ),
         )
         p.start()
@@ -346,6 +348,7 @@ def run_actor(
     start_iteration_event: multiprocessing.Event,
     stop_event: multiprocessing.Event,
     tb_log_prefix: str = None,
+    debug_screenshots_frequency: int = 0,
 ) -> None:
 
     """
@@ -366,8 +369,14 @@ def run_actor(
         start_iteration_event: start training signal, set by the main process, clear by actor.
         stop_event: end traning signal.
         tb_log_prefix: tensorboard run log dir prefix.
+        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
+    Raises:
+        RuntimeError if the `actor` is not a instance of types_lib.Agent.
     """
+    if not isinstance(actor, types_lib.Agent):
+        raise RuntimeError('Expect actor to be a instance of types_lib.Agent.')
+
     # Initialize logging.
     init_absl_logging()
 
@@ -384,7 +393,7 @@ def run_actor(
         train_tb_log_dir = f'{tb_log_prefix}-{iteration}' if tb_log_prefix is not None else None
 
         # Run training steps.
-        train_stats = run_some_steps(num_train_steps, actor, actor_env, train_tb_log_dir)
+        train_stats = run_some_steps(num_train_steps, actor, actor_env, train_tb_log_dir, debug_screenshots_frequency)
 
         # Mark work done to avoid infinite loop in learner `run_train_loop`,
         # also possible multiprocessing.Queue deadlock.
@@ -413,14 +422,16 @@ def run_learner(
     num_iterations: int,
     num_eval_steps: int,
     network: Union[torch.nn.Module, List[torch.nn.Module]],
-    learner_agent: types_lib.Agent,
+    learner: types_lib.Learner,
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
+    data_queue: multiprocessing.Queue,
     log_queue: multiprocessing.SimpleQueue,
     iteration_count: multiprocessing.Value,
     start_iteration_event: multiprocessing.Event,
     stop_event: multiprocessing.Event,
     checkpoint: PyTorchCheckpoint,
+    num_actors: int,
     tensorboard: bool,
     tag: str = None,
 ) -> None:
@@ -434,37 +445,74 @@ def run_learner(
         num_iterations: number of iterations to run.
         num_eval_steps: number of evaluation steps to run, per iteration.
         network: the main network, we switch between train and eval mode.
-        learner_agent: learner agent, expect the agent to have run_train_loop() method.
+        learner: learner agent, expect the agent to have run_train_loop() method.
         eval_agent: evaluation agent.
         eval_env: evaluation environment.
+        data_queue: a multiprocessing.Queue used receive samples from actor.
         log_queue: a multiprocessing.SimpleQueue used send evaluation statistics to logger.
         start_iteration_event: a multiprocessing.Event signal to actors for start training.
         checkpoint: checkpoint object.
+        num_actors: number of actors running, used to check if one iteration is over.
         tensorboard: if True, use tensorboard to log the runs.
         tag: tensorboard run log tag.
 
+    Raises:
+        RuntimeError if the `learner` is not a instance of types_lib.Learner.
     """
+    if not isinstance(learner, types_lib.Learner):
+        raise RuntimeError('Expect learner to be a instance of types_lib.Learner.')
+
     networks = []
     if isinstance(network, List):
         networks = network
     elif isinstance(network, torch.nn.Module):
         networks.append(network)
 
-    state = checkpoint.state
+    tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, learner.agent_name, tag, 'train')
 
+    state = checkpoint.state
     while state.iteration < num_iterations:
         # Set netwrok in train mode.
         for net in networks:
             net.train()
 
         logging.info(f'Training iteration {state.iteration}')
-        logging.info(f'Starting {learner_agent.agent_name} ...')
+        logging.info(f'Starting {learner.agent_name} ...')
 
         # Set start training event.
         start_iteration_event.set()
+        learner.reset()
 
-        # Start to run learner training loop for one iteration.
-        learner_agent.run_train_loop()
+        learner_tb_log_dir = f'{tb_log_prefix}-{state.iteration}' if tb_log_prefix is not None else None
+        trackers = trackers_lib.make_learner_trackers(run_log_dir=learner_tb_log_dir)
+        for tracker in trackers:
+            tracker.reset()
+
+        num_done_actors = 0
+
+        # Run training steps.
+        while True:
+            # Try to pull one item off multiprocessing.queue.
+            try:
+                item = data_queue.get()
+                if item == 'PROCESS_DONE':  # one actor process is done for current iteration
+                    num_done_actors += 1
+                else:
+                    learner.received_item_from_queue(item)
+            except queue.Empty:
+                pass
+            except EOFError:
+                pass
+
+            # Only break if all actor processes are done
+            if num_done_actors == num_actors:
+                break
+
+            # The returned state could be None when call learner.step(), since it will perform internal checks.
+            stats = learner.step()
+            if stats is not None:
+                for tracker in trackers:
+                    tracker.step(stats)
 
         start_iteration_event.clear()
         checkpoint.save()

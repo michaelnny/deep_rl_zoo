@@ -75,7 +75,7 @@ class Reinforce(types_lib.Agent):
 
         # Counters and stats
         self._step_t = -1
-        self._update_t = -1
+        self._update_t = 0
         self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:

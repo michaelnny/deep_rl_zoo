@@ -145,8 +145,8 @@ class QRDqn(types_lib.Agent):
 
         # Counters and stats
         self._step_t = -1
-        self._update_t = -1
-        self._target_update_t = -1
+        self._update_t = 0
+        self._target_update_t = 0
         self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -203,12 +203,12 @@ class QRDqn(types_lib.Agent):
         priorities = self._update(transitions, weights)
 
         # Update target Q network weights
-        if self._update_t % self._target_network_update_frequency == 0:
+        if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
         if priorities.shape != (self._batch_size,):
             raise RuntimeError(f'Expect priorities has shape ({self._batch_size},), got {priorities.shape}')
-        priorities = np.abs(priorities)
+        priorities = np.clip(np.abs(priorities), 0.0, 100.0)  # np.abs(priorities)
         self._max_seen_priority = np.max([self._max_seen_priority, np.max(priorities)])
         self._replay.update_priorities(indices, priorities)
 

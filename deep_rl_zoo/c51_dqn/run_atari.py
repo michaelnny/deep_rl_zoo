@@ -43,8 +43,8 @@ flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('replay_capacity', 200000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 50000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
-flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default on.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_end_value', 0.1, 'End (decayed) value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_decay_step', 1000000, 'Total steps to decay value of the exploration rate.')
@@ -75,6 +75,11 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/c51_dqn_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/c51_dqn', 'Path for checkpoint directory.')
@@ -128,9 +133,9 @@ def main(argv):
     # Test network input and output
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = network(s)
-    q_dist = network_output.q_dist
+    q_logits = network_output.q_logits
     q_values = network_output.q_values
-    assert q_dist.shape == (1, num_actions, FLAGS.num_atoms)
+    assert q_logits.shape == (1, num_actions, FLAGS.num_atoms)
     assert q_values.shape == (1, num_actions)
 
     # Create e-greedy exploration epsilon schdule
@@ -210,6 +215,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

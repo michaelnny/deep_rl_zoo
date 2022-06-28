@@ -50,7 +50,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
@@ -62,6 +62,11 @@ flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per 
 flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/a2c_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/a2c', 'Path for checkpoint directory.')
@@ -71,6 +76,7 @@ def main(argv):
     """Trains A2C agent on classic games."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Listen to signals to exit process.
     main_loop.handle_exit_signal()
@@ -111,7 +117,7 @@ def main(argv):
     assert pi_logits.shape == (1, num_actions)
     assert baseline.shape == (1, 1)
 
-    replay = replay_lib.SimpleReplay(capacity=FLAGS.batch_size * 5, structure=replay_lib.TransitionStructure)
+    replay = replay_lib.UniformReplay(FLAGS.batch_size, replay_lib.TransitionStructure, random_state)
 
     # Create queue shared between actors and learner
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
@@ -120,14 +126,12 @@ def main(argv):
     # Create A2C learner agent instance.
     learner_agent = agent.Learner(
         lock=lock,
-        data_queue=data_queue,
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         replay=replay,
         discount=FLAGS.discount,
         n_step=FLAGS.n_step,
         batch_size=FLAGS.batch_size,
-        num_actors=FLAGS.num_actors,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,
         clip_grad=FLAGS.clip_grad,
@@ -183,6 +187,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

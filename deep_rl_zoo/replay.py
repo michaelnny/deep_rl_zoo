@@ -62,58 +62,6 @@ TransitionStructure = Transition(s_tm1=None, a_tm1=None, r_t=None, s_t=None, don
 OffPolicyTransitionStructure = OffPolicyTransition(s_tm1=None, a_tm1=None, logits_tm1=None, r_t=None, s_t=None, done=None)
 
 
-class SimpleReplay(Generic[ReplayStructure]):
-    """A very simple experience replay which support reset state,
-    for policy gradient methods like PPO,
-    note when call sample(), will return generator."""
-
-    def __init__(
-        self,
-        capacity: int,
-        structure: ReplayStructure,
-    ) -> None:
-        if capacity <= 0:
-            raise ValueError(f'Expect capacity to be a positive integer, got {capacity}')
-        self.structure = structure
-        self._capacity = capacity
-        self._storage = [None] * self._capacity
-        self._num_added = 0
-
-    def add(self, item: ReplayStructure) -> None:
-        """Adds single item to replay."""
-        self._storage[self._num_added % self._capacity] = item
-        self._num_added += 1
-
-    def get(self, indices: Sequence[int]) -> List[ReplayStructure]:
-        """Retrieves items by indices."""
-        return [self._storage[i] for i in indices]
-
-    def sample(self, batch_size) -> ReplayStructure:
-        """Samples batch of transitions, returns a generator"""
-        if self.size < batch_size:
-            raise RuntimeError(f'Replay only have {self.size} samples, got sample batch size {batch_size}')
-
-        bined_indices = split_indices_into_bins(batch_size, self.size)
-        for indices in bined_indices:
-            assert len(indices) == batch_size
-            samples = self.get(indices)
-            yield np_stack_list_of_transitions(samples, self.structure, 0)  # Stack on batch dimension (0)
-
-    @property
-    def size(self) -> int:
-        """Number of items currently contained in replay."""
-        return min(self._num_added, self._capacity)
-
-    @property
-    def capacity(self) -> int:
-        """Total capacity of replay (max number of items stored at any one time)."""
-        return self._capacity
-
-    def reset(self) -> None:
-        """Reset the state of replay."""
-        self._num_added = 0
-
-
 class UniformReplay(Generic[ReplayStructure]):
     """Uniform replay, with circular buffer storage for flat named tuples."""
 
@@ -122,6 +70,7 @@ class UniformReplay(Generic[ReplayStructure]):
         capacity: int,
         structure: ReplayStructure,
         random_state: np.random.RandomState,  # pylint: disable=no-member
+        time_major: bool = False,
     ):
         if capacity <= 0:
             raise ValueError(f'Expect capacity to be a positive integer, got {capacity}')
@@ -130,6 +79,8 @@ class UniformReplay(Generic[ReplayStructure]):
         self._random_state = random_state
         self._storage = [None] * capacity
         self._num_added = 0
+
+        self._time_major = time_major
 
     def add(self, item: ReplayStructure) -> None:
         """Adds single item to replay."""
@@ -147,7 +98,15 @@ class UniformReplay(Generic[ReplayStructure]):
 
         indices = self._random_state.randint(self.size, size=batch_size)
         samples = self.get(indices)
-        return np_stack_list_of_transitions(samples, self.structure, 0)  # Stack on batch dimension (0)
+        return np_stack_list_of_transitions(samples, self.structure, self.stack_dim)
+
+    @property
+    def stack_dim(self) -> int:
+        """Stack dimension, for RNN we may need to make the tensor time major by stacking on second dimension as [T, B, ...]."""
+        if self._time_major:
+            return 1
+        else:
+            return 0
 
     @property
     def size(self) -> int:
@@ -158,6 +117,11 @@ class UniformReplay(Generic[ReplayStructure]):
     def capacity(self) -> int:
         """Total capacity of replay (max number of items stored at any one time)."""
         return self._capacity
+
+    @property
+    def num_added(self) -> int:
+        """Total number of sample sadded to the replay."""
+        return self._num_added
 
     def reset(self) -> None:
         """Reset the state of replay, should be called at the begining of every episode"""
@@ -507,16 +471,16 @@ class PrioritizedReplay(Generic[ReplayStructure]):
         self._importance_sampling_exponent = importance_sampling_exponent
         self._normalize_weights = normalize_weights
         self._storage = [None] * capacity
-        self._t = 0
+        self._num_added = 0
 
         self._time_major = time_major
 
     def add(self, item: ReplayStructure, priority: float) -> None:
         """Adds a single item with a given priority to the replay buffer."""
-        index = self._t % self._capacity
+        index = self._num_added % self._capacity
         self._distribution.set_priorities([index], [priority])
         self._storage[index] = item
-        self._t += 1
+        self._num_added += 1
 
     def get(self, indices: Sequence[int]) -> List[ReplayStructure]:
         """Retrieves transitions by indices."""
@@ -544,7 +508,7 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 
     @property
     def stack_dim(self) -> int:
-        """Stack dimension, for RNN we may need to make the tensor time major by stacking on second dimension."""
+        """Stack dimension, for RNN we may need to make the tensor time major by stacking on second dimension as [T, B, ...]."""
         if self._time_major:
             return 1
         else:
@@ -553,7 +517,7 @@ class PrioritizedReplay(Generic[ReplayStructure]):
     @property
     def size(self) -> int:
         """Number of elements currently contained in replay."""
-        return min(self._t, self._capacity)
+        return min(self._num_added, self._capacity)
 
     @property
     def capacity(self) -> int:
@@ -561,23 +525,139 @@ class PrioritizedReplay(Generic[ReplayStructure]):
         return self._capacity
 
     @property
+    def num_added(self) -> int:
+        """Total number of sample sadded to the replay."""
+        return self._num_added
+
+    @property
     def importance_sampling_exponent(self):
         """Importance sampling exponent at current step."""
-        return self._importance_sampling_exponent(self._t)
+        return self._importance_sampling_exponent(self._num_added)
 
     def get_state(self) -> Mapping[Text, Any]:
         """Retrieves replay state as a dictionary (e.g. for serialization)."""
         return {
-            't': self._t,
+            'num_added': self._num_added,
             'storage': self._storage,
             'distribution': self._distribution.get_state(),
         }
 
     def set_state(self, state: Mapping[Text, Any]) -> None:
         """Sets replay state from a (potentially de-serialized) dictionary."""
-        self._t = state['t']
+        self._num_added = state['num_added']
         self._storage = state['storage']
         self._distribution.set_state(state['distribution'])
+
+
+# class PrioritizedReplay(Generic[ReplayStructure]):
+#     """Prioritized replay, with circular buffer storage for flat named tuples.
+#     This is the proportional variant as described in
+#     http://arxiv.org/abs/1511.05952.
+#     Code for priority calculation adapted from seed-rl
+#     https://github.com/google-research/seed_rl/blob/66e8890261f09d0355e8bf5f1c5e41968ca9f02b/common/utils.py#L345
+#     """
+
+#     def __init__(
+#         self,
+#         # capacity: int,
+#         # structure: ReplayStructure,
+#         # priority_exponent: float,
+#         # importance_sampling_exponent: Callable[[int], float],
+#         # time_major: bool = False,
+#         capacity: int,
+#         structure: ReplayStructure,
+#         priority_exponent: float,
+#         importance_sampling_exponent: Callable[[int], float],
+#         uniform_sample_probability: float,
+#         normalize_weights: bool,
+#         random_state: np.random.RandomState,
+#         time_major: bool = False,
+#     ):
+#         if capacity <= 0:
+#             raise ValueError(f'Expect capacity to be a positive integer, got {capacity}')
+#         self.structure = structure
+#         self._capacity = capacity
+#         self._priorities = np.zeros((capacity,), dtype=np.float32)
+#         self._priority_exponent = priority_exponent
+#         self._importance_sampling_exponent = importance_sampling_exponent
+#         self._time_major = time_major
+
+#         self._storage = [None] * capacity
+#         self._num_added = 0
+
+#     def add(self, item: ReplayStructure, priority: float) -> None:
+#         """Adds a single item with a given priority to the replay buffer."""
+#         if not np.isfinite(priority) or priority < 0.0:
+#             raise ValueError('priority must be finite and positive.')
+
+#         index = self._num_added % self._capacity
+#         self._priorities[index] = priority
+#         self._storage[index] = item
+#         self._num_added += 1
+
+#     def get(self, indices: Sequence[int]) -> List[ReplayStructure]:
+#         """Retrieves transitions by indices."""
+#         return [self._storage[i] for i in indices]
+
+#     def sample(
+#         self,
+#         batch_size: int,
+#     ) -> Tuple[ReplayStructure, np.ndarray, np.ndarray]:
+#         """Samples a batch of transitions."""
+#         if self.size < batch_size:
+#             raise RuntimeError(f'Replay only have {self.size} samples, got sample batch size {batch_size}')
+
+#         if self._priority_exponent == 0:
+#             indices = np.random.uniform(0, self.size, size=batch_size).astype(np.int64)
+#             weights = np.ones_like(indices, dtype=np.float32)
+#         else:
+#             # code copied from seed_rl
+#             priorities = self._priorities[: self.size] ** self._priority_exponent
+#             # priorities = np.nan_to_num(priorities, nan=1e-4)  # Avoid NaN
+#             # priorities = priorities**self._priority_exponent
+#             probs = priorities / np.sum(priorities)
+#             indices = np.random.choice(np.arange(probs.shape[0]), size=batch_size, replace=True, p=probs)
+
+#             # Importance weights.
+#             weights = ((1.0 / self.size) / probs[indices]) ** self.importance_sampling_exponent
+#             weights /= np.max(weights)  # Normalize.
+
+#         samples = self.get(indices)
+#         return np_stack_list_of_transitions(samples, self.structure, self.stack_dim), indices, weights
+
+#     def update_priorities(self, indices: Sequence[int], priorities: Sequence[float]) -> None:
+#         """Updates indices with given priorities."""
+#         priorities = np.asarray(priorities)
+#         if not np.isfinite(priorities).all() or (priorities < 0.0).any():
+#             raise ValueError('priorities must be finite and positive.')
+#         for index, priority in zip(indices, priorities):
+#             # if priority <= 0:
+#             #     # raise RuntimeError(f'Expect priority to be greater than 0, got {p}')
+#             #     priority = 1e-4  # Avoid NaNs
+#             self._priorities[index] = priority
+
+#     @property
+#     def stack_dim(self) -> int:
+#         """Stack dimension, for RNN we may need to make the tensor time major by stacking on second dimension."""
+#         if self._time_major:
+#             return 1
+#         else:
+#             return 0
+
+#     @property
+#     def size(self) -> int:
+#         """Number of elements currently contained in replay."""
+#         return min(self._num_added, self._capacity)
+
+#     @property
+#     def capacity(self) -> int:
+#         """Total capacity of replay (maximum number of items that can be stored)."""
+#         return self._capacity
+
+#     @property
+#     def importance_sampling_exponent(self):
+#         """Importance sampling exponent at current step."""
+#         return self._importance_sampling_exponent(self._num_added)
 
 
 class GradientReplay(Generic[ReplayStructure]):

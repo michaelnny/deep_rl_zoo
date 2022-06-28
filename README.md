@@ -13,13 +13,13 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 
 
 ## Note
-* Only support episodic environment with discrete action space.
+* Only support deterministic, episodic environment with discrete action space.
 * Focus on study and implementation for each algorithms, rather than create a standard library.
 * Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low-end machine and speed up training.
 * The hyper-parameters and network architectures are not fine-tuned.
-* Most agents have been fully tested on classic control problems like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
-* For Atari games, we only selectively run tests on Pong for some agents, there are agents (marked below) not tested on Atari due to lack of access to powerful machine and GPUs.
+* All agents have been fully tested on classic control problems like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
+* For Atari games, we only run tests on Pong for some agents selectively, other agents (marked below) not tested due to lack of access to powerful machine and GPUs.
 * We can't guarantee its bug free.
 
 
@@ -31,14 +31,14 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 | `reinforce`          | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
 | `reinforce_baseline` | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
 | `actor_critic`       | [Actor-Critic Algorithms](https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)          | *    |
-| `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)                                      | P    |
+| `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)                                      | P *  |
 |                      | [synchronous, deterministic variant of A3C](https://openai.com/blog/baselines-acktr-a2c/)                                     |      |
 | `ppo`                | [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)                                                   | P *  |
 | `sac`                | [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning](https://arxiv.org/abs/1801.01290)                 | P *  |
 |                      | [Soft Actor-Critic for Discrete Action Settings](https://arxiv.org/abs/1910.07207)                                            |      |
 | `ppo_icm`            | [Curiosity-driven Exploration by Self-supervised Prediction](https://arxiv.org/abs/1705.05363)                                | P *  |
 | `ppo_rnd`            | [Exploration by Random Network Distillation](https://arxiv.org/abs/1810.12894)                                                | P *  |
-| `impala`             | [IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures](https://arxiv.org/abs/1802.01561) | P    |
+| `impala`             | [IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures](https://arxiv.org/abs/1802.01561) | P *  |
 <!-- mdformat on -->
 
 ### Deep Q learning algorithms
@@ -59,8 +59,8 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                               | Note |
 | -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
-| `c51_dqn`            | [A Distributional Perspective on Reinforcement Learning](https://arxiv.org/abs/1707.06887)                    |      |
-| `rainbow`            | [Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)            |      |
+| `c51_dqn`            | [A Distributional Perspective on Reinforcement Learning](https://arxiv.org/abs/1707.06887)                    | *    |
+| `rainbow`            | [Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)            | *    |
 | `qr_dqn`             | [Distributional Reinforcement Learning with Quantile Regression](https://arxiv.org/abs/1710.10044)            | *    |
 | `iqn`                | [Implicit Quantile Networks for Distributional Reinforcement Learning](https://arxiv.org/abs/1806.06923)      | *    |
 
@@ -79,7 +79,8 @@ Notes:
         - `run_atari.py` module use Conv2d networks to solve Atari games, the default environment_name is set to Pong.
         - `eval_agent.py` module evaluate trained agents by using a greedy actor and loading model state from checkpoint file,
         you can run testing on both classic problems like CartPole, MountainCar, LunarLander, and Atari games.
-    *   `main_loop.py` module contains functions to run single thread and parallel traning loops.
+    *   `main_loop.py` module contains functions run single thread and parallel traning loops,
+        it also contains the `run_loop` function where the agent interaction with the environment.
     *   `networks` directory contains both policy networks and q networks used by the agents.
     *   `trackers.py` module is used to accumulating statistics during training and testing/evaluation,
         it also writes log to Tensorboard if desired.
@@ -134,15 +135,17 @@ pip3 install -r requirements.txt
 ## Train agents
 
 ### CartPole, LunarLander, and MountainCar
-By default, we have the following settings for all `run_classic.py` module:
-`--num_iterations=2 --num_train_steps=5e5 --num_eval_steps=2e5`
 
-For some problem like LunarLander and MountainCar, you may need to increase the `num_train_steps`.
-
-#### Note
+* By default, we have the following settings for all `run_classic.py` module:
+    - `--num_iterations=2 --num_train_steps=5e5 --num_eval_steps=2e5`
 * For some agents (like advanced DQN agents, most of the policy gradient agents), it's impossible to solve MountainCar due to the nature of the problem (sparse reward).
-* For some of the advanced agents (like NGU, Agent57) will only converge on LunarLander, to make it work on CartPole, you may need to fine-tune the hyper-parameters.
 
+To run a agent on classic control problem, use the following command, replace the <agent_name> with the sub-directory name.
+```
+python3 -m deep_rl_zoo.<agent_name>.run_classic
+```
+
+Example of DQN agent
 ```
 python3 -m deep_rl_zoo.dqn.run_classic
 
@@ -151,21 +154,24 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=MountainCar-v0
 python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 ```
 
+
 ### Atari environment
-By default, we have the following settings for all `run_atari.py` module:
-`--num_iterations=20 --num_train_steps=1e6 --num_eval_steps=2e5`
-
-For Atari, we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
-By default, it uses `NoFrameskip-v4` for the specified game.
-
-We don't scale the observation with the atari wrappers BEFORE store the states into experience replay, as that will require 4-5x more RAM.
-We only scale the states inside the model.forward() method.
-As a reference, consider tuple (Stm1, Atm1, Rt, St, Done) as one sample and we stack 4 frames, and we store 100000 samples in experience replay.
-If we do scale before store into replay, it will allocate ~14GB of RAM. But when don't scale the states, it only requires ~3GB of RAM.
-
-#### Note
+* By default, we have the following settings for all `run_atari.py` module:
+    - `--num_iterations=20 --num_train_steps=1e6 --num_eval_steps=2e5`
 * Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 200000 instead of 1000000.
+* By default, we uses gym `NoFrameskip-v4` for Atari game, and we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
+* We don't scale the observation with the atari wrappers BEFORE store the states into experience replay, as that will require 4-5x more RAM.
+    - As a reference, consider tuple (Stm1, Atm1, Rt, St, Done) as one sample and we stack 4 frames, and we store 100000 samples in experience replay.
+        - If we do scale before store into replay, it will allocate ~14GB of RAM.
+        - But when don't scale the states, it only requires ~3GB of RAM.
+* We only scale the states inside the model.forward() method.
 
+To run a agent on Atari game, use the following command, replace the <agent_name> with the sub-directory name.
+```
+python3 -m deep_rl_zoo.<agent_name>.run_atari
+```
+
+Example of DQN agent
 ```
 python3 -m deep_rl_zoo.dqn.run_atari
 
@@ -188,10 +194,18 @@ python3 -m deep_rl_zoo.impala.run_atari --num_actors=8
 Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
 By default, it will record a video of agent's self-play at the `recordings` directory.
 
+To run a agent on Atari game, use the following command, replace the <agent_name> with the sub-directory name.
+```
+python3 -m deep_rl_zoo.<agent_name>.eval_agent
+```
+
+Example of DQN agent
 ```
 python3 -m deep_rl_zoo.dqn.eval_agent
 
 python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=MountainCar-v0
+
+python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=Pong
 
 # load checkpoint file from a specific checkpoint file
 python3 -m deep_rl_zoo.dqn.eval_agent --checkpoint_path=checkpoints/dqn/CartPole-v1_iteration_0.ckpt
@@ -206,27 +220,45 @@ To disable this, use the option `--notensorboard`.
 tensorboard --logdir=runs
 ```
 
-The classes `TensorboardEpisodTracker`, `TensorboardStepRateTracker`, and `TensorboardAgentStatisticsTracker` for write to tensorboard is implemented in `trackers.py` module.
+The classes for write logs to tensorboard is implemented in `trackers.py` module.
 
-* we only write logs after episode terminates
+* to improve performance, we only write logs at end of episode
 * we separate training and evaluation logs
-* the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
+* if algorithm support parallel training, we separate actor, learner logs
 * for agents that support parallel training, only log the first and last actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
 
-Here are the performance(env_steps) measurements available on Tensorboard:
+`performance(env_steps)` measurements available on Tensorboard:
+* the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
 * `episode_return` the last episode return
 * `episode_steps` the last episode steps
 * `num_episodes` how many episodes have been conducted
 * `run_duration(minutes)` the duration (in minutes) since the start of the session
 * `step_rate(second)` step pre seconds, pre actors
 
-In addition, it'll log whatever is exposed in the `agent.statistics` property such as train loss, learning rate, discount, updates etc.
+`agent_statistics(env_steps)` measurements available on Tensorboard:
+* the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
+* it'll log whatever is exposed in the agent's `statistics` property such as train loss, learning rate, discount, updates etc.
+* for algorithm support parallel training (multiple actors), this is only the statistics for the actors.
+
+`learner_statistics(train_steps)` measurements available on Tensorboard:
+* measured over training step
+* only available if support parallel training (multiple actors)
+* it'll log whatever is exposed in the learner's `statistics` property such as train loss, learning rate, discount, updates etc.
 
 ### Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances
 ```
 python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag=LSTM-LR0.001
 ```
+
+### Debug with environment screenshots
+This could be handy if we want see what's happening during the training, we can set the `debug_screenshots_frequency` (measured every episode) to some value, and it'll add screenshots of the terminal state to Tensorboard. This should be used for debug only as it may use more resources and cause the system to become unstable.
+
+```
+python3 -m deep_rl_zoo.r2d2.run_classic --environment_name=MountainCar-v0 --debug_screenshots_frequency=100
+```
+![Tensorboard debug screenshots](../main/screenshots/Tensorboard_debug_screenshots.png)
+
 
 ### Example of DQN agent (training on M1 Mac CPU)
 

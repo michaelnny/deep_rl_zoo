@@ -18,8 +18,7 @@ From the paper "Agent57: Outperforming the Atari Human Benchmark"
 https://arxiv.org/pdf/2003.13350.
 """
 
-from typing import Mapping, Optional, Tuple, NamedTuple
-import queue
+from typing import Mapping, Optional, Tuple, NamedTuple, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -31,10 +30,10 @@ import torch.nn.functional as F
 import deep_rl_zoo.replay as replay_lib
 import deep_rl_zoo.types as types_lib
 from deep_rl_zoo import normalizer
+from deep_rl_zoo import transforms
 from deep_rl_zoo import nonlinear_bellman
 from deep_rl_zoo import base
 from deep_rl_zoo import distributed
-from deep_rl_zoo import transforms
 from deep_rl_zoo import bandit
 from deep_rl_zoo.curiosity import EpisodicBonusModule, RndLifeLongBonusModule
 from deep_rl_zoo.networks.dqn import NguDqnNetworkInputs
@@ -45,23 +44,17 @@ HiddenState = Tuple[torch.Tensor, torch.Tensor]
 
 
 class Agent57Transition(NamedTuple):
-    r"""Ideally we want to construct transition in the manner of (s, a, r), this is not the case for gym env.
-    when the agent takes action 'a' in state 's', it does not receive rewards immediately, only at the next time step.
-    so there's going to be one timestep lag between the (s, a, r).
+    """
+    s_t, r_t, done are the tuple from env.step().
 
-    For simplicity reasons, we choose to lag rewards, so (s, a, r) is actually (s', a', r).
-
-    In our case 'a_t', 'done' is for 's_t', while
-    'int_r_t' is for previous state-action (s_tm1, a_tm1) but received at current timestep.
-
-    Note 'a_tm1' is only used for network pass during learning,
-    'q_values' is only for calculating priority for the unroll sequence when adding into replay."""
+    last_action is the last agent the agent took, before in s_t.
+    """
 
     s_t: Optional[np.ndarray]
     a_t: Optional[int]
     q_t: Optional[np.ndarray]  # q values for s_t, computed from both ext_q_network and int_q_network
     prob_a_t: Optional[np.ndarray]  # probability of choose a_t in s_t
-    a_tm1: Optional[int]
+    last_action: Optional[int]  # for network input only
     ext_r_t: Optional[float]  # extrinsic reward for (s_tm1, a_tm1)
     int_r_t: Optional[float]  # intrinsic reward for (s_tm1)
     policy_index: Optional[int]  # intrinsic reward scale beta index
@@ -79,7 +72,7 @@ TransitionStructure = Agent57Transition(
     a_t=None,
     q_t=None,
     prob_a_t=None,
-    a_tm1=None,
+    last_action=None,
     ext_r_t=None,
     int_r_t=None,
     policy_index=None,
@@ -290,7 +283,7 @@ class Actor(types_lib.Agent):
         )
 
         self._episode_returns = 0.0
-        self._a_tm1 = None
+        self._last_action = None
         self._episodic_bonus_t = None
         self._lifelong_bonus_t = None
         self._ext_lstm_state = None  # Stores nn.LSTM hidden state and cell state. for extrinsic Q network
@@ -314,7 +307,7 @@ class Actor(types_lib.Agent):
             a_t=a_t,
             q_t=q_t,
             prob_a_t=prob_a_t,
-            a_tm1=self._a_tm1,
+            last_action=self._last_action,
             ext_r_t=timestep.reward,
             int_r_t=self.intrinsic_reward,
             policy_index=self._policy_index,
@@ -338,7 +331,7 @@ class Actor(types_lib.Agent):
         self._episodic_bonus_t = self._episodic_module.compute_bonus(s_t)
 
         # Update local state
-        self._a_tm1, self._ext_lstm_state, self._int_lstm_state = a_t, ext_hidden_s, int_hidden_s
+        self._last_action, self._ext_lstm_state, self._int_lstm_state = a_t, ext_hidden_s, int_hidden_s
 
         if unrolled_transition is not None:
             self._put_unroll_onto_queue(unrolled_transition)
@@ -363,7 +356,7 @@ class Actor(types_lib.Agent):
 
         # During the first step of a new episode,
         # use 'fake' previous action and 'intrinsic' reward for network pass
-        self._a_tm1 = self._random_state.randint(0, self._num_actions)  # Initialize a_tm1 randomly
+        self._last_action = self._random_state.randint(0, self._num_actions)  # Initialize a_tm1 randomly
         self._episodic_bonus_t = 0.0
         self._lifelong_bonus_t = 0.0
         self._ext_lstm_state = self._ext_q_network.get_initial_hidden_state(batch_size=1)
@@ -413,14 +406,14 @@ class Actor(types_lib.Agent):
         # NGU network expect input shape [T, B, state_shape],
         # and additionally 'last action', 'extrinsic reward for last action', last intrinsic reward, and intrinsic reward scale beta index.
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._a_tm1).to(device=self._device, dtype=torch.int64)
+        last_action = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
         ext_r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
         int_r_t = torch.tensor(self.intrinsic_reward).to(device=self._device, dtype=torch.float32)
         policy_index = torch.tensor(self._policy_index).to(device=self._device, dtype=torch.int64)
         hidden_s = tuple(s.to(device=self._device) for s in hidden_state)
         return NguDqnNetworkInputs(
             s_t=s_t[None, ...],  # [T, B, state_shape]
-            a_tm1=a_tm1[None, ...],  # [T, B]
+            a_tm1=last_action[None, ...],  # [T, B]
             ext_r_t=ext_r_t[None, ...],  # [T, B]
             int_r_t=int_r_t[None, ...],  # [T, B]
             policy_index=policy_index[None, ...],  # [T, B]
@@ -452,7 +445,7 @@ class Actor(types_lib.Agent):
         return self._episodic_bonus_t * min(max(self._lifelong_bonus_t, 1.0), 5.0)
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current actor's statistics as a dictionary."""
         return {
             'policy_index': self._policy_index,
@@ -461,16 +454,15 @@ class Actor(types_lib.Agent):
             'exploration_epsilon': self._exploration_epsilon,
             'intrinsic_reward': self.intrinsic_reward,
             'episodic_bonus': self._episodic_bonus_t,
-            'lieflong_bonus': self._lifelong_bonus_t,
+            'lifelong_bonus': self._lifelong_bonus_t,
         }
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """Agent57 learner"""
 
     def __init__(
         self,
-        data_queue: multiprocessing.Queue,
         ext_q_network: nn.Module,
         ext_q_optimizer: torch.optim.Optimizer,
         int_q_network: nn.Module,
@@ -488,14 +480,12 @@ class Learner:
         retrace_lambda: float,
         transformed_retrace: bool,
         priority_eta: float,
-        num_actors: int,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
     ) -> None:
         """
         Args:
-            data_queue: a multiprocessing.Queue to get collected transitions from actor processes.
             network: the Q network we want to train and optimize.
             optimizer: the optimizer for Q network.
             embedding_network: NGU action prediction network.
@@ -511,7 +501,6 @@ class Learner:
             retrace_lambda: coefficient of the retrace lambda.
             transformed_retrace: if True, use transformed retrace.
             priority_eta: coefficient to mix the max and mean absolute TD errors.
-            num_actors: number of actor processes.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
@@ -532,8 +521,6 @@ class Learner:
             raise ValueError(f'Expect retrace_lambda to in the range [0.0, 1.0], got {retrace_lambda}')
         if not 0.0 <= priority_eta <= 1.0:
             raise ValueError(f'Expect priority_eta to in the range [0.0, 1.0], got {priority_eta}')
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
 
         self.agent_name = 'Agent57-learner'
         self._device = device
@@ -548,8 +535,6 @@ class Learner:
         self._rnd_target_network = rnd_target_network.to(device=self._device)
         self._rnd_predictor_network = rnd_predictor_network.to(device=self._device)
         self._intrinsic_optimizer = intrinsic_optimizer
-
-        self._update_target_network()
 
         # Disable autograd for target Q networks, and RND target networks.
         no_autograd(self._target_ext_q_network)
@@ -573,49 +558,35 @@ class Learner:
         self._retrace_lambda = retrace_lambda
         self._transformed_retrace = transformed_retrace
 
-        self._queue = data_queue
-        self._num_actors = num_actors
-
         self._step_t = -1
-        self._update_t = -1
+        self._update_t = 0
+        self._target_update_t = 0
+        self._ext_q_loss_t = np.nan
+        self._int_q_loss_t = np.nan
+        self._embedding_rnd_loss_t = np.nan
 
-        self._done_actors = 0
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-    def run_train_loop(
-        self,
-    ) -> None:
-        """Start the learner training loop, only break if all actor processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # actor process is done
-                    self._done_actors += 1
-                else:
-                    priority = self._compute_priority_for_unroll(item)
-                    self._replay.add(item, priority)
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+        if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
+            return None
 
-            # Only break if all actor processes are done
-            if self._done_actors == self._num_actors:
-                break
-
-            if self._replay.size < self._min_replay_size:
-                continue
-
-            # Pull a batch before learning
-            if self._step_t % self._batch_size == 0:
-                self._learn()
+        self._learn()
+        return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_actors = 0
+
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        # Use the unrolled sequence to calculate priority
+        priority = self._compute_priority_for_unroll(item)
+        self._replay.add(item, priority)
 
     def _learn(self) -> None:
         transitions, indices, weights = self._replay.sample(self._batch_size)
@@ -628,7 +599,7 @@ class Learner:
         self._replay.update_priorities(indices, priorities)
 
         # Copy online Q network weights to target Q network, every m updates
-        if self._update_t % self._target_network_update_frequency == 0:
+        if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
     def _update(self, transitions: Agent57Transition, weights: np.ndarray) -> np.ndarray:
@@ -691,6 +662,10 @@ class Learner:
 
         priorities = 0.8 * ext_priorities + 0.2 * int_priorities
         self._update_t += 1
+
+        # For logging only.
+        self._ext_q_loss_t = ext_q_loss.detach().cpu().item()
+        self._int_q_loss_t = int_q_loss.detach().cpu().item()
         return priorities
 
     def _get_predicted_q_values(
@@ -707,14 +682,14 @@ class Learner:
             hidden_state: initial hidden states for the 'q_network'.
         """
         s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [T+1, B, state_shape]
-        a_tm1 = torch.from_numpy(transitions.a_tm1).to(device=self._device, dtype=torch.int64)  # [T+1, B]
+        last_action = torch.from_numpy(transitions.last_action).to(device=self._device, dtype=torch.int64)  # [T+1, B]
         ext_r_t = torch.from_numpy(transitions.ext_r_t).to(device=self._device, dtype=torch.float32)  # [T+1, B]
         int_r_t = torch.from_numpy(transitions.int_r_t).to(device=self._device, dtype=torch.float32)  # [T+1, B]
         policy_index = torch.from_numpy(transitions.policy_index).to(device=self._device, dtype=torch.int64)  # [T+1, B]
 
         # Rank and dtype checks, note we have a new unroll time dimension, states may be images, which is rank 5.
         base.assert_rank_and_dtype(s_t, (3, 5), torch.float32)
-        base.assert_rank_and_dtype(a_tm1, 2, torch.long)
+        base.assert_rank_and_dtype(last_action, 2, torch.long)
         base.assert_rank_and_dtype(ext_r_t, 2, torch.float32)
         base.assert_rank_and_dtype(int_r_t, 2, torch.float32)
         base.assert_rank_and_dtype(policy_index, 2, torch.long)
@@ -729,7 +704,7 @@ class Learner:
         q_t = q_network(
             NguDqnNetworkInputs(
                 s_t=s_t,
-                a_tm1=a_tm1,
+                a_tm1=last_action,
                 ext_r_t=ext_r_t,
                 int_r_t=int_r_t,
                 policy_index=policy_index,
@@ -818,6 +793,9 @@ class Learner:
 
         self._intrinsic_optimizer.step()
 
+        # For logging only.
+        self._embedding_rnd_loss_t = loss.detach().cpu().item()
+
     def _calc_rnd_predictor_loss(self, transitions: Agent57Transition) -> torch.Tensor:
         s_t = torch.from_numpy(transitions.s_t[-5:]).to(device=self._device, dtype=torch.float32)  # [5, B, state_shape]
         # Rank and dtype checks.
@@ -890,14 +868,14 @@ class Learner:
     ) -> Tuple[HiddenState, HiddenState]:
         """Unroll both online and target q networks to generate hidden states for LSTM."""
         s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [burn_in, B, state_shape]
-        a_tm1 = torch.from_numpy(transitions.a_tm1).to(device=self._device, dtype=torch.int64)  # [burn_in, B]
+        last_action = torch.from_numpy(transitions.last_action).to(device=self._device, dtype=torch.int64)  # [burn_in, B]
         ext_r_t = torch.from_numpy(transitions.ext_r_t).to(device=self._device, dtype=torch.float32)  # [burn_in, B]
         int_r_t = torch.from_numpy(transitions.int_r_t).to(device=self._device, dtype=torch.float32)  # [burn_in, B]
         policy_index = torch.from_numpy(transitions.policy_index).to(device=self._device, dtype=torch.int64)  # [burn_in, B]
 
         # Rank and dtype checks, note we have a new unroll time dimension, states may be images, which is rank 5.
         base.assert_rank_and_dtype(s_t, (3, 5), torch.float32)
-        base.assert_rank_and_dtype(a_tm1, 2, torch.long)
+        base.assert_rank_and_dtype(last_action, 2, torch.long)
         base.assert_rank_and_dtype(ext_r_t, 2, torch.float32)
         base.assert_rank_and_dtype(int_r_t, 2, torch.float32)
         base.assert_rank_and_dtype(policy_index, 2, torch.long)
@@ -910,7 +888,7 @@ class Learner:
             hidden_online_q = online_q_network(
                 NguDqnNetworkInputs(
                     s_t=s_t,
-                    a_tm1=a_tm1,
+                    a_tm1=last_action,
                     ext_r_t=ext_r_t,
                     int_r_t=int_r_t,
                     policy_index=policy_index,
@@ -920,7 +898,7 @@ class Learner:
             hidden_target_q = target_q_network(
                 NguDqnNetworkInputs(
                     s_t=s_t,
-                    a_tm1=a_tm1,
+                    a_tm1=last_action,
                     ext_r_t=ext_r_t,
                     int_r_t=int_r_t,
                     policy_index=policy_index,
@@ -1015,8 +993,18 @@ class Learner:
     def _update_target_network(self):
         self._target_ext_q_network.load_state_dict(self._online_ext_q_network.state_dict())
         self._target_int_q_network.load_state_dict(self._online_int_q_network.state_dict())
+        self._target_update_t += 1
 
     @property
-    def statistics(self):
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
-        return {}
+        return {
+            'ext_q_learning_rate': self._ext_q_optimizer.param_groups[0]['lr'],
+            'int_q_learning_rate': self._int_q_optimizer.param_groups[0]['lr'],
+            'embedding_rnd_learning_rate': self._intrinsic_optimizer.param_groups[0]['lr'],
+            'ext_q_retrace_loss': self._ext_q_loss_t,
+            'int_q_retrace_loss': self._int_q_loss_t,
+            'embedding_rnd_loss': self._embedding_rnd_loss_t,
+            'updates': self._update_t,
+            'target_updates': self._target_update_t,
+        }

@@ -35,7 +35,8 @@ def initialize_weights(net) -> None:
 
     for m in net.modules():
         if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+            # nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
 
 
 class NatureCnnBodyNet(nn.Module):

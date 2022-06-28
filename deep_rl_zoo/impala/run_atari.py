@@ -31,6 +31,7 @@ from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo import main_loop
 from deep_rl_zoo import gym_env
 from deep_rl_zoo import greedy_actors
+from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
@@ -43,21 +44,29 @@ flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use, conside
 flags.DEFINE_bool('use_lstm', False, 'Use LSTM layer, default off.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('learning_rate', 0.00048, 'Learning rate.')
+
+flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('rmsprop_momentum', 0.0, 'RMSProp momentum.')
 flags.DEFINE_float('rmsprop_eps', 0.01, 'RMSProp epsilon.')
 flags.DEFINE_float('rmsprop_alpha', 0.99, 'RMSProp alpha.')
+
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.00025, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.01, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
-flags.DEFINE_integer('unroll_length', 80, 'How many agent time step to unroll for actor.')
-flags.DEFINE_integer('batch_size', 4, 'Batch size for learning, use larger batch size if possible.')
+flags.DEFINE_float('kl_coef', 0.0, 'Coefficient for the KL loss.')
+flags.DEFINE_integer('unroll_length', 20, 'How many agent time step to unroll for actor.')
+flags.DEFINE_integer('batch_size', 32, 'Batch size for learning, use larger batch size if possible.')
 flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
 flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/impala_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/impala', 'Path for checkpoint directory.')
@@ -67,7 +76,7 @@ def main(argv):
     """Trains IMPALA agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     # Listen to signals to exit process.
     main_loop.handle_exit_signal()
 
@@ -136,18 +145,26 @@ def main(argv):
     # Create queue shared between actors and learner
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
 
+    # Use replay to overcome the problem when only using small number of actors.
+    replay = replay_lib.UniformReplay(
+        capacity=10 * max(FLAGS.num_actors, FLAGS.batch_size),
+        structure=agent.TransitionStructure,
+        random_state=random_state,
+        time_major=True,
+    )
+
     # Create learner instance
     learner_agent = agent.Learner(
-        data_queue=data_queue,
         policy_network=policy_network,
         actor_policy_network=actor_policy_network,
         policy_optimizer=policy_optimizer,
+        replay=replay,
         discount=FLAGS.discount,
         unroll_length=FLAGS.unroll_length,
         batch_size=FLAGS.batch_size,
-        num_actors=FLAGS.num_actors,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,
+        kl_coef=FLAGS.kl_coef,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
@@ -195,6 +212,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

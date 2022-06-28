@@ -44,9 +44,9 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
-flags.DEFINE_integer('num_actors', 32, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 20000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('num_actors', 4, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
+flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
+flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
@@ -64,7 +64,7 @@ flags.DEFINE_integer(
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 8, 'Batch size for learning, use larger batch size if possible.')
+flags.DEFINE_integer('batch_size', 32, 'Batch size for learning, use larger batch size if possible.')
 
 flags.DEFINE_float('policy_beta', 0.3, 'Scalar for the intrinsic reward scale.')
 flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
@@ -100,6 +100,11 @@ flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in 
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/agent57_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/agent57', 'Path for checkpoint directory.')
@@ -197,7 +202,7 @@ def main(argv):
 
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
-        structure=replay_lib.TransitionStructure,
+        structure=agent.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
         uniform_sample_probability=FLAGS.uniform_sample_probability,
@@ -211,7 +216,6 @@ def main(argv):
 
     # Create Agent57 learner instance
     learner_agent = agent.Learner(
-        data_queue=data_queue,
         ext_q_network=ext_q_network,
         ext_q_optimizer=ext_q_optimizer,
         int_q_network=int_q_network,
@@ -229,7 +233,6 @@ def main(argv):
         transformed_retrace=FLAGS.transformed_retrace,
         priority_eta=FLAGS.priority_eta,
         batch_size=FLAGS.batch_size,
-        num_actors=FLAGS.num_actors,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
@@ -323,6 +326,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

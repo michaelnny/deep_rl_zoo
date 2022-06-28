@@ -43,15 +43,15 @@ from deep_rl_zoo import replay as replay_lib
 FLAGS = flags.FLAGS
 flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, LunarLander-v2.')
 flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use.')
-flags.DEFINE_integer('replay_capacity', 5000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size.')
+flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for adam.')
 flags.DEFINE_float('adam_eps', 0.001, 'Epsilon for adam.')
 flags.DEFINE_float('discount', 0.997, 'Discount rate.')
-flags.DEFINE_integer('unroll_length', 15, 'Sequence of transitions to unroll before add to replay.')
+flags.DEFINE_integer('unroll_length', 10, 'Sequence of transitions to unroll before add to replay.')
 flags.DEFINE_integer(
     'burn_in',
     5,
@@ -59,7 +59,7 @@ flags.DEFINE_integer(
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 8, 'Batch size for learning.')
+flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')
 
 flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.6, 'Importance sampling exponent value.')
@@ -82,6 +82,11 @@ flags.DEFINE_integer('actor_update_frequency', 100, 'The frequency (measured in 
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/r2d2_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/r2d2', 'Path for checkpoint directory.')
@@ -146,7 +151,7 @@ def main(argv):
 
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
-        structure=replay_lib.TransitionStructure,
+        structure=agent.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
         uniform_sample_probability=FLAGS.uniform_sample_probability,
@@ -160,7 +165,6 @@ def main(argv):
 
     # Create R2D2 learner instance
     learner_agent = agent.Learner(
-        data_queue=data_queue,
         network=network,
         optimizer=optimizer,
         replay=replay,
@@ -172,7 +176,6 @@ def main(argv):
         rescale_epsilon=FLAGS.rescale_epsilon,
         batch_size=FLAGS.batch_size,
         n_step=FLAGS.n_step,
-        num_actors=FLAGS.num_actors,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
@@ -233,6 +236,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

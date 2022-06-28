@@ -34,7 +34,7 @@ def _shaped_arange(*shape):
 
 def _ground_truth_calculation(
     discounts,
-    behaviour_action_log_probs,
+    behavior_action_log_probs,
     target_action_log_probs,
     rewards,
     values,
@@ -43,7 +43,7 @@ def _ground_truth_calculation(
     clip_pg_rho_threshold,
 ):
     """Calculates the ground truth for V-trace in Python/Numpy."""
-    log_rhos = target_action_log_probs - behaviour_action_log_probs
+    log_rhos = target_action_log_probs - behavior_action_log_probs
     vs = []
     seq_len = len(discounts)
     rhos = torch.exp(log_rhos)
@@ -94,7 +94,7 @@ class VtraceTest(parameterized.TestCase):
         log_rhos = _shaped_arange(seq_len, batch_size) / (batch_size * seq_len)
         log_rhos = 5 * (log_rhos - 0.5)  # [0.0, 1.0) -> [-2.5, 2.5).
         values = {
-            'behaviour_action_log_probs': torch.zeros_like(log_rhos),
+            'behavior_action_log_probs': torch.zeros_like(log_rhos),
             'target_action_log_probs': log_rhos,
             # T, B where B_i: [0.9 / (i+1)] * T
             'discounts': torch.tensor(

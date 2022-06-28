@@ -23,8 +23,7 @@ https://github.com/google-research/seed_rl/blob/66e8890261f09d0355e8bf5f1c5e4196
 This agent supports store hidden state (only first step in a unroll) in replay, and burn in.
 In fact, even if we use burn in, we're still going to store the hidden state (only first step in a unroll) in the replay.
 """
-from typing import Mapping, Optional, Tuple, NamedTuple
-import queue
+from typing import Mapping, Optional, Tuple, NamedTuple, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -311,23 +310,21 @@ class Actor(types_lib.Agent):
         self._network.load_state_dict(self._learner_network.state_dict())
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current actor's statistics as a dictionary."""
         return {'exploration_epsilon': self._exploration_epsilon}
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """R2D2 learner"""
 
     def __init__(
         self,
-        data_queue: multiprocessing.Queue,
         network: nn.Module,
         optimizer: torch.optim.Optimizer,
         replay: replay_lib.PrioritizedReplay,
         target_network_update_frequency: int,
         min_replay_size: int,
-        num_actors: int,
         batch_size: int,
         n_step: int,
         discount: float,
@@ -340,13 +337,11 @@ class Learner:
     ) -> None:
         """
         Args:
-            data_queue: a multiprocessing.Queue to get collected transitions from actor processes.
             network: the Q network we want to train and optimize.
             optimizer: the optimizer for Q network.
             replay: prioritized recurrent experience replay.
             target_network_update_frequency: how often to copy online network weights to target.
             min_replay_size: wait till experience replay buffer this number before start to learn.
-            num_actors: number of actor processes.
             batch_size: sample batch_size of transitions.
             n_step: TD n-step bootstrap.
             discount: the gamma discount for future rewards.
@@ -363,8 +358,6 @@ class Learner:
             )
         if not 1 <= min_replay_size:
             raise ValueError(f'Expect min_replay_size to be integer geater than or equal to 1, got {min_replay_size}')
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 1 <= n_step:
@@ -382,7 +375,6 @@ class Learner:
         self._optimizer = optimizer
         # Lazy way to create target Q network
         self._target_network = copy.deepcopy(self._online_network).to(device=self._device)
-        self._update_target_network()
 
         # Disable autograd for target network
         no_autograd(self._target_network)
@@ -400,50 +392,34 @@ class Learner:
         self._min_replay_size = min_replay_size
         self._priority_eta = priority_eta
 
-        self._num_actors = num_actors
-        self._queue = data_queue
-
         # Counters
         self._step_t = -1
-        self._update_t = -1
-        self._done_actors = 0
+        self._update_t = 0
+        self._target_update_t = 0
+        self._loss_t = np.nan
 
-    def run_train_loop(
-        self,
-    ) -> None:
-        """Start the learner training loop, only break if all actor processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # actor process is done
-                    self._done_actors += 1
-                else:
-                    # Use the unrolled sequence to calculate priority
-                    priority = self._compute_priority_for_unroll(item)
-                    self._replay.add(item, priority)
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            # Only break if all actor processes are done
-            if self._done_actors == self._num_actors:
-                break
+        if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
+            return None
 
-            if self._replay.size < self._min_replay_size:
-                continue
-
-            # Pull a batch of unrolls before next learning
-            if self._step_t % self._batch_size == 0:
-                self._learn()
+        self._learn()
+        return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_actors = 0
+
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        # Use the unrolled sequence to calculate priority
+        priority = self._compute_priority_for_unroll(item)
+        self._replay.add(item, priority)
 
     def _learn(self) -> None:
         transitions, indices, weights = self._replay.sample(self._batch_size)
@@ -455,7 +431,7 @@ class Learner:
         self._replay.update_priorities(indices, priorities)
 
         # Copy online Q network weights to target Q network, every m updates
-        if self._update_t % self._target_network_update_frequency == 0:
+        if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
     def _update(self, transitions: R2d2Transition, weights: np.ndarray) -> np.ndarray:
@@ -485,6 +461,9 @@ class Learner:
 
         self._optimizer.step()
         self._update_t += 1
+
+        # For logging only.
+        self._loss_t = loss.detach().cpu().item()
         return priorities
 
     def _calc_loss(
@@ -616,12 +595,15 @@ class Learner:
 
     def _update_target_network(self):
         self._target_network.load_state_dict(self._online_network.state_dict())
+        self._target_update_t += 1
 
     @property
-    def statistics(self):
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
+            'loss': self._loss_t,
             'discount': self._discount,
             'updates': self._update_t,
+            'target_updates': self._target_update_t,
         }

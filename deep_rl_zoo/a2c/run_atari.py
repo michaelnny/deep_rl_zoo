@@ -66,6 +66,11 @@ flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/a2c_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/a2c', 'Path for checkpoint directory.')
@@ -75,6 +80,7 @@ def main(argv):
     """Trains A2C agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Listen to signals to exit process.
     main_loop.handle_exit_signal()
@@ -125,7 +131,7 @@ def main(argv):
     assert pi_logits.shape == (1, num_actions)
     assert baseline.shape == (1, 1)
 
-    replay = replay_lib.SimpleReplay(capacity=FLAGS.batch_size * 5, structure=replay_lib.TransitionStructure)
+    replay = replay_lib.UniformReplay(FLAGS.batch_size, replay_lib.TransitionStructure, random_state)
 
     # Create queue shared between actors and learner
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
@@ -134,14 +140,12 @@ def main(argv):
     # Create A2C learner agent instance
     learner_agent = agent.Learner(
         lock=lock,
-        data_queue=data_queue,
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         replay=replay,
         discount=FLAGS.discount,
         n_step=FLAGS.n_step,
         batch_size=FLAGS.batch_size,
-        num_actors=FLAGS.num_actors,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,
         clip_grad=FLAGS.clip_grad,
@@ -197,6 +201,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

@@ -20,9 +20,8 @@ https://arxiv.org/abs/1705.05363
 From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 """
-from typing import NamedTuple, Mapping, Tuple, Optional
+from typing import NamedTuple, Mapping, Tuple, Optional, Text
 import itertools
-import queue
 import multiprocessing
 import numpy as np
 import torch
@@ -117,17 +116,16 @@ class Actor(types_lib.Agent):
         return a_t.cpu().item(), logits_t.squeeze(0).cpu().numpy()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {}
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """PPO-ICM learner"""
 
     def __init__(
         self,
-        data_queue: multiprocessing.Queue,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
         old_policy_network: nn.Module,
@@ -144,7 +142,6 @@ class Learner:
         policy_lambda: float,
         extrinsic_reward_coef: float,
         intrinsic_reward_coef: float,
-        num_actors: int,
         entropy_coef: float,
         baseline_coef: float,
         clip_grad: bool,
@@ -153,7 +150,6 @@ class Learner:
     ) -> None:
         """
         Args:
-            data_queue: a multiprocessing.Queue to get collected transitions from worker processes.
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             old_policy_network: the old policy network used for workers.
@@ -170,7 +166,6 @@ class Learner:
             policy_lambda: weights policy loss against the importance of learning the intrinsic reward.
             extrinsic_reward_coef: weights intrinsic reward from environment.
             intrinsic_reward_coef: weights intrinsic reward from ICM module.
-            num_actors: number of worker processes.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
@@ -198,8 +193,6 @@ class Learner:
             raise ValueError(f'Expect extrinsic_reward_coef to in the range [0.0, 10.0], got {extrinsic_reward_coef}')
         if not 0.0 <= intrinsic_reward_coef <= 10.0:
             raise ValueError(f'Expect intrinsic_reward_coef to in the range [0.0, 10.0], got {intrinsic_reward_coef}')
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
         if not 0.0 < entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to (0.0, 1.0], got {entropy_coef}')
         if not 0.0 < baseline_coef <= 1.0:
@@ -239,46 +232,33 @@ class Learner:
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        self._queue = data_queue
-        self._num_actors = num_actors
-
         # Counters
         self._step_t = -1
-        self._update_t = -1
-        self._done_workers = 0
+        self._update_t = 0
+        self._policy_loss_t = np.nan
+        self._icm_loss_t = np.nan
 
-    def run_train_loop(self) -> None:
-        """Start the train loop, only break if all worker processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # worker process is done
-                    self._done_workers += 1
-                else:
-                    self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            # Only break if all worker processes are done
-            if self._done_workers == self._num_actors:
-                break
+        if len(self._storage) < self._batch_size:
+            return None
 
-            # This is to check num_actors * unroll_length
-            if len(self._storage) < self._num_actors:
-                continue
-
-            self._learn()
+        self._learn()
+        return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_workers = 0
         self._storage = []
+
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
 
     def _learn(self) -> None:
         # Merge list of lists into a single big list, this contains transitions from all workers.
@@ -315,6 +295,9 @@ class Learner:
 
         self._icm_optimizer.step()
 
+        # For logging only.
+        self._icm_loss_t = loss.detach().cpu().item()
+
         return icm_output
 
     def _update_policy(self, transitions: replay_lib.OffPolicyTransition, icm_output: IcmModuleOutput) -> None:
@@ -331,6 +314,9 @@ class Learner:
 
         self._policy_optimizer.step()
         self._update_t += 1
+
+        # For logging only.
+        self._policy_loss_t = loss.detach().cpu().item()
 
     def _calc_icm_loss(self, transitions: replay_lib.OffPolicyTransition) -> Tuple[torch.Tensor, IcmModuleOutput]:
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
@@ -466,11 +452,13 @@ class Learner:
         return self._clip_epsilon(self._step_t)
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'icm_learning_rate': self._icm_optimizer.param_groups[0]['lr'],
+            'policy_loss': self._policy_loss_t,
+            'icm_loss': self._icm_loss_t,
             'discount': self._discount,
             'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,

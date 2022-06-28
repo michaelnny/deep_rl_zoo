@@ -71,6 +71,11 @@ flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per 
 flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/ppo_rnd_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/ppo_rnd', 'Path for checkpoint directory.')
@@ -158,7 +163,6 @@ def main(argv):
 
     # Create PPO-RND learner agent instance
     learner_agent = agent.Learner(
-        data_queue=data_queue,
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         old_policy_network=old_policy_network,
@@ -175,7 +179,6 @@ def main(argv):
         extrinsic_reward_coef=FLAGS.extrinsic_reward_coef,
         intrinsic_reward_coef=FLAGS.intrinsic_reward_coef,
         rnd_experience_proportion=FLAGS.rnd_experience_proportion,
-        num_actors=FLAGS.num_actors,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,
         clip_grad=FLAGS.clip_grad,
@@ -231,6 +234,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

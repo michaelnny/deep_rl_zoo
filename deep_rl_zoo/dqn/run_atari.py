@@ -44,7 +44,7 @@ flags.DEFINE_integer('replay_capacity', 200000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 50000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_end_value', 0.1, 'End (decayed) value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_decay_step', 1000000, 'Total steps to decay value of the exploration rate.')
@@ -64,6 +64,11 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/dqn_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/dqn', 'Path for checkpoint directory.')
@@ -179,6 +184,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

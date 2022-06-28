@@ -20,12 +20,7 @@
 """Common types"""
 import abc
 
-from typing import (
-    NamedTuple,
-    Text,
-    Mapping,
-    Optional,
-)
+from typing import NamedTuple, Text, Mapping, Optional, Any
 import numpy as np
 
 Action = int
@@ -44,6 +39,7 @@ class Agent(abc.ABC):
     """Agent interface."""
 
     agent_name: str  # agent name
+    step_t: int  # runtime steps
 
     @abc.abstractmethod
     def step(self, timestep: TimeStep) -> Action:
@@ -55,6 +51,34 @@ class Agent(abc.ABC):
 
         This method should be called at the beginning of every episode.
         """
+
+    @property
+    @abc.abstractmethod
+    def statistics(self) -> Mapping[Text, float]:
+        """Returns current agent statistics as a dictionary."""
+
+
+class Learner(abc.ABC):
+    """Learner interface."""
+
+    agent_name: str  # agent name
+    step_t: int  # train steps
+
+    @abc.abstractmethod
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
+
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+
+    @abc.abstractmethod
+    def reset(self) -> None:
+        """Should be called at the begining of every iteration."""
+
+    @abc.abstractmethod
+    def received_item_from_queue(self, item: Any) -> None:
+        """Received item send by actors through multiprocessing queue."""
 
     @property
     @abc.abstractmethod

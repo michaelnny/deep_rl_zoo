@@ -31,7 +31,6 @@ class DqnNetworkOutputs(NamedTuple):
 class C51NetworkOutputs(NamedTuple):
     q_values: torch.Tensor
     q_logits: torch.Tensor  # use logits and log_softmax() when calculate loss to avoid log() on zero cause NaN
-    q_dist: torch.Tensor
 
 
 class QRDqnNetworkOutputs(NamedTuple):
@@ -141,9 +140,9 @@ class C51DqnMlpNet(nn.Module):
 
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1).detach()
+        q_values = torch.sum(q_dist * atoms, dim=-1)
 
-        return C51NetworkOutputs(q_logits=q_logits, q_dist=q_dist, q_values=q_values)
+        return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
 
 class RainbowDqnMlpNet(nn.Module):
@@ -207,9 +206,9 @@ class RainbowDqnMlpNet(nn.Module):
 
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1).detach()
+        q_values = torch.sum(q_dist * atoms, dim=-1)
 
-        return C51NetworkOutputs(q_logits=q_logits, q_dist=q_dist, q_values=q_values)
+        return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
     def reset_noise(self) -> None:
         """Reset noisy layer"""
@@ -258,7 +257,7 @@ class QRDqnMlpNet(nn.Module):
         """Given state, return state-action value for all possible actions."""
         # No softmax as the model is trying to approximate the 'whole' probability distributions
         q_dist = self.body(x).view(-1, self.num_taus, self.num_actions)  # [batch_size, num_taus, num_actions]
-        q_values = torch.mean(q_dist, dim=1).detach()
+        q_values = torch.mean(q_dist, dim=1)
 
         return QRDqnNetworkOutputs(q_values=q_values, q_dist=q_dist)
 
@@ -349,7 +348,7 @@ class IqnMlpNet(nn.Module):
         # No softmax as the model is trying to approximate the 'whole' probability distributions
         q_dist = self.value_head(head_input)  # [batch_size x num_taus, num_actions]
         q_dist = q_dist.view(batch_size, -1, self.num_actions)  # [batch_size, num_taus, num_actions]
-        q_values = torch.mean(q_dist, dim=1).detach()  # [batch_size, num_actions]
+        q_values = torch.mean(q_dist, dim=1)  # [batch_size, num_actions]
         return IqnNetworkOutputs(q_values=q_values, q_dist=q_dist, taus=taus)
 
 
@@ -570,6 +569,9 @@ class NguDqnMlpNet(nn.Module):
             nn.Linear(256, 1),
         )
 
+        # Initialize weights.
+        common.initialize_weights(self)
+
     def forward(self, input_: NguDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
         Given state, return state-action value for all possible actions.
@@ -709,9 +711,9 @@ class C51DqnConvNet(nn.Module):
 
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1).detach()
+        q_values = torch.sum(q_dist * atoms, dim=-1)
 
-        return C51NetworkOutputs(q_logits=q_logits, q_dist=q_dist, q_values=q_values)
+        return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
 
 class RainbowDqnConvNet(nn.Module):
@@ -773,9 +775,9 @@ class RainbowDqnConvNet(nn.Module):
 
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1).detach()
+        q_values = torch.sum(q_dist * atoms, dim=-1)
 
-        return C51NetworkOutputs(q_logits=q_logits, q_dist=q_dist, q_values=q_values)
+        return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
     def reset_noise(self) -> None:
         """Reset noisy layer"""
@@ -829,7 +831,7 @@ class QRDqnConvNet(nn.Module):
         q_dist = self.value_head(x)
         # No softmax as the model is trying to approximate the 'whole' probability distributions
         q_dist = q_dist.view(-1, self.num_taus, self.num_actions)  # [batch_size, num_taus, num_actions]
-        q_values = torch.mean(q_dist, dim=1).detach()
+        q_values = torch.mean(q_dist, dim=1)
 
         return QRDqnNetworkOutputs(q_values=q_values, q_dist=q_dist)
 
@@ -920,7 +922,7 @@ class IqnConvNet(nn.Module):
         # No softmax as the model is trying to approximate the 'whole' probability distributions
         q_dist = self.value_head(head_input)  # [batch_size x num_taus, num_actions]
         q_dist = q_dist.view(batch_size, -1, self.num_actions)  # [batch_size, num_taus, num_actions]
-        q_values = torch.mean(q_dist, dim=1).detach()  # [batch_size, num_actions]
+        q_values = torch.mean(q_dist, dim=1)  # [batch_size, num_actions]
         return IqnNetworkOutputs(q_values=q_values, q_dist=q_dist, taus=taus)
 
 
@@ -1017,23 +1019,27 @@ class R2d2DqnConvNet(nn.Module):
         self.num_actions = num_actions
 
         self.body = common.NatureCnnBodyNet(input_shape)
+        self.fc = nn.Linear(self.body.out_features, 512)
 
         # Feature representation output size + one-hot of last action + last reward.
-        out_size = self.body.out_features + self.num_actions + 1
+        out_size = self.fc.out_features + self.num_actions + 1
 
         self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=1)
 
-        self.advantage_head = nn.Sequential(
-            nn.Linear(out_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+        self.advantage_head = nn.Linear(out_size, num_actions)
+        self.value_head = nn.Linear(out_size, 1)
 
-        self.value_head = nn.Sequential(
-            nn.Linear(out_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        # self.advantage_head = nn.Sequential(
+        #     nn.Linear(out_size, 512),
+        #     nn.ReLU(),
+        #     nn.Linear(512, num_actions),
+        # )
+
+        # self.value_head = nn.Sequential(
+        #     nn.Linear(out_size, 512),
+        #     nn.ReLU(),
+        #     nn.Linear(512, 1),
+        # )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -1067,6 +1073,7 @@ class R2d2DqnConvNet(nn.Module):
         x = x.float() / 255.0
         x = self.body(x)
         x = x.view(T * B, -1)
+        x = F.relu(self.fc(x))
 
         # Append reward and one hot last action.
         one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)

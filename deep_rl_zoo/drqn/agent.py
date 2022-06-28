@@ -142,8 +142,8 @@ class Drqn(types_lib.Agent):
 
         # Counters and stats
         self._step_t = -1
-        self._update_t = -1
-        self._target_update_t = -1
+        self._update_t = 0
+        self._target_update_t = 0
         self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -208,7 +208,7 @@ class Drqn(types_lib.Agent):
         self._update(transitions)
 
         # Update target Q network weights
-        if self._update_t % self._target_network_update_frequency == 0:
+        if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
     def _update(self, transitions):

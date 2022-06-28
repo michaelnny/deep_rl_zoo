@@ -18,9 +18,8 @@ From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 """
 
-from typing import Mapping, Tuple
+from typing import Mapping, Tuple, Text
 import itertools
-import queue
 import multiprocessing
 import numpy as np
 import torch
@@ -105,17 +104,16 @@ class Actor(types_lib.Agent):
         return a_t.cpu().item(), logits_t.squeeze(0).cpu().numpy()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {}
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """PPO learner"""
 
     def __init__(
         self,
-        data_queue: multiprocessing.Queue,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
         old_policy_network: nn.Module,
@@ -125,7 +123,6 @@ class Learner:
         unroll_length: int,
         update_k: int,
         batch_size: int,
-        num_actors: int,
         entropy_coef: float,
         baseline_coef: float,
         clip_grad: bool,
@@ -134,7 +131,6 @@ class Learner:
     ) -> None:
         """
         Args:
-            data_queue: a multiprocessing.Queue to get collected transitions from worker processes.
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             old_policy_network: the old policy network used for workers.
@@ -144,7 +140,6 @@ class Learner:
             unroll_length: rollout length.
             update_k: update k times when it's time to do learning.
             batch_size: batch size for learning.
-            num_actors: number of worker processes.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
@@ -162,8 +157,6 @@ class Learner:
             raise ValueError(f'Expect update_k to be integer geater than or equal to 1, got {update_k}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
         if not 0.0 < entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to (0.0, 1.0], got {entropy_coef}')
         if not 0.0 < baseline_coef <= 1.0:
@@ -191,45 +184,32 @@ class Learner:
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        self._queue = data_queue
-        self._num_actors = num_actors
-
         # Counters
         self._step_t = -1
-        self._update_t = -1
-        self._done_workers = 0
+        self._update_t = 0
+        self._loss_t = np.nan
 
-    def run_train_loop(self) -> None:
-        """Start the train loop, only break if all worker processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # worker process is done
-                    self._done_workers += 1
-                else:
-                    self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-            # Only break if all worker processes are done
-            if self._done_workers == self._num_actors:
-                break
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            # This is to check num_actors * unroll_length
-            if len(self._storage) < self._num_actors:
-                continue
+        if len(self._storage) < self._batch_size:
+            return None
 
-            self._learn()
+        self._learn()
+        return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_workers = 0
         self._storage = []
+
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
 
     def _learn(self) -> None:
         # Merge list of lists into a single big list, this contains transitions from all workers.
@@ -265,6 +245,9 @@ class Learner:
 
         self._policy_optimizer.step()
         self._update_t += 1
+
+        # For logging only.
+        self._loss_t = loss.detach().cpu().item()
 
     def _calc_loss(self, transitions: replay_lib.OffPolicyTransition) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
@@ -332,10 +315,11 @@ class Learner:
         return self._clip_epsilon(self._step_t)
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            'loss': self._loss_t,
             'discount': self._discount,
             'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,

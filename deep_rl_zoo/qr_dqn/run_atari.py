@@ -44,7 +44,7 @@ flags.DEFINE_integer('replay_capacity', 200000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 50000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_end_value', 0.1, 'End (decayed) value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_decay_step', 1000000, 'Total steps to decay value of the exploration rate.')
@@ -60,7 +60,7 @@ flags.DEFINE_integer('num_quantiles', 201, 'Number of quantiles.')
 flags.DEFINE_float('huber_param', 1.0, 'Huber loss parameter.')
 
 flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
-flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate.')
+flags.DEFINE_float('learning_rate', 0.00005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
@@ -74,6 +74,11 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/qr_dqn_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/qr_dqn', 'Path for checkpoint directory.')
@@ -210,6 +215,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

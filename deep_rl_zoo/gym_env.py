@@ -361,9 +361,10 @@ class ObservationChannelFirst(gym.ObservationWrapper):
 
     def observation(self, observation):
         # permute [H, W, C] array to in the range [C, H, W]
-        obs = np.asarray(observation).transpose(2, 0, 1)
+        return np.transpose(observation, axes=(2, 0, 1))
+        # obs = np.asarray(observation, dtype=self.observation_space.dtype).transpose(2, 0, 1)
         # make sure it's C-contiguous for compress state
-        return np.ascontiguousarray(obs, dtype=self.observation_space.dtype)
+        # return np.ascontiguousarray(obs, dtype=self.observation_space.dtype)
 
 
 class ObservationToNumpy(gym.ObservationWrapper):

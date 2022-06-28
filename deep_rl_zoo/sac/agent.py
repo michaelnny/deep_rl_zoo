@@ -21,8 +21,7 @@ From the paper "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement
 https://arxiv.org/abs/1801.01290.
 """
 
-from typing import Mapping, Tuple
-import queue
+from typing import Mapping, Tuple, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -116,17 +115,16 @@ class Actor(types_lib.Agent):
             return a_t.cpu().item()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {}
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """SAC learner"""
 
     def __init__(
         self,
-        data_queue: multiprocessing.Queue,
         replay: replay_lib.UniformReplay,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
@@ -137,7 +135,6 @@ class Learner:
         discount: float,
         n_step: int,
         batch_size: int,
-        num_actors: int,
         num_actions: int,
         min_replay_size: int,
         learn_frequency: int,
@@ -148,7 +145,6 @@ class Learner:
     ) -> None:
         """
         Args:
-            data_queue: a multiprocessing.Queue to get collected transitions from worker processes.
             replay: simple experience replay to store transitions.
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
@@ -159,7 +155,6 @@ class Learner:
             discount: the gamma discount for future rewards.
             n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
-            num_actors: number of worker processes.
             num_actions: number of actions for the environment.
             min_replay_size: minimum replay size before do learning.
             learn_frequency: how often should the agent learn.
@@ -175,8 +170,6 @@ class Learner:
 
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
         if not 1 <= num_actions:
             raise ValueError(f'Expect num_actions to be integer geater than or equal to 1, got {num_actions}')
         if not 1 <= learn_frequency:
@@ -226,47 +219,34 @@ class Learner:
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        self._queue = data_queue
-        self._num_actors = num_actors
-
         # Counters
         self._step_t = -1
-        self._update_t = -1
-        self._done_workers = 0
+        self._update_t = 0
+        self._q1_loss_t = np.nan
+        self._q2_loss_t = np.nan
+        self._policy_loss_t = np.nan
 
-    def run_train_loop(self) -> None:
-        """Start the train loop, only break if all worker processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # worker process is done
-                    self._done_workers += 1
-                else:
-                    self._replay.add(item)
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-            # Only break if all worker processes are done
-            if self._done_workers == self._num_actors:
-                break
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            if self._replay.size < self._min_replay_size:
-                continue
+        if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
+            return None
 
-            # Parallelism adjusted learn frequency over number of workers
-            # master step_t is not in sync with worker, it's faster (about num_actors faster)
-            if self._step_t % (self._learn_frequency * self._num_actors) == 0:
-                self._learn()
+        self._learn()
+        return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_workers = 0
         self._replay.reset()
+
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        self._replay.add(item)
 
     def _learn(self) -> None:
         # Note we don't clear old samples since this off-policy learning
@@ -303,6 +283,10 @@ class Learner:
         self._q1_optimizer.step()
         self._q2_optimizer.step()
 
+        # For logging only.
+        self._q1_loss_t = q1_loss.detach().cpu().item()
+        self._q2_loss_t = q2_loss.detach().cpu().item()
+
     def _update_pi(self, transitions: replay_lib.Transition) -> None:
         self._policy_optimizer.zero_grad()
         self._ent_coef_optimizer.zero_grad()
@@ -325,6 +309,9 @@ class Learner:
 
         self._policy_optimizer.step()
         self._ent_coef_optimizer.step()
+
+        # For logging only.
+        self._policy_loss_t = loss.detach().cpu().item()
 
     def _calc_q_loss(self, transitions: replay_lib.Transition) -> Tuple[torch.Tensor, torch.Tensor]:
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
@@ -426,11 +413,14 @@ class Learner:
         return torch.exp(self._log_ent_coef.detach())
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'discount': self._discount,
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'q1_learning_rate': self._q1_optimizer.param_groups[0]['lr'],
             'q2_learning_rate': self._q2_optimizer.param_groups[0]['lr'],
+            'policy_loss': self._policy_loss_t,
+            'q1_loss': self._q1_loss_t,
+            'q2_loss': self._q2_loss_t,
         }

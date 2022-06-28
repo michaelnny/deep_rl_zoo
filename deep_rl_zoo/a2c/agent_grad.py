@@ -29,8 +29,7 @@ Synchronous, Deterministic variant of A3C
 https://openai.com/blog/baselines-acktr-a2c/.
 """
 import collections
-from typing import List, Mapping
-import queue
+from typing import List, Mapping, Text
 import multiprocessing
 import numpy as np
 import torch
@@ -83,7 +82,6 @@ class Actor(types_lib.Agent):
             discount: the gamma discount for future rewards.
             n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
-            num_actors: number of worker processes.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value loss.
             compress_gradient, if True, compress numpy arrays before put on to multiprocessing.Queue.
@@ -237,22 +235,21 @@ class Actor(types_lib.Agent):
         return loss
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {}
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """A2C GRAD learner"""
 
     def __init__(
         self,
         lock: multiprocessing.Lock,
-        gradient_queue: multiprocessing.Queue,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
         gradient_replay: replay_lib.GradientReplay,
-        num_actors: int,
+        batch_size: int,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
@@ -260,73 +257,53 @@ class Learner:
         """
         Args:
             lock: multiprocessing.Lock to synchronize with worker processes.
-            gradient_queue: a multiprocessing.Queue to get collected gradients from worker processes.
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             gradient_replay: simple storage to store gradients.
-            num_actors: number of worker processes.
+            batch_size: sample batch_size of number of accmulated gradients.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
         """
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
 
-        self.agent_name = 'A2C-learner'
+        self.agent_name = 'A2C-GRAD-learner'
         self._device = device
         self._policy_network = policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
 
-        self._num_actors = num_actors
-        self._queue = gradient_queue
         self._lock = lock
         self._replay = gradient_replay
+        self._batch_size = batch_size
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
-        self._done_workers = 0
-        self._update_t = -1
         self._step_t = -1
+        self._update_t = 0
 
-        self._statistics = {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-        }
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-    def run_train_loop(self) -> None:
-        """Start the train loop, only break if all worker processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # worker process is done
-                    self._done_workers += 1
-                else:
-                    self._replay.add(item)
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            # Only break if all worker processes are done
-            if self._done_workers == self._num_actors:
-                break
+        if self._replay.size < self._batch_size:
+            return None
 
-            # Approximatelly every worker has send it's local gradients to the queue
-            # since we can't guarrante the order which worker put how many onto queue
-            if self._replay.size < self._num_actors:
-                continue
-
-            # Blocking while master is updating network weights
-            with self._lock:
-                self._learn()
+        # Blocking while master is updating network weights
+        with self._lock:
+            self._learn()
+            return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_workers = 0
         self._replay.reset()
+
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        self._replay.add(item)
 
     def _learn(self) -> None:
         # Get aggregate batch gradients
@@ -354,6 +331,9 @@ class Learner:
         self._policy_optimizer.step()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
-        return self._statistics
+        return {
+            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            'updates': self._update_t,
+        }

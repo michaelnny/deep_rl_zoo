@@ -36,7 +36,7 @@ from deep_rl_zoo import replay as replay_lib
 FLAGS = flags.FLAGS
 flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
@@ -48,6 +48,11 @@ flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per 
 flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/actor_critic_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/actor_critic', 'Path for checkpoint directory.')
@@ -94,14 +99,11 @@ def main(argv):
     assert pi_logits.shape == (1, num_actions)
     assert baseline.shape == (1, 1)
 
-    replay = replay_lib.SimpleReplay(capacity=3000, structure=replay_lib.TransitionStructure)
-
     # Create Actor-Critic agent instance
     train_agent = agent.ActorCritic(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         transition_accumulator=replay_lib.NStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
-        replay=replay,
         discount=FLAGS.discount,
         n_step=FLAGS.n_step,
         batch_size=FLAGS.batch_size,
@@ -140,6 +142,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

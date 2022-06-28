@@ -49,7 +49,7 @@ flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 64, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
 flags.DEFINE_float('priority_exponent', 0.6, 'Priotiry exponent used in prioritized replay.')
@@ -59,8 +59,8 @@ flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when samp
 flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 
 flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the categorical DQN.')
-flags.DEFINE_float('v_min', -50.0, 'Minimum elements value in the support of the categorical DQN.')
-flags.DEFINE_float('v_max', 50.0, 'Maximum elements value in the support of the categorical DQN.')
+flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
+flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
 
 flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
@@ -76,6 +76,11 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/rainbow_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/rainbow', 'Path for checkpoint directory.')
@@ -118,9 +123,9 @@ def main(argv):
 
     # Test network input and output
     network_output = network(torch.from_numpy(obs[None, ...]).float())
-    q_dist = network_output.q_dist
+    q_logits = network_output.q_logits
     q_values = network_output.q_values
-    assert q_dist.shape == (1, num_actions, FLAGS.num_atoms)
+    assert q_logits.shape == (1, num_actions, FLAGS.num_atoms)
     assert q_values.shape == (1, num_actions)
 
     # Create prioritized transition replay
@@ -189,6 +194,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

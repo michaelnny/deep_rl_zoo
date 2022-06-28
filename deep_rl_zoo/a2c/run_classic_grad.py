@@ -51,18 +51,24 @@ flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like C
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_bool('compress_gradient', True, 'Actor process to compress the local gradients before put on queue, default on.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 32, 'Accumulate batch size transitions before do learning.')
+flags.DEFINE_integer('learner_batch_size', 16, 'Accumulate batch size of gradients before do back-propagation.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
 flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/a2c_grad_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/a2c_grad', 'Path for checkpoint directory.')
@@ -122,11 +128,10 @@ def main(argv):
     # Create A2C learner agent instance
     learner_agent = agent.Learner(
         lock=lock,
-        gradient_queue=gradient_queue,
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         gradient_replay=gradient_replay,
-        num_actors=FLAGS.num_actors,
+        batch_size=FLAGS.learner_batch_size,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
@@ -187,6 +192,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

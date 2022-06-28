@@ -321,9 +321,6 @@ class ActorConvNet(nn.Module):
             nn.Linear(512, num_actions),
         )
 
-        # Initialize weights.
-        common.initialize_weights(self)
-
     def forward(self, x: torch.Tensor) -> ActorNetworkOutputs:
         """Given raw state x, predict the action probability distribution."""
         # Extract features from raw input state
@@ -347,9 +344,6 @@ class CriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
-
-        # Initialize weights.
-        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
         """Given raw state x, predict the state-value."""
@@ -379,9 +373,6 @@ class ActorCriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
-
-        # Initialize weights.
-        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
@@ -414,7 +405,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         out_size = self.body.out_features + self.num_actions + 1
 
         if self.use_lstm:
-            self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=1)
+            self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=2)
 
         self.policy_head = nn.Sequential(
             nn.Linear(out_size, 512),
@@ -470,13 +461,14 @@ class ImpalaActorCriticConvNet(nn.Module):
 
         T, B, *_ = s_t.shape  # [T, B, input_shape].
         x = torch.flatten(s_t, 0, 1)  # Merge time and batch.
-        x = x.float() / 255.0
+
         # Extract features from raw input state
+        x = x.float() / 255.0
         x = self.body(x)
         features = x.view(T * B, -1)
 
         # Append clipped last reward and one hot last action.
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=features.device)
         rewards = r_t.view(T * B, 1)
         core_input = torch.cat([features, rewards, one_hot_a_tm1], dim=-1)
 
@@ -546,9 +538,6 @@ class RndActorCriticConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 1),
         )
-
-        # Initialize weights.
-        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,

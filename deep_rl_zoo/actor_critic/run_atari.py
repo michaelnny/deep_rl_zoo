@@ -53,6 +53,11 @@ flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/actor_critic_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/actor_critic', 'Path for checkpoint directory.')
@@ -109,14 +114,11 @@ def main(argv):
     assert pi_logits.shape == (1, num_actions)
     assert baseline.shape == (1, 1)
 
-    replay = replay_lib.SimpleReplay(capacity=FLAGS.max_episode_steps, structure=replay_lib.TransitionStructure)
-
     # Create Actor-Critic agent instance
     train_agent = agent.ActorCritic(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         transition_accumulator=replay_lib.NStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
-        replay=replay,
         discount=FLAGS.discount,
         n_step=FLAGS.n_step,
         batch_size=FLAGS.batch_size,
@@ -155,6 +157,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

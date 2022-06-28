@@ -37,10 +37,10 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'LunarLander-v2', 'Classic game name like LunarLander-v2, MountainCar-v0.')
-flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use.')
+flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, LunarLander-v2, MountainCar-v0.')
+flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use.')
 flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
@@ -53,27 +53,27 @@ flags.DEFINE_float('int_discount', 0.99, 'Intrinsic reward discount rate.')
 flags.DEFINE_integer('unroll_length', 15, 'Sequence of transitions to unroll before add to replay.')
 flags.DEFINE_integer(
     'burn_in',
-    5,
+    0,
     'Sequence of transitions used to pass RNN before actual learning.'
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 8, 'Batch size for learning.')
+flags.DEFINE_integer('batch_size', 64, 'Batch size for learning.')
+flags.DEFINE_float('policy_beta', 0.5, 'Scalar for the intrinsic reward scale.')
+flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
 
-flags.DEFINE_float('policy_beta', 0.3, 'Scalar for the intrinsic reward scale.')
-flags.DEFINE_integer('num_policies', 16, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
 flags.DEFINE_integer('ucb_window_size', 90, 'Sliding window size of the UCB algorithm.')
 flags.DEFINE_float('ucb_beta', 1.0, 'Beta for the UCB algorithm.')
 flags.DEFINE_float('ucb_epsilon', 0.5, 'Exploration epsilon for the UCB algorithm.')
 
 flags.DEFINE_integer('episodic_memory_capacity', 1000, 'Maximum size of episodic memory.')
 flags.DEFINE_integer('num_neighbors', 10, 'Number of K-nearest neighbors.')
-flags.DEFINE_float('kernel_epsilon', 0.0001, 'K-nearest neighbors kernel epsilon.')
+flags.DEFINE_float('kernel_epsilon', 0.01, 'K-nearest neighbors kernel epsilon.')
 flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distance.')
 flags.DEFINE_float('max_similarity', 8.0, 'K-nearest neighbors custer distance.')
 
-flags.DEFINE_float('retrace_lambda', 0.95, 'Lambda coefficient for retrace.')
-flags.DEFINE_bool('transformed_retrace', False, 'Transformed retrace loss, default off.')
+flags.DEFINE_float('retrace_lambda', 0.97, 'Lambda coefficient for retrace.')
+flags.DEFINE_bool('transformed_retrace', True, 'Transformed retrace loss, default on.')
 
 flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.0, 'Importance sampling exponent value.')
@@ -86,13 +86,18 @@ flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per 
 flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    100,
+    50,
     'Number of learner online Q network updates before update target Q networks.',
 )
 flags.DEFINE_integer('actor_update_frequency', 100, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/agent57_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/agent57', 'Path for checkpoint directory.')
@@ -179,7 +184,7 @@ def main(argv):
 
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
-        structure=replay_lib.TransitionStructure,
+        structure=agent.TransitionStructure,
         priority_exponent=FLAGS.priority_exponent,
         importance_sampling_exponent=importance_sampling_exponent_schedule,
         uniform_sample_probability=FLAGS.uniform_sample_probability,
@@ -193,7 +198,6 @@ def main(argv):
 
     # Create Agent57 learner instance
     learner_agent = agent.Learner(
-        data_queue=data_queue,
         ext_q_network=ext_q_network,
         ext_q_optimizer=ext_q_optimizer,
         int_q_network=int_q_network,
@@ -211,7 +215,6 @@ def main(argv):
         transformed_retrace=FLAGS.transformed_retrace,
         priority_eta=FLAGS.priority_eta,
         batch_size=FLAGS.batch_size,
-        num_actors=FLAGS.num_actors,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
@@ -305,6 +308,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

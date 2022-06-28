@@ -27,7 +27,7 @@ import timeit
 from pathlib import Path
 import shutil
 import collections
-from typing import Any, Iterable, Mapping, Optional, Tuple, Union
+from typing import Any, Text, Iterable, Mapping, Optional, Tuple, Union
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
@@ -127,7 +127,7 @@ class StepRateTracker:
         self._num_steps_since_reset = 0
         self._start = timeit.default_timer()
 
-    def get(self) -> Mapping[str, float]:
+    def get(self) -> Mapping[Text, float]:
         """Returns statistics as a dictionary."""
         duration = timeit.default_timer() - self._start
         if self._num_steps_since_reset > 0:
@@ -188,6 +188,43 @@ class TensorboardStepRateTracker(StepRateTracker):
             self._writer.add_scalar('performance(env_steps)/step_rate(second)', time_stats['step_rate'], tb_steps)
 
 
+class TensorboardScreenshotTracker:
+    """Take screenshots of the environment and add to tensorboard every N episodes.
+    This should be used for debugging only."""
+
+    def __init__(self, writer: SummaryWriter, log_interval: int = 100):
+        self._num_steps_since_reset = None
+        self._log_interval = log_interval
+        self._writer = writer
+
+    def step(self, env, timestep_t, agent, a_t) -> None:
+        """Accumulates statistics from timestep."""
+        del (agent, a_t)
+
+        if timestep_t.done:
+            self._num_steps_since_reset += 1
+
+            if self._num_steps_since_reset % self._log_interval == 0:
+                try:
+                    img = env.render(mode='rgb_array')
+                    self._writer.add_image(
+                        f'debug(episode)/done_episode_{self._num_steps_since_reset}',
+                        img,
+                        self._num_steps_since_reset,
+                        dataformats='HWC',
+                    )
+                except Exception:
+                    pass
+
+    def reset(self) -> None:
+        """Reset statistics."""
+        self._num_steps_since_reset = 0
+
+    def get(self) -> Mapping[Text, float]:
+        """Returns statistics as a dictionary."""
+        return {}
+
+
 class TensorboardAgentStatisticsTracker:
     """Write agent statistics to tensorboard"""
 
@@ -216,14 +253,77 @@ class TensorboardAgentStatisticsTracker:
         """Reset statistics."""
         self._num_steps_since_reset = 0
 
-    def get(self) -> Mapping[str, float]:
+    def get(self) -> Mapping[Text, float]:
         """Returns statistics as a dictionary."""
         return {}
 
 
-def make_default_trackers(run_log_dir=None):
+class TensorboardLearnerStatisticsTracker:
+    """Write learner statistics to tensorboard in actor-learner scheme"""
+
+    def __init__(self, writer: SummaryWriter):
+        self._num_steps_since_reset = None
+        self._writer = writer
+
+    def step(self, stats) -> None:
+        """Accumulates statistics from timestep."""
+        # Log every N train steps. This should not block the traning if there's any exception.
+        if self._num_steps_since_reset % 50 == 0:
+            try:
+                if stats:
+                    for k, v in stats.items():
+                        if isinstance(v, (int, float)):
+                            self._writer.add_scalar(f'learner_statistics(train_steps)/{k}', v, self._num_steps_since_reset)
+            except Exception:
+                pass
+
+        self._num_steps_since_reset += 1
+
+    def reset(self) -> None:
+        """Reset statistics."""
+        self._num_steps_since_reset = 0
+
+    def get(self) -> Mapping[Text, float]:
+        """Returns statistics as a dictionary."""
+        return {}
+
+
+def make_default_trackers(log_dir=None, debug_screenshots_frequency=0):
     """
     Create trackers for the training/evaluation run.
+
+    Args:
+        log_dir: tensorboard runtime log directory.
+        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
+    """
+
+    if log_dir:
+        log_dir = Path(f'runs/{log_dir}')
+
+        # Remove existing log directory
+        if log_dir.exists() and log_dir.is_dir():
+            shutil.rmtree(log_dir)
+
+        writer = SummaryWriter(log_dir)
+
+        trackers = [
+            TensorboardEpisodTracker(writer),
+            TensorboardStepRateTracker(writer),
+            TensorboardAgentStatisticsTracker(writer),
+        ]
+
+        if debug_screenshots_frequency > 0:
+            trackers.append(TensorboardScreenshotTracker(writer, debug_screenshots_frequency))
+
+        return trackers
+
+    else:
+        return [EpisodeTracker(), StepRateTracker()]
+
+
+def make_learner_trackers(run_log_dir=None):
+    """
+    Create trackers for learner for parallel training (actor-learner) run.
 
     Args:
         run_log_dir: tensorboard run log directory.
@@ -238,14 +338,10 @@ def make_default_trackers(run_log_dir=None):
 
         writer = SummaryWriter(tb_log_dir)
 
-        return [
-            TensorboardEpisodTracker(writer),
-            TensorboardStepRateTracker(writer),
-            TensorboardAgentStatisticsTracker(writer),
-        ]
+        return [TensorboardLearnerStatisticsTracker(writer)]
 
     else:
-        return [EpisodeTracker(), StepRateTracker()]
+        return []
 
 
 def generate_statistics(

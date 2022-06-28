@@ -18,7 +18,7 @@
 #
 # ==============================================================================
 """Greedy actors for testing and evaluation."""
-from typing import Mapping, Tuple
+from typing import Mapping, Tuple, Text
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -82,7 +82,7 @@ class EpsilonGreedyActor(types_lib.Agent):
         return apply_egreedy_policy(q_t, self._exploration_epsilon, self._random_state)
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'exploration_epsilon': self._exploration_epsilon,
@@ -432,7 +432,7 @@ class Agent57EpsilonGreedyActor(types_lib.Agent):
         return self._episodic_bonus_t * min(max(self._lifelong_bonus_t, 1.0), 5.0)
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'exploration_epsilon': self._exploration_epsilon,
@@ -477,7 +477,7 @@ class PolicyGreedyActor(types_lib.Agent):
         return a_t.cpu().item()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Empty statistics"""
         return {}
 
@@ -546,6 +546,6 @@ class ImpalaGreedyActor(PolicyGreedyActor):
         return a_t.cpu().item()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current actor's statistics as a dictionary."""
         return {}

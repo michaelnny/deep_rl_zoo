@@ -83,7 +83,7 @@ class ReinforceBaseline(types_lib.Agent):
 
         # Counters and stats
         self._step_t = -1
-        self._update_t = -1
+        self._update_t = 0
         self._baseline_loss_t = np.nan
         self._policy_loss_t = np.nan
 

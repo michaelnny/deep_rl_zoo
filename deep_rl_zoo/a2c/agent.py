@@ -29,9 +29,9 @@ https://openai.com/blog/baselines-acktr-a2c/.
 
 """
 
-from typing import Mapping
-import queue
+from typing import Mapping, Text
 import multiprocessing
+import numpy as np
 import torch
 from torch import nn
 
@@ -111,25 +111,23 @@ class Actor(types_lib.Agent):
         return a_t.cpu().item()
 
     @property
-    def statistics(self) -> Mapping[str, float]:
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {}
 
 
-class Learner:
+class Learner(types_lib.Learner):
     """A2C learner"""
 
     def __init__(
         self,
         lock: multiprocessing.Lock,
-        data_queue: multiprocessing.Queue,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
-        replay: replay_lib.SimpleReplay,
+        replay: replay_lib.UniformReplay,
         discount: float,
         n_step: int,
         batch_size: int,
-        num_actors: int,
         entropy_coef: float,
         baseline_coef: float,
         clip_grad: bool,
@@ -139,14 +137,12 @@ class Learner:
         """
         Args:
             lock: multiprocessing.Lock to synchronize with worker processes.
-            data_queue: a multiprocessing.Queue to get collected transitions from worker processes.
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             replay: simple experience replay to store transitions.
             discount: the gamma discount for future rewards.
             n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
-            num_actors: number of worker processes.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value baseline loss.
             clip_grad: if True, clip gradients norm.
@@ -160,8 +156,6 @@ class Learner:
             raise ValueError(f'Expect n_step to be integer geater than 1, got {n_step}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to be [1, 512], got {batch_size}')
-        if not 1 <= num_actors:
-            raise ValueError(f'Expect num_actors to be integer geater than or equal to 1, got {num_actors}')
         if not 0.0 < entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to be (0.0, 1.0], got {entropy_coef}')
         if not 0.0 < baseline_coef <= 1.0:
@@ -169,7 +163,6 @@ class Learner:
 
         self.agent_name = 'A2C-learner'
         self._lock = lock
-        self._queue = data_queue
 
         self._device = device
         self._policy_network = policy_network.to(device=device)
@@ -179,7 +172,6 @@ class Learner:
         self._discount = discount
         self._n_step = n_step
         self._batch_size = batch_size
-        self._num_actors = num_actors
 
         self._entropy_coef = entropy_coef
         self._baseline_coef = baseline_coef
@@ -189,45 +181,37 @@ class Learner:
 
         # Counters
         self._step_t = -1
-        self._update_t = -1
-        self._done_workers = 0
+        self._update_t = 0
+        self._loss_t = np.nan
 
-    def run_train_loop(self) -> None:
-        """Start the train loop, only break if all worker processes are done."""
-        self.reset()
-        while True:
-            self._step_t += 1
-            # Pull one item off queue
-            try:
-                item = self._queue.get()
-                if item == 'PROCESS_DONE':  # worker process is done
-                    self._done_workers += 1
-                else:
-                    self._replay.add(item)
-            except queue.Empty:
-                pass
-            except EOFError:
-                pass
+    def step(self) -> Mapping[Text, float]:
+        """Increment learner step, and potentially do a update when called.
 
-            # Only break if all worker processes are done
-            if self._done_workers == self._num_actors:
-                break
+        Returns:
+            learner statistics if network parameters update occurred, otherwise returns None.
+        """
+        self._step_t += 1
 
-            if self._replay.size < self._batch_size:
-                continue
+        if self._replay.size < self._batch_size:
+            return None
 
-            # Blocking while master is updating network weights
-            with self._lock:
-                self._learn()
+        # Blocking while master is updating network weights
+        with self._lock:
+            self._learn()
+
+            return self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
-        self._done_workers = 0
         self._replay.reset()
 
+    def received_item_from_queue(self, item) -> None:
+        """Received item send by actors through multiprocessing queue."""
+        self._replay.add(item)
+
     def _learn(self) -> None:
-        for transitions in self._replay.sample(self._batch_size):  # Call sample() will return generator
-            self._update(transitions)
+        transitions = self._replay.sample(self._batch_size)
+        self._update(transitions)
         self._replay.reset()  # discard old samples after using it
         self._update_t += 1
 
@@ -244,6 +228,9 @@ class Learner:
             )
 
         self._policy_optimizer.step()
+
+        # For logging only.
+        self._loss_t = loss.detach().cpu().item()
 
     def _calc_loss(self, transitions: replay_lib.Transition) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
@@ -293,10 +280,11 @@ class Learner:
         return loss
 
     @property
-    def statistics(self):
+    def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            'loss': self._loss_t,
             'discount': self._discount,
             'updates': self._update_t,
         }

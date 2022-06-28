@@ -37,14 +37,14 @@ from deep_rl_zoo import replay as replay_lib
 FLAGS = flags.FLAGS
 flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
 flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 100, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 8, 'Sample batch size when do learning.')
 flags.DEFINE_integer('unroll_length', 10, 'The number of agent steps to rollout.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_end_value', 0.05, 'End (decayed) value of the exploration rate in e-greedy policy.')
-flags.DEFINE_float('exploration_epsilon_decay_step', 50000, 'Total steps to decay value of the exploration rate.')
+flags.DEFINE_float('exploration_epsilon_decay_step', 100000, 'Total steps to decay value of the exploration rate.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
@@ -61,6 +61,11 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_integer(
+    'debug_screenshots_frequency',
+    0,
+    'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
+)
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/drqn_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_path', 'checkpoints/drqn', 'Path for checkpoint directory.')
@@ -170,6 +175,7 @@ def main(argv):
         csv_file=FLAGS.results_csv_path,
         tensorboard=FLAGS.tensorboard,
         tag=FLAGS.tag,
+        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
     )
 
 

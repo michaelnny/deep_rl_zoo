@@ -17,6 +17,7 @@
 From the paper "Actor-Critic Algorithms"
 https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf.
 """
+import collections
 import numpy as np
 import torch
 from torch import nn
@@ -39,7 +40,6 @@ class ActorCritic(types_lib.Agent):
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
         transition_accumulator: replay_lib.NStepTransitionAccumulator,
-        replay: replay_lib.SimpleReplay,
         discount: float,
         n_step: int,
         batch_size: int,
@@ -54,7 +54,6 @@ class ActorCritic(types_lib.Agent):
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             transition_accumulator: external helper class to build n-step transition.
-            replay: simple experience replay to store transitions.
             discount: the gamma discount for future rewards.
             n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
@@ -84,7 +83,8 @@ class ActorCritic(types_lib.Agent):
         self._transition_accumulator = transition_accumulator
         self._n_step = n_step
         self._batch_size = batch_size
-        self._replay = replay
+
+        self._storage = collections.deque(maxlen=1000)
 
         self._entropy_coef = entropy_coef
         self._baseline_coef = baseline_coef
@@ -94,7 +94,7 @@ class ActorCritic(types_lib.Agent):
 
         # Counters and stats
         self._step_t = -1
-        self._update_t = -1
+        self._update_t = 0
         self._loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -106,10 +106,10 @@ class ActorCritic(types_lib.Agent):
 
         # Try to build transition
         for transition in self._transition_accumulator.step(timestep, a_t):
-            self._replay.add(transition)
+            self._storage.append(transition)
 
         # Start learning when replay reach batch_size limit
-        if self._replay.size >= self._batch_size:
+        if len(self._storage) >= self._batch_size:
             self._learn()
 
         return a_t
@@ -133,9 +133,10 @@ class ActorCritic(types_lib.Agent):
         return a_t.cpu().item()
 
     def _learn(self) -> None:
-        for transitions in self._replay.sample(self._batch_size):  # Call sample() will return generator
-            self._update(transitions)
-        self._replay.reset()  # discard old samples after using it
+        transitions = list(self._storage)
+        transitions = replay_lib.np_stack_list_of_transitions(transitions, replay_lib.TransitionStructure, 0)
+        self._update(transitions)
+        self._storage.clear()  # discard old samples after using it
 
     def _update(self, transitions: replay_lib.Transition) -> None:
         self._policy_optimizer.zero_grad()
