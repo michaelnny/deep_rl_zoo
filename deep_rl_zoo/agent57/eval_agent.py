@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 # pylint: disable=import-error
-from deep_rl_zoo.networks.dqn import NguDqnMlpNet, NguDqnConvNet, NguDqnNetworkInputs
+from deep_rl_zoo.networks.dqn import NguDqnMlpNet, NguDqnConvNet
 from deep_rl_zoo.networks.curiosity import RndMlpNet, NguEmbeddingMlpNet, RndConvNet, NguEmbeddingConvNet
 from deep_rl_zoo import main_loop
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
@@ -41,7 +41,7 @@ flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip, for
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack, for atari only.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
-flags.DEFINE_integer('num_policies', 16, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
+flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
 
 flags.DEFINE_integer('episodic_memory_capacity', 5000, 'Maximum size of episodic memory.')  # 10000
 flags.DEFINE_integer('num_neighbors', 10, 'Number of K-nearest neighbors.')
