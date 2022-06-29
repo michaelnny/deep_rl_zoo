@@ -95,7 +95,9 @@ class ActorCritic(types_lib.Agent):
         # Counters and stats
         self._step_t = -1
         self._update_t = 0
-        self._loss_t = np.nan
+        self._policy_loss_t = np.nan
+        self._baseline_loss_t = np.nan
+        self._entropy_loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
@@ -150,9 +152,6 @@ class ActorCritic(types_lib.Agent):
         self._policy_optimizer.step()
         self._update_t += 1
 
-        # For logging only.
-        self._loss_t = loss.detach().cpu().item()
-
     def _calc_loss(self, transitions: replay_lib.Transition) -> torch.Tensor:
         """Calculate loss sumed over the trajectories of a single episode"""
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
@@ -192,11 +191,16 @@ class ActorCritic(types_lib.Agent):
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = torch.mean(entropy_loss, dim=0)
-        baseline_loss = torch.mean(baseline_loss, dim=0)
+        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
+        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # Combine policy loss, baseline loss, entropy loss.
-        loss = policy_loss + self._baseline_coef * baseline_loss + self._entropy_coef * entropy_loss
+        loss = policy_loss + baseline_loss + entropy_loss
+
+        # For logging only.
+        self._policy_loss_t = policy_loss.detach().cpu().item()
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._entropy_loss_t = entropy_loss.detach().cpu().item()
 
         return loss
 
@@ -205,7 +209,9 @@ class ActorCritic(types_lib.Agent):
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'loss': self._loss_t,
+            'policy_loss': self._policy_loss_t,
+            'baseline_loss': self._baseline_loss_t,
+            'entropy_loss': self._entropy_loss_t,
             'discount': self._discount,
             'updates': self._update_t,
         }

@@ -21,22 +21,19 @@ from absl.testing import parameterized
 from deep_rl_zoo.ppo_rnd import eval_agent
 
 FLAGS = flags.FLAGS
+FLAGS.tensorboard = False
+FLAGS.num_iterations = 1
+FLAGS.load_checkpoint_file = '/tmp/not_found_checkpoint.ckpt'
+FLAGS.recording_video_dir = ''
 
 
 class RunEvaluationAgentTest(parameterized.TestCase):
-    def setUp(self):
-        super().setUp()
-        FLAGS.tensorboard = False
-        FLAGS.num_iterations = 1
-        FLAGS.checkpoint_path = '/tmp/no_checkpoint/'
-        FLAGS.recording_video_dir = ''
-
     @flagsaver.flagsaver
     def test_can_not_find_checkpoint(self):
         FLAGS.environment_name = 'Pong'
-        FLAGS.num_eval_steps = 200
+        FLAGS.num_eval_frames = 200
 
-        with self.assertRaisesRegex(RuntimeError, 'Except a valid check point file'):
+        with self.assertRaisesRegex(ValueError, 'is not a valid checkpoint file'):
             eval_agent.main(None)
 
 

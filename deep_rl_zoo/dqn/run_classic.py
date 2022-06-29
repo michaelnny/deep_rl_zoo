@@ -49,8 +49,8 @@ flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer('learn_frequency', 2, 'The frequency (measured in agent steps) to do learning.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
@@ -66,13 +66,14 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/dqn_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_path', 'checkpoints/dqn', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
     """Trains DQN agent on classic games."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
@@ -148,17 +149,14 @@ def main(argv):
     )
 
     # Setup checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.iteration = 0
-    state.network = network
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='DQN', save_dir=FLAGS.checkpoint_dir)
+    checkpoint.register_pair(('network', network))
 
     # Run the traning and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_steps=FLAGS.num_train_steps,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_train_frames=FLAGS.num_train_frames,
+        num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         train_agent=train_agent,
         train_env=env,

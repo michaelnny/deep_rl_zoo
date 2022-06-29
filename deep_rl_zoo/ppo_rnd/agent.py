@@ -18,7 +18,7 @@ From the paper "Exploration by Random Network Distillation"
 https://arxiv.org/abs/1810.12894
 """
 
-from typing import Mapping, Tuple, Text
+from typing import Mapping, Tuple, Iterable, Text
 import itertools
 import multiprocessing
 import numpy as np
@@ -128,8 +128,6 @@ class Learner(types_lib.Learner):
         batch_size: int,
         update_k: int,
         unroll_length: int,
-        extrinsic_reward_coef: float,
-        intrinsic_reward_coef: float,
         rnd_experience_proportion: float,
         entropy_coef: float,
         baseline_coef: float,
@@ -153,8 +151,6 @@ class Learner(types_lib.Learner):
             batch_size: sample batch_size of transitions.
             update_k: update k times when it's time to do learning.
             unroll_length: worker rollout horizon.
-            extrinsic_reward_coef: weights extrinsic reward from environment.
-            intrinsic_reward_coef: weights intrinsic reward from RND bonus.
             rnd_experience_proportion: proportion of experience used for traning RND predictor.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value loss.
@@ -175,10 +171,6 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect update_k to be integer geater than or equal to 1, got {update_k}')
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
-        if not 0.0 <= extrinsic_reward_coef <= 10.0:
-            raise ValueError(f'Expect extrinsic_reward_coef to in the range [0.0, 10.0], got {extrinsic_reward_coef}')
-        if not 0.0 <= intrinsic_reward_coef <= 10.0:
-            raise ValueError(f'Expect intrinsic_reward_coef to in the range [0.0, 10.0], got {intrinsic_reward_coef}')
         if not 0.0 <= rnd_experience_proportion <= 10.0:
             raise ValueError(f'Expect rnd_experience_proportion to in the range [0.0, 10.0], got {rnd_experience_proportion}')
         if not 0.0 < entropy_coef <= 1.0:
@@ -207,9 +199,6 @@ class Learner(types_lib.Learner):
         # this will also clip intrinsic reward values in the range [-10, 10]
         self._intrinsic_reward_normalizer = normalizer.Normalizer(eps=0.0001, clip_range=(-10, 10), device=self._device)
 
-        self._ext_reward_coef = extrinsic_reward_coef
-        self._int_reward_coef = intrinsic_reward_coef
-
         self._storage = []
         self._discount = discount
         self._rnd_discount = rnd_discount
@@ -229,21 +218,22 @@ class Learner(types_lib.Learner):
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
+        self._baseline_loss_t = np.nan
+        self._entropy_loss_t = np.nan
         self._rnd_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if len(self._storage) < self._batch_size:
-            return None
+            return
 
-        self._learn()
-        return self.statistics
+        return self._learn()
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
@@ -253,7 +243,7 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
         self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
 
-    def _learn(self) -> None:
+    def _learn(self) -> Iterable[Mapping[Text, float]]:
         # Merge list of lists into a single big list, this contains transitions from all workers.
         all_transitions = list(itertools.chain.from_iterable(self._storage))
 
@@ -270,6 +260,8 @@ class Learner(types_lib.Learner):
                     transitions, replay_lib.OffPolicyTransitionStructure
                 )
                 self._update(stacked_transition)
+                yield self.statistics
+
         self._storage = []  # discard old samples after using it
         self._update_old_policy()
 
@@ -366,7 +358,7 @@ class Learner(types_lib.Learner):
             int_advantages = target_int - int_baseline_tm1  # [batch_size]
 
             # Combined advantages
-            advantages = self._ext_reward_coef * ext_advantages + self._int_reward_coef * int_advantages
+            advantages = 2.0 * ext_advantages + 1.0 * int_advantages
 
         # Calculate importance sampling ratio
         ratio = distributions.categorical_importance_sampling_ratios(logits_tm1, behavior_logits_tm1, a_tm1)
@@ -387,18 +379,20 @@ class Learner(types_lib.Learner):
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = torch.mean(entropy_loss, dim=0)
-        baseline_loss = torch.mean(baseline_loss, dim=0)
+        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
+        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # Combine policy loss, baseline loss, entropy loss.
-        loss = policy_loss + self._baseline_coef * baseline_loss + self._entropy_coef * entropy_loss
-
-        # For logging only.
-        self._policy_loss_t = loss.detach().cpu().item()
-        self._rnd_loss_t = rnd_loss.detach().cpu().item()
+        loss = policy_loss + baseline_loss + entropy_loss
 
         # Add RND predictor loss.
         loss += rnd_loss
+
+        # For logging only.
+        self._policy_loss_t = policy_loss.detach().cpu().item()
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._entropy_loss_t = entropy_loss.detach().cpu().item()
+        self._rnd_loss_t = rnd_loss.detach().cpu().item()
 
         return loss
 
@@ -436,6 +430,8 @@ class Learner(types_lib.Learner):
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
+            'baseline_loss': self._baseline_loss_t,
+            'entropy_loss': self._entropy_loss_t,
             'rnd_loss': self._rnd_loss_t,
             'discount': self._discount,
             'updates': self._update_t,

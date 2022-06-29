@@ -17,10 +17,6 @@
 From the paper "Recurrent Experience Replay in Distributed Reinforcement Learning"
 https://openreview.net/pdf?id=r1lyTjAqYX.
 
-For LunarLander:
-python3 -m deep_rl.r2d2.run_classic --environment_name=LunarLander-v2 --unroll_length=40 --burn_in=20
-
-Does not work at all on MountainCar.
 """
 
 from absl import app
@@ -71,8 +67,8 @@ flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible val
 flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
 
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
     100,
@@ -89,13 +85,14 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/r2d2_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_path', 'checkpoints/r2d2', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
     """Trains R2D2 agent on classic games."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Listen to signals to exit process.
@@ -214,17 +211,14 @@ def main(argv):
     )
 
     # Setup checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.iteration = 0
-    state.network = network
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='R2D2', save_dir=FLAGS.checkpoint_dir)
+    checkpoint.register_pair(('network', network))
 
     # Run parallel traning N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_steps=FLAGS.num_train_steps,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_train_frames=FLAGS.num_train_frames,
+        num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         learner_agent=learner_agent,
         eval_agent=eval_agent,

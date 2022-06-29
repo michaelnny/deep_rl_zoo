@@ -37,16 +37,11 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width, f
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip, for atari only.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack, for atari only.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
-flags.DEFINE_string(
-    'checkpoint_path',
-    'checkpoints/a2c',
-    'Path for checkpoint directory or a specific checkpoint file, if it is a directory, \
-        will try to find latest checkpoint file matching the environment name.',
-)
+flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
 flags.DEFINE_string(
     'recording_video_dir',
     'recordings/a2c',
@@ -91,6 +86,15 @@ def main(argv):
     logging.info('Action spec: %s', num_actions)
     logging.info('Observation spec: %s', input_shape)
 
+    # Setup checkpoint and load model weights from checkpoint.
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='A2C', restore_only=True)
+    checkpoint.register_pair(('policy_network', policy_network))
+
+    if FLAGS.load_checkpoint_file:
+        checkpoint.restore(FLAGS.load_checkpoint_file)
+
+    policy_network.eval()
+
     # Create evaluation agent instance
     eval_agent = greedy_actors.PolicyGreedyActor(
         network=policy_network,
@@ -98,18 +102,10 @@ def main(argv):
         name='A2C-greedy',
     )
 
-    # Setup checkpoint and load model weights from checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path, False)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.policy_network = policy_network
-    checkpoint.restore(runtime_device)
-    policy_network.eval()
-
     # Run test N iterations.
-    main_loop.run_test_iterations(
+    main_loop.run_evaluation_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_eval_frames=FLAGS.num_eval_frames,
         eval_agent=eval_agent,
         eval_env=eval_env,
         tensorboard=FLAGS.tensorboard,

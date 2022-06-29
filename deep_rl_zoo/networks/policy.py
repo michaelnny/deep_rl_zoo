@@ -16,11 +16,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from typing import (
-    NamedTuple,
-    Optional,
-    Tuple,
-)
+from typing import NamedTuple, Optional, Tuple
 
 # pylint: disable=import-error
 from deep_rl_zoo.networks import common
@@ -112,30 +108,21 @@ class ActorCriticMlpNet(nn.Module):
             nn.Linear(128, 256),
             nn.ReLU(),
         )
-        # self.policy_head = nn.Linear(256, num_actions)
-        # self.baseline_head = nn.Linear(256, 1)
-        self.policy_head = nn.Sequential(
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_actions),
-        )
-        self.baseline_head = nn.Sequential(
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
-        )
+
+        self.policy_head = nn.Linear(256, num_actions)
+        self.baseline_head = nn.Linear(256, 1)
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
         and baseline state-value."""
         # Extract features from raw input state
-        features = self.body(x)
+        x = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(features)
+        pi_logits = self.policy_head(x)
 
         # Predict state-value
-        baseline = self.baseline_head(features)
+        baseline = self.baseline_head(x)
 
         return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
 
@@ -163,21 +150,14 @@ class ImpalaActorCriticMlpNet(nn.Module):
         )
 
         # Feature representation output size + one-hot of last action + last reward.
-        out_size = 256 + self.num_actions + 1
+        core_output_size = 256 + self.num_actions + 1
 
         if self.use_lstm:
-            self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=1)
+            self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
+            core_output_size = 128
 
-        self.policy_head = nn.Sequential(
-            nn.Linear(out_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_actions),
-        )
-        self.baseline_head = nn.Sequential(
-            nn.Linear(out_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
-        )
+        self.policy_head = nn.Linear(core_output_size, num_actions)
+        self.baseline_head = nn.Linear(core_output_size, 1)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
@@ -220,13 +200,11 @@ class ImpalaActorCriticMlpNet(nn.Module):
 
         # Extract features from raw input state
         x = self.body(x)
-        features = x.view(T * B, -1)
 
         # Append clipped last reward and one hot last action.
         one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
-        # rewards = torch.clamp(r_t, -1, 1).view(T * B, 1)  # Clip reward [-1, 1]
-        rewards = r_t.view(T * B, 1)
-        core_input = torch.cat([features, rewards, one_hot_a_tm1], dim=-1)
+        rewards = torch.clamp(r_t, -1, 1).view(T * B, 1)  # Clip reward [-1, 1]
+        core_input = torch.cat([x, rewards, one_hot_a_tm1], dim=-1)
 
         if self.use_lstm:
             assert done.dtype == torch.bool
@@ -262,7 +240,6 @@ class ImpalaActorCriticMlpNet(nn.Module):
         # Reshape to matching original shape
         pi_logits = pi_logits.view(T, B, self.num_actions)
         baseline = baseline.view(T, B)
-
         return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline, hidden_s=hidden_s)
 
 
@@ -292,20 +269,16 @@ class RndActorCriticMlpNet(nn.Module):
         """Given raw state x, predict the action probability distribution,
         and extrinsic and intrinsic baseline values."""
         # Extract features from raw input state
-        features = self.body(x)
+        x = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(features)
+        pi_logits = self.policy_head(x)
 
         # Predict state-value
-        ext_baseline = self.ext_baseline_head(features)
-        int_baseline = self.int_baseline_head(features)
+        ext_baseline = self.ext_baseline_head(x)
+        int_baseline = self.int_baseline_head(x)
 
-        return RndActorCriticNetworkOutputs(
-            pi_logits=pi_logits,
-            ext_baseline=ext_baseline,
-            int_baseline=int_baseline,
-        )
+        return RndActorCriticNetworkOutputs(pi_logits=pi_logits, ext_baseline=ext_baseline, int_baseline=int_baseline)
 
 
 class ActorConvNet(nn.Module):
@@ -314,21 +287,20 @@ class ActorConvNet(nn.Module):
     def __init__(self, input_shape: int, num_actions: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.policy_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.policy_head = nn.Linear(self.body.out_features, num_actions)
+
+        # Initialize weights
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> ActorNetworkOutputs:
         """Given raw state x, predict the action probability distribution."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        features = self.body(x)
+        x = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(features)
+        pi_logits = self.policy_head(x)
         return ActorNetworkOutputs(pi_logits=pi_logits)
 
 
@@ -338,21 +310,20 @@ class CriticConvNet(nn.Module):
     def __init__(self, input_shape: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.baseline_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.baseline_head = nn.Linear(self.body.out_features, 1)
+
+        # Initialize weights
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
         """Given raw state x, predict the state-value."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        features = self.body(x)
+        x = self.body(x)
 
         # Predict state-value
-        baseline = self.baseline_head(features)
+        baseline = self.baseline_head(x)
         return CriticNetworkOutputs(baseline=baseline)
 
 
@@ -362,36 +333,36 @@ class ActorCriticConvNet(nn.Module):
     def __init__(self, input_shape: tuple, num_actions: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.policy_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
-        self.baseline_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        self.body = common.NatureCnnBackboneNet(input_shape)
+
+        self.policy_head = nn.Linear(self.body.out_features, num_actions)
+        self.baseline_head = nn.Linear(self.body.out_features, 1)
+
+        # Initialize weights
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
         and baseline state-value."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        features = self.body(x)
+        x = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(features)
+        pi_logits = self.policy_head(x)
 
         # Predict state-value
-        baseline = self.baseline_head(features)
+        baseline = self.baseline_head(x)
 
         return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
 
 
 class ImpalaActorCriticConvNet(nn.Module):
-    """IMPALA Actor-Critic Conv2d network, with LSTM."""
+    """IMPALA Actor-Critic Conv2d network, with LSTM.
+
+    Reference code from Facebook Torchbeast:
+    https://github.com/facebookresearch/torchbeast/blob/0af07b051a2176a8f9fd20c36891ba2bba6bae68/torchbeast/polybeast_learner.py#L135
+    """
 
     def __init__(self, input_shape: tuple, num_actions: int, use_lstm: bool = False) -> None:
         super().__init__()
@@ -399,28 +370,86 @@ class ImpalaActorCriticConvNet(nn.Module):
         self.num_actions = num_actions
         self.use_lstm = use_lstm
 
-        self.body = common.NatureCnnBodyNet(input_shape)
+        assert input_shape[1] == input_shape[2] == 84
+
+        self.feat_convs = []
+        self.resnet1 = []
+        self.resnet2 = []
+
+        self.convs = []
+
+        input_channels = input_shape[0]
+        for num_ch in [16, 32, 32]:
+            feats_convs = []
+            feats_convs.append(nn.Conv2d(in_channels=input_channels, out_channels=num_ch, kernel_size=3, stride=1, padding=1))
+            feats_convs.append(nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+            self.feat_convs.append(nn.Sequential(*feats_convs))
+
+            input_channels = num_ch
+
+            for i in range(2):
+                resnet_block = []
+                resnet_block.append(nn.ReLU())
+                resnet_block.append(
+                    nn.Conv2d(
+                        in_channels=input_channels,
+                        out_channels=num_ch,
+                        kernel_size=3,
+                        stride=1,
+                        padding=1,
+                    )
+                )
+                resnet_block.append(nn.ReLU())
+                resnet_block.append(
+                    nn.Conv2d(
+                        in_channels=input_channels,
+                        out_channels=num_ch,
+                        kernel_size=3,
+                        stride=1,
+                        padding=1,
+                    )
+                )
+                if i == 0:
+                    self.resnet1.append(nn.Sequential(*resnet_block))
+                else:
+                    self.resnet2.append(nn.Sequential(*resnet_block))
+
+        self.feat_convs = nn.ModuleList(self.feat_convs)
+        self.resnet1 = nn.ModuleList(self.resnet1)
+        self.resnet2 = nn.ModuleList(self.resnet2)
+
+        self.fc = nn.Linear(3872, 256)
 
         # Feature representation output size + one-hot of last action + last reward.
-        out_size = self.body.out_features + self.num_actions + 1
+        core_output_size = self.fc.out_features + self.num_actions + 1
 
         if self.use_lstm:
-            self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=2)
+            self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=256, num_layers=1)
+            core_output_size = 256
 
-        self.policy_head = nn.Sequential(
-            nn.Linear(out_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+        self.policy_head = nn.Linear(core_output_size, num_actions)
+        self.baseline_head = nn.Linear(core_output_size, 1)
 
-        self.baseline_head = nn.Sequential(
-            nn.Linear(out_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
-
-        # Initialize weights.
+        # Initialize weights
         common.initialize_weights(self)
+
+        # BUG
+        # Scenario: when using nature CNN instead of above res-blocks and using a single linear layer (without activation function) for the model's output heads.
+        # Issues: after few params updates, the CNN output becomes NaNs.
+        # Things tried so far:
+        #   - using two linear layers (with relu activation function) for the model's output heads, the model still act randomly after 4*5 millions frames on Pong.
+
+        # self.policy_head = nn.Sequential(
+        #     nn.Linear(core_output_size, 512),
+        #     nn.ReLU(),
+        #     nn.Linear(512, num_actions),
+        # )
+
+        # self.baseline_head = nn.Sequential(
+        #     nn.Linear(core_output_size, 512),
+        #     nn.ReLU(),
+        #     nn.Linear(512, 1),
+        # )
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
@@ -461,16 +490,27 @@ class ImpalaActorCriticConvNet(nn.Module):
 
         T, B, *_ = s_t.shape  # [T, B, input_shape].
         x = torch.flatten(s_t, 0, 1)  # Merge time and batch.
+        x = x.float() / 255.0
 
         # Extract features from raw input state
-        x = x.float() / 255.0
-        x = self.body(x)
-        features = x.view(T * B, -1)
+        res_input = None
+        for i, fconv in enumerate(self.feat_convs):
+            x = fconv(x)
+            res_input = x
+            x = self.resnet1[i](x)
+            x += res_input
+            res_input = x
+            x = self.resnet2[i](x)
+            x += res_input
+
+        x = F.relu(x)
+        x = x.view(T * B, -1)
+        x = F.relu(self.fc(x))
 
         # Append clipped last reward and one hot last action.
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=features.device)
-        rewards = r_t.view(T * B, 1)
-        core_input = torch.cat([features, rewards, one_hot_a_tm1], dim=-1)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        rewards = torch.clamp(r_t, -1, 1).view(T * B, 1)  # Clip reward [-1, 1]
+        core_input = torch.cat([x, rewards, one_hot_a_tm1], dim=-1)
 
         if self.use_lstm:
             assert done.dtype == torch.bool
@@ -506,9 +546,7 @@ class ImpalaActorCriticConvNet(nn.Module):
 
         # Reshape to matching original shape
         pi_logits = pi_logits.view(T, B, self.num_actions)
-
         baseline = baseline.view(T, B)
-
         return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline, hidden_s=hidden_s)
 
 
@@ -522,35 +560,28 @@ class RndActorCriticConvNet(nn.Module):
     def __init__(self, input_shape: tuple, num_actions: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.policy_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
-        self.ext_baseline_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
-        self.int_baseline_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        self.body = common.NatureCnnBackboneNet(input_shape)
+
+        self.policy_head = nn.Linear(self.body.out_features, num_actions)
+
+        self.ext_baseline_head = nn.Linear(self.body.out_features, 1)
+        self.int_baseline_head = nn.Linear(self.body.out_features, 1)
+
+        # Initialize weights
+        common.initialize_weights(self)
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,
         and extrinsic and intrinsic baseline values."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        features = self.body(x)
+        x = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(features)
+        pi_logits = self.policy_head(x)
 
         # Predict state-value
-        ext_baseline = self.ext_baseline_head(features)
-        int_baseline = self.int_baseline_head(features)
+        ext_baseline = self.ext_baseline_head(x)
+        int_baseline = self.int_baseline_head(x)
 
         return RndActorCriticNetworkOutputs(pi_logits=pi_logits, ext_baseline=ext_baseline, int_baseline=int_baseline)

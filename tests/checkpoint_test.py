@@ -23,8 +23,9 @@ import torch
 from deep_rl_zoo import checkpoint as checkpoint_lib
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('checkpoint_path', '', '')
-flags.DEFINE_string('environment_name', '', '')
+flags.DEFINE_string('checkpoint_dir', '/tmp/unit_test_checkpoint', '')
+flags.DEFINE_string('environment_name', 'DummyEnv-v1', '')
+flags.DEFINE_string('agent_name', 'UNIT-TEST-RL', '')
 
 
 class PytorchCheckpointTest(parameterized.TestCase):
@@ -32,9 +33,7 @@ class PytorchCheckpointTest(parameterized.TestCase):
         super().setUp()
         self.runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        FLAGS.checkpoint_path = '/tmp/unit_test_checkpoint'
-        FLAGS.environment_name = 'Dummy-v1'
-        self.checkpoint_dir = Path(FLAGS.checkpoint_path)
+        self.checkpoint_dir = Path(FLAGS.checkpoint_dir)
 
         # Remove existing directory
         if self.checkpoint_dir.exists() and self.checkpoint_dir.is_dir():
@@ -47,83 +46,52 @@ class PytorchCheckpointTest(parameterized.TestCase):
         model = torch.nn.Sequential(torch.nn.Linear(128, 128), torch.nn.ReLU(), torch.nn.Linear(128, 4))
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = iteration
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=FLAGS.environment_name, agent_name=FLAGS.agent_name, save_dir=FLAGS.checkpoint_dir
+        )
+        checkpoint.register_pair(('model', model))
+        checkpoint.register_pair(('optimizer', optimizer))
 
+        checkpoint.set_iteration(iteration)
         checkpoint.save()
 
-        ckpt_file = f'{FLAGS.checkpoint_path}/{FLAGS.environment_name}_iteration_{iteration}.ckpt'
-        latest_file = f'{FLAGS.checkpoint_path}/{FLAGS.environment_name}-latest'
+        expected_ckpt_file = f'{FLAGS.checkpoint_dir}/{FLAGS.agent_name}_{FLAGS.environment_name}_{iteration}.ckpt'
 
         self.assertTrue(self.checkpoint_dir.exists())
         self.assertTrue(self.checkpoint_dir.is_dir())
-        self.assertTrue(self.checkpoint_dir.exists())
-        self.assertTrue(os.path.exists(ckpt_file))
-        self.assertTrue(os.path.exists(latest_file))
-        self.assertTrue(os.path.islink(latest_file))
+        self.assertTrue(os.path.exists(expected_ckpt_file))
 
-    def test_load_and_restore_latest_checkpoint(self):
-        """Checks can load and restore latest checkpoint"""
-
-        model = torch.nn.Sequential(torch.nn.Linear(128, 128), torch.nn.ReLU(), torch.nn.Linear(128, 4))
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
-
-        # Generate 5 checkpoint files
-        for i in range(5):
-            checkpoint.state.iteration = i
-            checkpoint.save()
-
-        # Simulate a new run by clean up existing checkpoint instance
-        del checkpoint
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path, False)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0  # deliberately set iteration to zero
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
-
-        checkpoint.restore(self.runtime_device)
-        self.assertEqual(checkpoint.state.iteration, 4)
-
-    @parameterized.named_parameters(('iteration_0', 0), ('iteration_1', 3))
+    @parameterized.named_parameters(('iteration_0', 0), ('iteration_1', 1))
     def test_load_and_restore_checkpoint_specific_file(self, iteration):
         """Checks can load and restore a specific checkpoint file"""
 
         model = torch.nn.Sequential(torch.nn.Linear(128, 128), torch.nn.ReLU(), torch.nn.Linear(128, 4))
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=FLAGS.environment_name, agent_name=FLAGS.agent_name, save_dir=FLAGS.checkpoint_dir
+        )
+        checkpoint.register_pair(('model', model))
+        checkpoint.register_pair(('optimizer', optimizer))
 
-        # Generate 5 checkpoint files
-        for i in range(5):
-            checkpoint.state.iteration = i
+        # Generate 2 checkpoint files
+        for i in range(2):
+            checkpoint.set_iteration(i)
             checkpoint.save()
 
-        # Simulate a new run by clean up existing checkpoint instance
-        del checkpoint
+        ckpt_file_to_restore = f'{FLAGS.checkpoint_dir}/{FLAGS.agent_name}_{FLAGS.environment_name}_{iteration}.ckpt'
 
-        ckpt_file = f'{FLAGS.checkpoint_path}/{FLAGS.environment_name}_iteration_{iteration}.ckpt'
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(ckpt_file, False)
+        restore_checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=FLAGS.environment_name, agent_name=FLAGS.agent_name, restore_only=True, iteration=999
+        )
+        restore_checkpoint.register_pair(('model', model))
+        restore_checkpoint.register_pair(('optimizer', optimizer))
 
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0  # deliberately set iteration to zero
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        restore_checkpoint.restore(ckpt_file_to_restore)
 
-        checkpoint.restore(self.runtime_device)
-        self.assertEqual(checkpoint.state.iteration, iteration)
+        model.to(self.runtime_device)
+
+        self.assertEqual(restore_checkpoint.state.iteration, iteration)
 
     @parameterized.named_parameters(('dummy_file_null', ''), ('dummy_file_not_found', '/tmp/1234.abcd'))
     def test_load_and_restore_invalid_path(self, dummy_file):
@@ -132,27 +100,25 @@ class PytorchCheckpointTest(parameterized.TestCase):
         model = torch.nn.Sequential(torch.nn.Linear(128, 128), torch.nn.ReLU(), torch.nn.Linear(128, 4))
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=FLAGS.environment_name, agent_name=FLAGS.agent_name, save_dir=FLAGS.checkpoint_dir
+        )
+        checkpoint.register_pair(('model', model))
+        checkpoint.register_pair(('optimizer', optimizer))
 
-        # Generate 5 checkpoint files
-        for i in range(5):
-            checkpoint.state.iteration = i
+        # Generate 2 checkpoint files
+        for i in range(2):
+            checkpoint.set_iteration(i)
             checkpoint.save()
 
-        # Simulate a new run by clean up existing checkpoint instance
-        del checkpoint
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(dummy_file, False)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0  # deliberately set iteration to zero
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        restore_checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=FLAGS.environment_name, agent_name=FLAGS.agent_name, restore_only=True, iteration=999
+        )
+        restore_checkpoint.register_pair(('model', model))
+        restore_checkpoint.register_pair(('optimizer', optimizer))
 
-        with self.assertRaisesRegex(RuntimeError, f'Except a valid check point file, but not found at "{dummy_file}"'):
-            checkpoint.restore(self.runtime_device)
+        with self.assertRaisesRegex(ValueError, f'"{dummy_file}" is not a valid checkpoint file.'):
+            checkpoint.restore(dummy_file)
 
     @parameterized.named_parameters(('env_name_cartpole', 'CartPole-v1'), ('env_name_pong', 'Pong'))
     def test_load_and_restore_env_name_mismatch(self, env_name):
@@ -161,30 +127,26 @@ class PytorchCheckpointTest(parameterized.TestCase):
         model = torch.nn.Sequential(torch.nn.Linear(128, 128), torch.nn.ReLU(), torch.nn.Linear(128, 4))
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path)
-        checkpoint.state.environment_name = FLAGS.environment_name
-        checkpoint.state.iteration = 0
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=FLAGS.environment_name, agent_name=FLAGS.agent_name, save_dir=FLAGS.checkpoint_dir
+        )
+        checkpoint.register_pair(('model', model))
+        checkpoint.register_pair(('optimizer', optimizer))
 
-        # Generate 5 checkpoint files
-        for i in range(5):
-            checkpoint.state.iteration = i
-            checkpoint.save()
+        # Generate 2 checkpoint files
+        ckpt_file_to_restore = checkpoint.save()
 
-        # Simulate a new run by clean up existing checkpoint instance
-        del checkpoint
-        checkpoint = checkpoint_lib.PyTorchCheckpoint(FLAGS.checkpoint_path, False)
-        checkpoint.state.environment_name = env_name
-        checkpoint.state.iteration = 0  # deliberately set iteration to zero
-        checkpoint.state.model = model
-        checkpoint.state.optimizer = optimizer
+        restore_checkpoint = checkpoint_lib.PyTorchCheckpoint(
+            environment_name=env_name, agent_name=FLAGS.agent_name, restore_only=True, iteration=999
+        )
+        restore_checkpoint.register_pair(('model', model))
+        restore_checkpoint.register_pair(('optimizer', optimizer))
 
         with self.assertRaisesRegex(
             RuntimeError,
-            f'Except a valid check point file, but not found at "{FLAGS.checkpoint_path}"',
+            f'environment_name "{FLAGS.environment_name}" and "{env_name}" mismatch',
         ):
-            checkpoint.restore(self.runtime_device)
+            restore_checkpoint.restore(ckpt_file_to_restore)
 
     def tearDown(self) -> None:
         # Clean up

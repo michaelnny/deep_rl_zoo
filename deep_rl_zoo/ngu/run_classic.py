@@ -78,8 +78,8 @@ flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prio
 flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
 
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
     50,
@@ -96,13 +96,14 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/ngu_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_path', 'checkpoints/ngu', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
     """Trains NGU agent on classic games."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Listen to signals to exit process.
@@ -266,20 +267,17 @@ def main(argv):
     )
 
     # Setup checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.iteration = 0
-    state.network = network
-    state.rnd_target_network = rnd_target_network
-    state.rnd_predictor_network = rnd_predictor_network
-    state.embedding_network = embedding_network
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='NGU', save_dir=FLAGS.checkpoint_dir)
+    checkpoint.register_pair(('network', network))
+    checkpoint.register_pair(('rnd_target_network', rnd_target_network))
+    checkpoint.register_pair(('rnd_predictor_network', rnd_predictor_network))
+    checkpoint.register_pair(('embedding_network', embedding_network))
 
     # Run parallel traning N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_steps=FLAGS.num_train_steps,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_train_frames=FLAGS.num_train_frames,
+        num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         learner_agent=learner_agent,
         eval_agent=eval_agent,

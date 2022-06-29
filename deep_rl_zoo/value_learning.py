@@ -98,18 +98,19 @@ def qlearning(
     # Q-learning op.
     # Build target and select head to update.
     with torch.no_grad():
-        target = r_t + discount_t * torch.max(q_t, dim=1)[0]
+        target_tm1 = r_t + discount_t * torch.max(q_t, dim=1)[0]
     qa_tm1 = base.batched_index(q_tm1, a_tm1)
     # B = q_tm1.shape[0]
     # qa_tm1 = q_tm1[torch.arange(0, B), a_tm1]
 
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
-    td_error = target - qa_tm1
-    loss = 0.5 * td_error**2
+    td_error = target_tm1 - qa_tm1
 
-    # loss = F.smooth_l1_loss(qa_tm1, target, reduction='none')
-    return base.LossOutput(loss, QExtra(target, td_error))
+    # loss = 0.5 * td_error**2
+
+    loss = F.smooth_l1_loss(qa_tm1, target_tm1, reduction='none')
+    return base.LossOutput(loss, QExtra(target_tm1, td_error))
 
 
 def double_qlearning(
@@ -172,16 +173,18 @@ def double_qlearning(
     double_q_bootstrapped = base.batched_index(q_t_value, best_action)
 
     with torch.no_grad():
-        target = r_t + discount_t * double_q_bootstrapped
+        target_tm1 = r_t + discount_t * double_q_bootstrapped
 
     # qa_tm1 = q_tm1[torch.arange(0, B), a_tm1]
     qa_tm1 = base.batched_index(q_tm1, a_tm1)
 
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
-    td_error = target - qa_tm1
-    loss = 0.5 * td_error**2
-    return base.LossOutput(loss, DoubleQExtra(target, td_error, best_action))
+    td_error = target_tm1 - qa_tm1
+    # loss = 0.5 * td_error**2
+
+    loss = F.smooth_l1_loss(qa_tm1, target_tm1, reduction='none')
+    return base.LossOutput(loss, DoubleQExtra(target_tm1, td_error, best_action))
 
 
 def _slice_with_actions(embeddings: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
@@ -343,13 +346,13 @@ def categorical_dist_qlearning(
 
     # Project using the Cramer distance
     with torch.no_grad():
-        target = l2_project(target_z, p_target_z, atoms_tm1)
+        target_tm1 = l2_project(target_z, p_target_z, atoms_tm1)
 
     logit_qa_tm1 = _slice_with_actions(logits_q_tm1, a_tm1)
 
-    loss = F.cross_entropy(input=logit_qa_tm1, target=target, reduction='none')
+    loss = F.cross_entropy(input=logit_qa_tm1, target=target_tm1, reduction='none')
 
-    return base.LossOutput(loss, Extra(target))
+    return base.LossOutput(loss, Extra(target_tm1))
 
 
 def categorical_dist_double_qlearning(
@@ -430,13 +433,13 @@ def categorical_dist_double_qlearning(
 
     # Project using the Cramer distance
     with torch.no_grad():
-        target = l2_project(target_z, p_target_z, atoms_tm1)
+        target_tm1 = l2_project(target_z, p_target_z, atoms_tm1)
 
     logit_qa_tm1 = _slice_with_actions(logits_q_tm1, a_tm1)
 
-    loss = F.cross_entropy(input=logit_qa_tm1, target=target, reduction='none')
+    loss = F.cross_entropy(input=logit_qa_tm1, target=target_tm1, reduction='none')
 
-    return base.LossOutput(loss, Extra(target))
+    return base.LossOutput(loss, Extra(target_tm1))
 
 
 def huber_loss(x: torch.Tensor, k: float = 1.0) -> torch.Tensor:
@@ -548,10 +551,10 @@ def quantile_q_learning(
 
     # Compute target, do not backpropagate into it.
     with torch.no_grad():
-        dist_target = r_t[:, None] + discount_t[:, None] * dist_qa_t  # [batch_size, num_taus]
+        dist_target_tm1 = r_t[:, None] + discount_t[:, None] * dist_qa_t  # [batch_size, num_taus]
 
-    loss = _quantile_regression_loss(dist_qa_tm1, tau_q_tm1, dist_target, huber_param)
-    return base.LossOutput(loss, Extra(dist_target))
+    loss = _quantile_regression_loss(dist_qa_tm1, tau_q_tm1, dist_target_tm1, huber_param)
+    return base.LossOutput(loss, Extra(dist_target_tm1))
 
 
 def quantile_double_q_learning(
@@ -620,10 +623,10 @@ def quantile_double_q_learning(
 
     # Compute target, do not backpropagate into it.
     with torch.no_grad():
-        dist_target = r_t[:, None] + discount_t[:, None] * dist_qa_t  # [batch_size, num_taus]
+        dist_target_tm1 = r_t[:, None] + discount_t[:, None] * dist_qa_t  # [batch_size, num_taus]
 
-    loss = _quantile_regression_loss(dist_qa_tm1, tau_q_tm1, dist_target, huber_param)
-    return base.LossOutput(loss, Extra(dist_target))
+    loss = _quantile_regression_loss(dist_qa_tm1, tau_q_tm1, dist_target_tm1, huber_param)
+    return base.LossOutput(loss, Extra(dist_target_tm1))
 
 
 def retrace(
@@ -678,9 +681,10 @@ def retrace(
     with torch.no_grad():
         target_tm1 = multistep.general_off_policy_returns_from_action_values(q_t, a_t, r_t, discount_t, c_t, pi_t)
 
-    q_a_tm1 = base.batched_index(q_tm1, a_tm1)
+    qa_tm1 = base.batched_index(q_tm1, a_tm1)
 
-    td_error = target_tm1 - q_a_tm1
+    td_error = target_tm1 - qa_tm1
     loss = 0.5 * td_error**2
 
+    # loss = F.smooth_l1_loss(qa_tm1, target_tm1, reduction='none')
     return base.LossOutput(loss, QExtra(target=target_tm1, td_error=td_error))

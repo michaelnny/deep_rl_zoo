@@ -21,7 +21,6 @@ import torch.nn.functional as F
 
 # pylint: disable=import-error
 from deep_rl_zoo.networks import common
-from deep_rl_zoo import transforms
 
 
 class DqnNetworkOutputs(NamedTuple):
@@ -180,16 +179,20 @@ class RainbowDqnMlpNet(nn.Module):
             nn.ReLU(),
         )
 
-        self.advantage_head = nn.Sequential(
-            common.NoisyLinear(256, 256),
-            nn.ReLU(),
-            common.NoisyLinear(256, num_actions * self.num_atoms),
-        )
-        self.value_head = nn.Sequential(
-            common.NoisyLinear(256, 256),
-            nn.ReLU(),
-            common.NoisyLinear(256, 1 * self.num_atoms),
-        )
+        self.advantage_head = common.NoisyLinear(256, num_actions * self.num_atoms)
+        self.value_head = common.NoisyLinear(256, 1 * self.num_atoms)
+
+        # self.advantage_head = nn.Sequential(
+        #     common.NoisyLinear(256, 256),
+        #     nn.ReLU(),
+        #     common.NoisyLinear(256, num_actions * self.num_atoms),
+        # )
+
+        # self.value_head = nn.Sequential(
+        #     common.NoisyLinear(256, 256),
+        #     nn.ReLU(),
+        #     common.NoisyLinear(256, 1 * self.num_atoms),
+        # )
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
@@ -299,11 +302,7 @@ class IqnMlpNet(nn.Module):
 
         self.embedding_layer = nn.Linear(latent_dim, 256)
 
-        self.value_head = nn.Sequential(
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_actions),
-        )
+        self.value_head = nn.Linear(256, num_actions)
 
     def sample_taus(self, batch_size: int, num_taus: int) -> torch.Tensor:
         """Returns sampled batch taus."""
@@ -380,13 +379,9 @@ class DrqnMlpNet(nn.Module):
             nn.ReLU(),
         )
 
-        self.lstm = nn.LSTM(input_size=256, hidden_size=256, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(input_size=256, hidden_size=128, num_layers=1, batch_first=True)
 
-        self.value_head = nn.Sequential(
-            nn.Linear(self.lstm.hidden_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_actions),
-        )
+        self.value_head = nn.Linear(self.lstm.hidden_size, num_actions)
 
     def forward(self, x: torch.Tensor, hidden_s: None) -> RnnDqnNetworkOutputs:
         """
@@ -454,20 +449,12 @@ class R2d2DqnMlpNet(nn.Module):
         )
 
         # Feature representation output size + one-hot of last action + last reward.
-        out_size = 256 + self.num_actions + 1
+        core_output_size = 256 + self.num_actions + 1
 
-        self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=1)
+        self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
-        self.advantage_head = nn.Sequential(
-            nn.Linear(out_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_actions),
-        )
-        self.value_head = nn.Sequential(
-            nn.Linear(out_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
-        )
+        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
+        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
 
     def forward(self, input_: RnnDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
@@ -501,6 +488,7 @@ class R2d2DqnMlpNet(nn.Module):
 
         # Append reward and one hot last action.
         one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+
         reward = r_t.view(T * B, 1)
         core_input = torch.cat([x, reward, one_hot_a_tm1], dim=-1)
         core_input = core_input.view(T, B, -1)  # LSTM expect rank 3 tensor.
@@ -556,21 +544,10 @@ class NguDqnMlpNet(nn.Module):
         # last extrinsic reward
         core_output_size = 256 + self.num_policies + self.num_actions + 1 + 1
 
-        self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=core_output_size, num_layers=1)
+        self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
-        self.advantage_head = nn.Sequential(
-            nn.Linear(core_output_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_actions),
-        )
-        self.value_head = nn.Sequential(
-            nn.Linear(core_output_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
-        )
-
-        # Initialize weights.
-        common.initialize_weights(self)
+        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
+        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
 
     def forward(self, input_: NguDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
@@ -651,12 +628,9 @@ class DqnConvNet(nn.Module):
             raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
         super().__init__()
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.value_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+        self.body = common.NatureCnnBackboneNet(input_shape)
+
+        self.value_head = nn.Linear(self.body.out_features, num_actions)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -664,8 +638,8 @@ class DqnConvNet(nn.Module):
     def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
         """Given state, return state-action value for all possible actions"""
         x = x.float() / 255.0
-        features = self.body(x)
-        q_values = self.value_head(features)  # [batch_size, num_actions]
+        x = self.body(x)
+        q_values = self.value_head(x)  # [batch_size, num_actions]
         return DqnNetworkOutputs(q_values=q_values)
 
 
@@ -692,12 +666,9 @@ class C51DqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.value_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions * self.num_atoms),
-        )
+        self.body = common.NatureCnnBackboneNet(input_shape)
+
+        self.value_head = nn.Linear(self.body.out_features, num_actions * self.num_atoms)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -743,18 +714,21 @@ class RainbowDqnConvNet(nn.Module):
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
 
-        self.body = common.NatureCnnBodyNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.advantage_head = nn.Sequential(
-            common.NoisyLinear(self.body.out_features, 512),
-            nn.ReLU(),
-            common.NoisyLinear(512, num_actions * self.num_atoms),
-        )
-        self.value_head = nn.Sequential(
-            common.NoisyLinear(self.body.out_features, 512),
-            nn.ReLU(),
-            common.NoisyLinear(512, 1 * self.num_atoms),
-        )
+        self.advantage_head = common.NoisyLinear(self.body.out_features, num_actions * self.num_atoms)
+        self.value_head = common.NoisyLinear(512, 1 * self.num_atoms)
+
+        # self.advantage_head = nn.Sequential(
+        #     common.NoisyLinear(self.body.out_features, 512),
+        #     nn.ReLU(),
+        #     common.NoisyLinear(512, num_actions * self.num_atoms),
+        # )
+        # self.value_head = nn.Sequential(
+        #     common.NoisyLinear(self.body.out_features, 512),
+        #     nn.ReLU(),
+        #     common.NoisyLinear(512, 1 * self.num_atoms),
+        # )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -814,12 +788,10 @@ class QRDqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.taus = quantiles
         self.num_taus = quantiles.size(0)
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.value_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions * self.num_taus),
-        )
+
+        self.body = common.NatureCnnBackboneNet(input_shape)
+
+        self.value_head = nn.Linear(self.body.out_features, num_actions * self.num_taus)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -865,14 +837,10 @@ class IqnConvNet(nn.Module):
 
         self.pis = torch.arange(1, self.latent_dim + 1).float() * 3.141592653589793  # [latent_dim]
 
-        self.body = common.NatureCnnBodyNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(input_shape)
         self.embedding_layer = nn.Linear(latent_dim, self.body.out_features)
 
-        self.value_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+        self.value_head = nn.Linear(self.body.out_features, num_actions)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -947,15 +915,11 @@ class DrqnConvNet(nn.Module):
 
         super().__init__()
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.lstm = nn.LSTM(input_size=self.body.out_features, hidden_size=512, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(input_size=self.body.out_features, hidden_size=256, num_layers=1, batch_first=True)
 
-        self.value_head = nn.Sequential(
-            nn.Linear(self.lstm.hidden_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+        self.value_head = nn.Linear(self.lstm.hidden_size, num_actions)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -1018,28 +982,15 @@ class R2d2DqnConvNet(nn.Module):
         super().__init__()
         self.num_actions = num_actions
 
-        self.body = common.NatureCnnBodyNet(input_shape)
-        self.fc = nn.Linear(self.body.out_features, 512)
+        self.body = common.NatureCnnBackboneNet(input_shape)
 
         # Feature representation output size + one-hot of last action + last reward.
-        out_size = self.fc.out_features + self.num_actions + 1
+        core_output_size = self.body.out_features + self.num_actions + 1
 
-        self.lstm = nn.LSTM(input_size=out_size, hidden_size=out_size, num_layers=1)
+        self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=512, num_layers=1)
 
-        self.advantage_head = nn.Linear(out_size, num_actions)
-        self.value_head = nn.Linear(out_size, 1)
-
-        # self.advantage_head = nn.Sequential(
-        #     nn.Linear(out_size, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, num_actions),
-        # )
-
-        # self.value_head = nn.Sequential(
-        #     nn.Linear(out_size, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, 1),
-        # )
+        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
+        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -1073,10 +1024,10 @@ class R2d2DqnConvNet(nn.Module):
         x = x.float() / 255.0
         x = self.body(x)
         x = x.view(T * B, -1)
-        x = F.relu(self.fc(x))
 
         # Append reward and one hot last action.
         one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+
         reward = r_t.view(T * B, 1)
         core_input = torch.cat([x, reward, one_hot_a_tm1], dim=-1)
         core_input = core_input.view(T, B, -1)  # LSTM expect rank 3 tensor.
@@ -1117,7 +1068,7 @@ class NguDqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.num_policies = num_policies  # intrinsic reward scale betas
 
-        self.body = common.NatureCnnBodyNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(input_shape)
 
         # Core input includes:
         # feature representation output size
@@ -1127,19 +1078,10 @@ class NguDqnConvNet(nn.Module):
         # last extrinsic reward
         core_output_size = self.body.out_features + self.num_policies + self.num_actions + 1 + 1
 
-        self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=core_output_size, num_layers=1)
+        self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=512, num_layers=1)
 
-        self.advantage_head = nn.Sequential(
-            nn.Linear(core_output_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
-
-        self.value_head = nn.Sequential(
-            nn.Linear(core_output_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
+        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -1181,6 +1123,7 @@ class NguDqnConvNet(nn.Module):
         # Append one-hot intrinsic scale beta, one-hot last action, previous intrinsic reward, previous extrinsic reward.
         one_hot_beta = F.one_hot(policy_index.view(T * B), self.num_policies).float().to(device=x.device)
         one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+
         int_reward = int_r_t.view(T * B, 1)
         ext_reward = ext_r_t.view(T * B, 1)
 

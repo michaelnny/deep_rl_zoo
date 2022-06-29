@@ -43,7 +43,7 @@ def baseline_loss(delta: torch.Tensor) -> base.LossOutput:
         A namedtuple with fields:
         * `loss`: Baseline 'loss', shape `[B]`.
     """
-    loss = 0.5 * torch.square(delta)
+    loss = torch.square(delta)  # 0.5 * torch.square(delta)
 
     if len(loss.shape) == 2:
         # Average over time dimension.

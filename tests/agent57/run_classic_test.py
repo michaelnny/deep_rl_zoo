@@ -13,6 +13,8 @@
 # limitations under the License.
 # ============================================================================
 """Tests for Agent57."""
+from pathlib import Path
+import shutil
 import multiprocessing
 from absl import flags
 from absl.testing import flagsaver
@@ -20,25 +22,26 @@ from absl.testing import absltest
 from deep_rl_zoo.agent57 import run_classic
 
 FLAGS = flags.FLAGS
+FLAGS.checkpoint_dir = '/tmp/e2e_test_checkpoint'
+FLAGS.results_csv_path = ''
+FLAGS.tensorboard = False
+FLAGS.replay_capacity = 100
+FLAGS.min_replay_size = 4
+FLAGS.ucb_window_size = 4
+FLAGS.num_actors = 2
+FLAGS.num_train_frames = 500
+FLAGS.num_eval_frames = 200
+FLAGS.num_iterations = 1
 
 
 class RunClassicGameTest(absltest.TestCase):
     def setUp(self):
         super().setUp()
-        FLAGS.checkpoint_path = ''
-        FLAGS.results_csv_path = ''
-        FLAGS.tensorboard = False
-        FLAGS.replay_capacity = 100
-        FLAGS.min_replay_size = 4
-        FLAGS.ucb_window_size = 4
+        self.checkpoint_dir = Path(FLAGS.checkpoint_dir)
 
     @flagsaver.flagsaver
     def test_can_run_agent_with_transformed_retrace(self):
         FLAGS.environment_name = 'CartPole-v1'
-        FLAGS.num_actors = 2
-        FLAGS.num_train_steps = 500
-        FLAGS.num_eval_steps = 200
-        FLAGS.num_iterations = 1
         FLAGS.batch_size = 4
         FLAGS.unroll_length = 8
         FLAGS.burn_in = 0
@@ -49,15 +52,18 @@ class RunClassicGameTest(absltest.TestCase):
     @flagsaver.flagsaver
     def test_can_run_agent_with_burn_in(self):
         FLAGS.environment_name = 'CartPole-v1'
-        FLAGS.num_actors = 2
-        FLAGS.num_train_steps = 500
-        FLAGS.num_eval_steps = 200
-        FLAGS.num_iterations = 1
         FLAGS.batch_size = 4
         FLAGS.unroll_length = 8
         FLAGS.burn_in = 4
         FLAGS.clip_grad = True
         run_classic.main(None)
+
+    def tearDown(self) -> None:
+        # Clean up
+        try:
+            shutil.rmtree(self.checkpoint_dir)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == '__main__':

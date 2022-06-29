@@ -39,18 +39,20 @@ def initialize_weights(net) -> None:
             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
 
 
-class NatureCnnBodyNet(nn.Module):
-    """DQN Nature paper conv2d layers backbone, returns feature representation vector"""
+class NatureCnnBackboneNet(nn.Module):
+    """DQN Nature paper conv2d layers backbone, returns feature representation vector."""
 
-    def __init__(self, input_shape: tuple) -> None:
+    def __init__(self, input_shape: tuple, out_features: int = 512) -> None:
         super().__init__()
-        c, h, w = input_shape
+
+        self.out_features = out_features
 
         # Compute the output shape of final conv2d layer
+        c, h, w = input_shape
         h, w = calc_conv2d_output((h, w), 8, 4)
         h, w = calc_conv2d_output((h, w), 4, 2)
         h, w = calc_conv2d_output((h, w), 3, 1)
-        self.out_features = 64 * h * w
+        conv2d_out_size = 64 * h * w
 
         self.net = nn.Sequential(
             nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4),
@@ -60,11 +62,56 @@ class NatureCnnBodyNet(nn.Module):
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
             nn.ReLU(),
             nn.Flatten(),
+            nn.Linear(conv2d_out_size, self.out_features),
+            nn.ReLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state images, returns feature representation vector"""
         return self.net(x)
+
+
+class ResNetBlock(nn.Module):
+    """Basic 3x3 redisual block."""
+
+    def __init__(
+        self,
+        num_planes: int,
+    ) -> None:
+        super().__init__()
+
+        self.conv_block1 = nn.Sequential(
+            nn.Conv2d(
+                in_channels=num_planes,
+                out_channels=num_planes,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_planes),
+            nn.ReLU(),
+        )
+
+        self.conv_block2 = nn.Sequential(
+            nn.Conv2d(
+                in_channels=num_planes,
+                out_channels=num_planes,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_planes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        out = self.conv_block1(x)
+        out = self.conv_block2(out)
+        out += residual
+        out = F.relu(out)
+        return out
 
 
 class NoisyLinear(nn.Module):

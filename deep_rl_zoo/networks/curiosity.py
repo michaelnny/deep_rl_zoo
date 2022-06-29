@@ -51,20 +51,32 @@ class IcmMlpNet(nn.Module):
 
         self.num_actions = num_actions
 
+        feature_vector_size = 128
+
         # Feature representations
         self.body = nn.Sequential(
             nn.Linear(input_shape, 128),
             nn.ReLU(),
             nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(128, feature_vector_size),
+            nn.ReLU(),
         )
 
         # Forward model, predict feature vector of s_t from s_tm1 and a_t
-        self.forward_net = nn.Linear(64 + num_actions, 64)
+        self.forward_net = nn.Sequential(
+            nn.Linear(feature_vector_size + num_actions, 128),
+            nn.ReLU(),
+            nn.Linear(128, feature_vector_size),
+            nn.ReLU(),
+        )
 
         # Inverse model, predict a_tm1 from feature vectors of s_tm1, s_t
-        self.inverse_net = nn.Linear(64 * 2, num_actions)
+        self.inverse_net = nn.Sequential(
+            nn.Linear(feature_vector_size * 2, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_actions),
+        )
 
     def forward(self, s_tm1: torch.Tensor, a_tm1: torch.Tensor, s_t: torch.Tensor) -> IcmNetworkOutput:
         """Given raw state s_tm1, s_t, and action a_tm1,
@@ -106,23 +118,41 @@ class IcmNatureConvNet(nn.Module):
         super().__init__()
 
         self.num_actions = num_actions
-        self.body = common.NatureCnnBodyNet(input_shape)
+
+        # Compute the output shape of final conv2d layer
+        c, h, w = input_shape
+        h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
+        h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
+        h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
+        h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
+        conv2d_out_size = 32 * h * w  # output size 288
+
+        self.body = self.net = nn.Sequential(
+            nn.Conv2d(in_channels=c, out_channels=32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+
         # Forward model, predict feature vector of s_t from s_tm1 and a_t
         self.forward_net = nn.Sequential(
-            nn.Linear(self.body.out_features + self.num_actions, 256),
+            nn.Linear(conv2d_out_size + self.num_actions, 256),
             nn.ReLU(),
-            nn.Linear(256, self.body.out_features),  # need to match feature_net output shape
+            nn.Linear(256, conv2d_out_size),
+            nn.ReLU(),
         )
 
         # Inverse model, predict a_tm1 from feature vectors of s_tm1, s_t
         self.inverse_net = nn.Sequential(
-            nn.Linear(self.body.out_features * 2, 256),
+            nn.Linear(conv2d_out_size * 2, 256),
             nn.ReLU(),
-            nn.Linear(256, self.num_actions),
+            nn.Linear(256, num_actions),
         )
-
-        # Initialize weights.
-        common.initialize_weights(self)
 
     def forward(self, s_tm1: torch.Tensor, a_tm1: torch.Tensor, s_t: torch.Tensor) -> IcmNetworkOutput:
         """Given raw state s_tm1, s_t, and action a_tm1,
@@ -157,21 +187,30 @@ class RndMlpNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, input_shape: int, latent_dim: int = 64) -> None:
+    def __init__(self, input_shape: int, is_target: bool = False, latent_dim: int = 128) -> None:
         """
         Args:
             input_shape: the shape of the input tensor to the neural network.
+            is_target: if True, use one single linear layer at the head, default False.
             latent_dim: the embedding latent dimension.
         """
         super().__init__()
 
-        self.net = nn.Sequential(
+        self.body = nn.Sequential(
             nn.Linear(input_shape, 128),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, latent_dim),
+            nn.LeakyReLU(),
         )
+
+        if is_target:
+            self.head = nn.Linear(128, latent_dim)
+        else:
+            self.head = nn.Sequential(
+                nn.Linear(128, 128),
+                nn.ReLU(),
+                nn.Linear(128, latent_dim),
+            )
 
         # Initialize weights.
         for m in self.modules():
@@ -181,7 +220,8 @@ class RndMlpNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state x, returns the feature embedding."""
-        return self.net(x)
+        x = self.body(x)
+        return self.head(x)
 
 
 class RndConvNet(nn.Module):
@@ -191,15 +231,42 @@ class RndConvNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, input_shape: int, latent_dim: int = 128) -> None:
+    def __init__(self, input_shape: int, is_target: bool = False, latent_dim: int = 256) -> None:
         """
         Args:
             input_shape: the shape of the input tensor to the neural network.
+            is_target: if True, use one single linear layer at the head, default False.
             latent_dim: the embedding latent dimension.
         """
         super().__init__()
-        self.net = common.NatureCnnBodyNet(input_shape)
-        self.fc = nn.Linear(self.net.out_features, latent_dim)
+
+        # Compute the output shape of final conv2d layer
+        c, h, w = input_shape
+        h, w = common.calc_conv2d_output((h, w), 8, 4)
+        h, w = common.calc_conv2d_output((h, w), 4, 2)
+        h, w = common.calc_conv2d_output((h, w), 3, 1)
+        conv2d_out_size = 64 * h * w
+
+        self.body = nn.Sequential(
+            nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4),
+            nn.LeakyReLU(),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2),
+            nn.LeakyReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
+            nn.LeakyReLU(),
+            nn.Flatten(),
+        )
+
+        if is_target:
+            self.head = nn.Linear(conv2d_out_size, latent_dim)
+        else:
+            self.head = nn.Sequential(
+                nn.Linear(conv2d_out_size, 512),
+                nn.ReLU(),
+                nn.Linear(512, 512),
+                nn.ReLU(),
+                nn.Linear(512, latent_dim),
+            )
 
         # Initialize weights.
         for m in self.modules():
@@ -210,8 +277,8 @@ class RndConvNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state x, returns the feature embedding."""
         # RND normalizes state using a running mean and std instead of devide by 255.
-        x = self.net(x)
-        return self.fc(x)
+        x = self.body(x)
+        return self.head(x)
 
 
 class NguEmbeddingMlpNet(nn.Module):
@@ -233,9 +300,8 @@ class NguEmbeddingMlpNet(nn.Module):
         self.body = nn.Sequential(
             nn.Linear(input_shape, 128),
             nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
             nn.Linear(128, latent_dim),
+            nn.ReLU(),
         )
 
         self.inverse_head = nn.Linear(latent_dim * 2, num_actions)
@@ -266,23 +332,19 @@ class NguEmbeddingConvNet(nn.Module):
         """
         super().__init__()
 
-        self.net = common.NatureCnnBodyNet(input_shape)
-        self.fc = nn.Linear(self.net.out_features, latent_dim)
+        self.net = common.NatureCnnBackboneNet(input_shape, out_features=latent_dim)
 
-        self.inverse_head = nn.Sequential(
-            nn.Linear(latent_dim * 2, 128),
-            nn.ReLU(),
-            nn.Linear(128, num_actions),
-        )
-
-        # Initialize weights.
-        common.initialize_weights(self)
+        self.inverse_head = nn.Linear(latent_dim * 2, num_actions)
+        # self.inverse_head = nn.Sequential(
+        #     nn.Linear(latent_dim * 2, 128),
+        #     nn.ReLU(),
+        #     nn.Linear(128, num_actions),
+        # )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given state x, return the embedding."""
         x = x.float() / 255.0
-        x = self.net(x)
-        return self.fc(x)
+        return self.net(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
         """Given combined embedding features of (s_tm1 + s_t), returns the predicted action a_tm1."""

@@ -49,16 +49,14 @@ flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate.')
-flags.DEFINE_float('discount', 0.999, 'Discount rate.')
-flags.DEFINE_float('rnd_discount', 0.99, 'Discount rate.')
+flags.DEFINE_float('discount', 0.999, 'Discount rate for entrinsic environment reward.')
+flags.DEFINE_float('rnd_discount', 0.99, 'Discount rate intrinsic reward.')
 flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
-flags.DEFINE_float('extrinsic_reward_coef', 2.0, 'Weights extrinsic reward coming from environment.')
-flags.DEFINE_float('intrinsic_reward_coef', 1.0, 'Weights intrinsic reward coming from RND bonus.')
 flags.DEFINE_float('rnd_experience_proportion', 0.25, 'Proportion of experience used for training RND predictor.')
 flags.DEFINE_integer(
     'observation_norm_steps',
@@ -66,13 +64,14 @@ flags.DEFINE_integer(
     'Warm up random steps to take in order to generate statistics for observation, used for RND networks only.',
 )
 flags.DEFINE_integer('observation_norm_clip', 5, 'Observation normalization clip range for RND.')
-flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
+
+flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('unroll_length', 128, 'Actor unroll length.')
 flags.DEFINE_integer('update_k', 4, 'Run update k times when do learning.')
 flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
@@ -83,7 +82,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/ppo_rnd_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_path', 'checkpoints/ppo_rnd', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -110,7 +109,7 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed + int(random_int),
             noop_max=30,
-            terminal_on_life_loss=True,
+            terminal_on_life_loss=False,
         )
 
     eval_env = environment_builder()
@@ -152,7 +151,7 @@ def main(argv):
     old_policy_network.share_memory()
 
     # Create RND target and predictor networks.
-    rnd_target_network = RndConvNet(input_shape=input_shape)
+    rnd_target_network = RndConvNet(input_shape=input_shape, is_target=True)
     rnd_predictor_network = RndConvNet(input_shape=input_shape)
 
     # Use a single optimizer for both policy and RND predictor networks.
@@ -175,7 +174,7 @@ def main(argv):
 
     clip_epsilon_scheduler = LinearSchedule(
         begin_t=0,
-        end_t=(FLAGS.num_iterations * int(FLAGS.num_train_steps * FLAGS.num_actors)),  # Learner step_t is fater than worker
+        end_t=(FLAGS.num_iterations * int(FLAGS.num_train_frames * FLAGS.num_actors)),  # Learner step_t is fater than worker
         begin_value=FLAGS.clip_epsilon_begin_value,
         end_value=FLAGS.clip_epsilon_end_value,
     )
@@ -195,8 +194,6 @@ def main(argv):
         batch_size=FLAGS.batch_size,
         update_k=FLAGS.update_k,
         unroll_length=FLAGS.unroll_length,
-        extrinsic_reward_coef=FLAGS.extrinsic_reward_coef,
-        intrinsic_reward_coef=FLAGS.intrinsic_reward_coef,
         rnd_experience_proportion=FLAGS.rnd_experience_proportion,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,
@@ -231,17 +228,18 @@ def main(argv):
     )
 
     # Setup checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.iteration = 0
-    state.policy_network = policy_network
+    checkpoint = PyTorchCheckpoint(
+        environment_name=FLAGS.environment_name, agent_name='PPO-RND', save_dir=FLAGS.checkpoint_dir
+    )
+    checkpoint.register_pair(('policy_network', policy_network))
+    checkpoint.register_pair(('rnd_target_network', rnd_target_network))
+    checkpoint.register_pair(('rnd_predictor_network', rnd_predictor_network))
 
     # Run parallel traning N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_steps=FLAGS.num_train_steps,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_train_frames=FLAGS.num_train_frames,
+        num_eval_frames=FLAGS.num_eval_frames,
         network=policy_network,
         learner_agent=learner_agent,
         eval_agent=eval_agent,

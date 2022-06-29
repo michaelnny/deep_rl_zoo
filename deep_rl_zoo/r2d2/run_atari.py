@@ -47,7 +47,7 @@ flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learni
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
-flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for adam.')
+flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate for adam.')
 flags.DEFINE_float('adam_eps', 0.001, 'Epsilon for adam.')
 flags.DEFINE_float('discount', 0.997, 'Discount rate.')
 flags.DEFINE_integer('unroll_length', 80, 'Sequence of transitions to unroll before add to replay.')
@@ -70,14 +70,14 @@ flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible val
 flags.DEFINE_integer('n_step', 5, 'TD n-step bootstrap.')
 
 flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_steps', int(1e6), 'Number of training steps per iteration.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    1000,
+    2500,
     'Number of learner online Q network updates before update target Q networks.',
-)  # 1500
+)
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -89,7 +89,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/r2d2_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_path', 'checkpoints/r2d2', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -225,17 +225,14 @@ def main(argv):
     )
 
     # Setup checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.iteration = 0
-    state.network = network
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='R2D2', save_dir=FLAGS.checkpoint_dir)
+    checkpoint.register_pair(('network', network))
 
     # Run parallel traning N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_steps=FLAGS.num_train_steps,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_train_frames=FLAGS.num_train_frames,
+        num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         learner_agent=learner_agent,
         eval_agent=eval_agent,

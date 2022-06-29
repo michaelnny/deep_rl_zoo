@@ -13,15 +13,9 @@
 # limitations under the License.
 # ============================================================================
 """Tests for schedule.py."""
-from absl import flags
-from absl.testing import flagsaver
 from absl.testing import absltest
 
 from deep_rl_zoo import schedule as schedule_lib
-
-FLAGS = flags.FLAGS
-flags.DEFINE_string('checkpoint_path', '', '')
-flags.DEFINE_string('environment_name', '', '')
 
 
 class LinearScheduleTest(absltest.TestCase):

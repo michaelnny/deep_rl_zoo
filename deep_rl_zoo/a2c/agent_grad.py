@@ -29,7 +29,7 @@ Synchronous, Deterministic variant of A3C
 https://openai.com/blog/baselines-acktr-a2c/.
 """
 import collections
-from typing import List, Mapping, Text
+from typing import Iterable, List, Mapping, Text
 import multiprocessing
 import numpy as np
 import torch
@@ -122,6 +122,9 @@ class Actor(types_lib.Agent):
         self._max_grad_norm = max_grad_norm
 
         self._step_t = -1
+        self._policy_loss_t = np.nan
+        self._baseline_loss_t = np.nan
+        self._entropy_loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
@@ -226,18 +229,27 @@ class Actor(types_lib.Agent):
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = torch.mean(entropy_loss, dim=0)
-        baseline_loss = torch.mean(baseline_loss, dim=0)
+        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
+        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # Combine policy loss, baseline loss, entropy loss.
-        loss = policy_loss + self._baseline_coef * baseline_loss + self._entropy_coef * entropy_loss
+        loss = policy_loss + baseline_loss + entropy_loss
+
+        # For logging only.
+        self._policy_loss_t = policy_loss.detach().cpu().item()
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._entropy_loss_t = entropy_loss.detach().cpu().item()
 
         return loss
 
     @property
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
-        return {}
+        return {
+            'policy_loss': self._policy_loss_t,
+            'baseline_loss': self._baseline_loss_t,
+            'entropy_loss': self._entropy_loss_t,
+        }
 
 
 class Learner(types_lib.Learner):
@@ -269,6 +281,7 @@ class Learner(types_lib.Learner):
         self.agent_name = 'A2C-GRAD-learner'
         self._device = device
         self._policy_network = policy_network.to(device=device)
+        self._policy_network.train()
         self._policy_optimizer = policy_optimizer
 
         self._lock = lock
@@ -281,21 +294,21 @@ class Learner(types_lib.Learner):
         self._step_t = -1
         self._update_t = 0
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if self._replay.size < self._batch_size:
-            return None
+            return
 
         # Blocking while master is updating network weights
         with self._lock:
             self._learn()
-            return self.statistics
+        yield self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""

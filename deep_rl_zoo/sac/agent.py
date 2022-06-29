@@ -21,7 +21,7 @@ From the paper "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement
 https://arxiv.org/abs/1801.01290.
 """
 
-from typing import Mapping, Tuple, Text
+from typing import Iterable, Mapping, Tuple, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -226,19 +226,19 @@ class Learner(types_lib.Learner):
         self._q2_loss_t = np.nan
         self._policy_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
-            return None
+            return
 
         self._learn()
-        return self.statistics
+        yield self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""

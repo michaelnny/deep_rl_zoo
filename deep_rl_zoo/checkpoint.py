@@ -13,105 +13,125 @@
 # limitations under the License.
 # ==============================================================================
 """Checkpoint class for Deep RL Zoo."""
+from typing import Mapping, Tuple, Text, Any
 import os
 from pathlib import Path
-from absl import logging
 import torch
 
 
 class PyTorchCheckpoint:
-    """Simple checkpoint implementation for PyTorch.
-    Supports multiple networks, must provide a 'environment_name',
-    as most the agents are trained for a specific game.
-    When try to restore from checkpoint, it'll also check if 'environment_name' matches.
+    """Simple checkpoint class implementation for PyTorch.
 
-    Usage:
-        Case 1: create checkpoint.
-            checkpoint = PyTorchCheckpoint('/tmp/checkpoint/')
-            state = checkpoint.state
-            state.environment_name = 'Pong'
-            state.iteration = 0
-            state.network = network
-            state.rnd_target_network = rnd_target_network
-            state.rnd_predictor_network = rnd_predictor_network
-            state.embedding_network = embedding_network
+    Example create checkpoint:
 
-            checkpoint.save()
+    Create checkpoint instance and register network to the checkpoint internal state
 
-        Case 2: restore checkpoint from file.
-            checkpoint = PyTorchCheckpoint('/tmp/checkpoint/Pong_iteration_0.ckpt')
-            state = checkpoint.state
-            state.environment_name = 'Pong'
-            state.network = network
-            state.rnd_target_network = rnd_target_network
-            state.rnd_predictor_network = rnd_predictor_network
-            state.embedding_network = embedding_network
+    ```
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='NGU', save_dir=FLAGS.checkpoint_dir)
+    checkpoint.register_pair(('network', network))
 
-            checkpoint.restore(runtime_device)
+    for iteration in range(num_iterations):
+        ...
+        checkpoint.set_iteration(checkpoint)
+        checkpoint.save()
+        ...
+    ```
+
+
+    Example restore checkpoint:
+
+    Create checkpoint instance and register network to the checkpoint internal state
+
+    ```
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='NGU', save_dir=FLAGS.checkpoint_dir)
+    checkpoint.register_pair(('network', network))
+
+    checkpoint.restore(FLAGS.load_checkpoint_file)
+    network.eval()
+
+    ```
 
     """
 
-    def __init__(self, checkpoint_dir: str, is_training: bool = True):
-        self._file_ext = 'ckpt'
-        if is_training and f'.{self._file_ext}' in checkpoint_dir:
-            raise ValueError(f'Expect checkpoint a dir not a file when in training mode, got {checkpoint_dir}')
-
-        self.state = AttributeDict()
-        self._checkpoint_dir = checkpoint_dir
-
-        self._base_path = Path(checkpoint_dir)
-        self._abs_base_path = self._base_path.resolve()
-        # Only create directory if it's in training mode
-        if is_training and not self._base_path.exists():
-            self._base_path.mkdir(parents=True, exist_ok=True)
-
-        self._symlink_path = None
-        self._abs_symlink_path = None
-
-    def save(self) -> None:
-        """Save pytorch model"""
-        # Only continue if checkpoint dir is given.
-        if not self._checkpoint_dir or self._checkpoint_dir == '':
-            return
-
-        if self.state.environment_name is None:
-            raise RuntimeError(f'Expect state.environment_name to be string, got "{self.state.environment_name}"')
-        if self.state.iteration is None:
-            raise RuntimeError(f'Expect state.iteration to be integer, got "{self.state.iteration}"')
-
-        saved_file = self._get_file_name()
-        ckpt_file_path = self._base_path / saved_file
-
-        state = self._prepare_state_for_checkpoint()
-
-        torch.save(state, ckpt_file_path)
-        logging.info(f'Created checkpoint file at "{ckpt_file_path}"')
-
-        self._create_symlink_for_file(saved_file)
-
-    def restore(self, device: torch.device) -> None:
-        """Try to restore checkpoint from a valid checkpoint file.
-        if the given checkpoint file is a dir, will try to find the latest checkpoint file,
-        otherwise if the given checkpoint is a file with extension '.chkpt', then will try to load the checkpoint file.
+    def __init__(
+        self,
+        environment_name: str,
+        agent_name: str = 'RLAgent',
+        save_dir: str = None,
+        iteration: int = 0,
+        file_ext: str = 'ckpt',
+        restore_only: bool = False,
+    ) -> None:
+        """
+        Args:
+            environment_name: the environment name for the running agent.
+            agent_name: agent name, default RLAgent.
+            save_dir: checkpoint files save directory, default None.
+            file_ext: checkpoint file extension.
+            iteration: current iteration, default 0.
+            restore_only: only used for evaluation, will not able to create checkpoints, default off.
         """
 
-        if not self._symlink_path:
-            self._init_symlink()
+        if not restore_only:
+            if not save_dir or save_dir == '':
+                raise ValueError('Invalid save_dir for checkpoint instance.')
 
-        if not self._can_be_restored():
-            raise RuntimeError(f'Except a valid check point file, but not found at "{self._checkpoint_dir}"')
+        self.save_dir = save_dir
+        self.file_ext = file_ext
+        self.base_path = None
 
-        file_path = self._get_checkpoint_files()
-        # Load state into memory from checkpoint file
-        loaded_state = torch.load(file_path, map_location=torch.device(device))
+        if not restore_only:
+            self.base_path = Path(self.save_dir)
+            if not self.base_path.exists():
+                self.base_path.mkdir(parents=True, exist_ok=True)
 
-        # Needs to match environment_name
+        # Stores internal state for checkpoint.
+        self.state = AttributeDict()
+        self.state.iteration = iteration
+        self.state.environment_name = environment_name
+        self.state.agent_name = agent_name
+
+    def register_pair(self, pair: Tuple[Text, Any]) -> None:
+        """
+        Add a pair of (key, item) to internal state so that later we can save as checkpoint.
+        """
+        assert isinstance(pair, Tuple)
+
+        key, item = pair
+        self.state[key] = item
+
+    def save(self) -> str:
+        """
+        Save pytorch model as checkpoint.
+
+        Returns:
+            the full path of checkpoint file.
+        """
+
+        file_name = f'{self.state.agent_name}_{self.state.environment_name}_{self.state.iteration}.{self.file_ext}'
+        save_path = self.base_path / file_name
+
+        states = self._get_states_dict()
+        torch.save(states, save_path)
+        return save_path
+
+    def restore(self, file_to_restore: str) -> None:
+        """Try to restore checkpoint from a given checkpoint file."""
+        if not file_to_restore or not os.path.isfile(file_to_restore) or not os.path.exists(file_to_restore):
+            raise ValueError(f'"{file_to_restore}" is not a valid checkpoint file.')
+
+        # Always load checkpoint state to CPU.
+        loaded_state = torch.load(file_to_restore, map_location=torch.device('cpu'))
+
+        # Needs to match environment_name and agent name
         if loaded_state['environment_name'] != self.state.environment_name:
-            raise RuntimeError(
-                f'Expect environment_name to match from saved checkpoint, '
-                f'got "{loaded_state["environment_name"]}" and "{self.state.environment_name}"'
-            )
+            err_msg = f'environment_name "{loaded_state["environment_name"]}" and "{self.state.environment_name}" mismatch.'
+            raise RuntimeError(err_msg)
+        if 'agent_name' in loaded_state and loaded_state['agent_name'] != self.state.agent_name:
+            err_msg = f'agent_name "{loaded_state["agent_name"]}" and "{self.state.agent_name}" mismatch.'
+            raise RuntimeError(err_msg)
 
+        # Ready to restore the states.
         loaded_keys = [k for k in loaded_state.keys()]
 
         for key, item in self.state.items():
@@ -119,58 +139,29 @@ class PyTorchCheckpoint:
             if key not in loaded_keys:
                 continue
 
-            if self._is_pytorch_object(item):
+            if self._is_torch_model(item):
                 self.state[key].load_state_dict(loaded_state[key])
             else:
                 self.state[key] = loaded_state[key]
 
-        logging.info(f'Loaded checkpoint file from "{file_path}"')
+    def set_iteration(self, iteration) -> None:
+        self.state.iteration = iteration
 
-    def _get_file_name(self):
-        return f'{self.state.environment_name}_iteration_{self.state.iteration}.{self._file_ext}'
+    def get_iteration(self) -> int:
+        return self.state.iteration
 
-    def _init_symlink(self):
-        self._symlink_path = Path(f'{self._checkpoint_dir}/{self.state.environment_name}-latest')
-
-    def _create_symlink_for_file(self, file_path):
-        # Add 'latest' as symlink to the most recent checkpoint file.
-        try:
-            if not self._symlink_path:
-                self._init_symlink()
-            if self._symlink_path.is_symlink():
-                os.remove(self._symlink_path)
-            if not self._symlink_path.exists():
-                self._symlink_path.symlink_to(file_path)
-        except OSError:
-            pass
-
-    def _prepare_state_for_checkpoint(self):
-        obj = {}
-        # Find what ever is available to save, PyTorch models need to use state_dict()
+    def _get_states_dict(self) -> Mapping[Text, Any]:
+        states_dict = {}
+        # Find whatever is available to save, PyTorch models and optimizers need to use state_dict()
         for key, item in self.state.items():
-            if self._is_pytorch_object(item):
-                obj[key] = item.state_dict()
+            if self._is_torch_model(item):
+                states_dict[key] = item.state_dict()
             else:
-                obj[key] = item
+                states_dict[key] = item
 
-        return obj
+        return states_dict
 
-    def _can_be_restored(self) -> bool:
-        """Check if can be restored either from specific checkpoint file,
-        or latest checkpoint file from base dir"""
-        return self._get_checkpoint_files() is not None
-
-    def _get_checkpoint_files(self):
-        """
-        Check file first, then the latest symlink, if none exits, return.
-        """
-        if self._base_path.exists() and self._base_path.is_file():
-            return self._base_path  # .resolve()
-        if self._symlink_path.is_symlink():
-            return self._symlink_path  # .resolve()
-        return None
-
-    def _is_pytorch_object(self, obj):
+    def _is_torch_model(self, obj) -> bool:
         return isinstance(obj, (torch.nn.Module, torch.optim.Optimizer))
 
 

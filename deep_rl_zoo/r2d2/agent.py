@@ -23,7 +23,7 @@ https://github.com/google-research/seed_rl/blob/66e8890261f09d0355e8bf5f1c5e4196
 This agent supports store hidden state (only first step in a unroll) in replay, and burn in.
 In fact, even if we use burn in, we're still going to store the hidden state (only first step in a unroll) in the replay.
 """
-from typing import Mapping, Optional, Tuple, NamedTuple, Text
+from typing import Mapping, Optional, Tuple, NamedTuple, Iterable, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -398,19 +398,19 @@ class Learner(types_lib.Learner):
         self._target_update_t = 0
         self._loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
-            return None
+            return
 
         self._learn()
-        return self.statistics
+        yield self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""

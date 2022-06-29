@@ -18,7 +18,7 @@ From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 """
 
-from typing import Mapping, Tuple, Text
+from typing import Mapping, Iterable, Tuple, Text
 import itertools
 import multiprocessing
 import numpy as np
@@ -65,6 +65,7 @@ class Actor(types_lib.Agent):
         self._queue = data_queue
         self._transition_accumulator = transition_accumulator
         self._policy_network = policy_network.to(device=device)
+        self._policy_network.eval()
         self._device = device
         self._unroll_length = unroll_length
         self._storage = []
@@ -164,6 +165,7 @@ class Learner(types_lib.Learner):
 
         self.agent_name = 'PPO-learner'
         self._policy_network = policy_network.to(device=device)
+        self._policy_network.train()
         self._old_policy_network = old_policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
         self._device = device
@@ -187,21 +189,22 @@ class Learner(types_lib.Learner):
         # Counters
         self._step_t = -1
         self._update_t = 0
-        self._loss_t = np.nan
+        self._policy_loss_t = np.nan
+        self._baseline_loss_t = np.nan
+        self._entropy_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if len(self._storage) < self._batch_size:
-            return None
+            return
 
-        self._learn()
-        return self.statistics
+        return self._learn()
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
@@ -211,7 +214,7 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
         self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
 
-    def _learn(self) -> None:
+    def _learn(self) -> Iterable[Mapping[Text, float]]:
         # Merge list of lists into a single big list, this contains transitions from all workers.
         all_transitions = list(itertools.chain.from_iterable(self._storage))
 
@@ -228,6 +231,8 @@ class Learner(types_lib.Learner):
                     transitions, replay_lib.OffPolicyTransitionStructure
                 )
                 self._update(stacked_transition)
+                yield self.statistics
+
         self._storage = []  # discard old samples after using it
         self._update_old_policy()
 
@@ -245,9 +250,6 @@ class Learner(types_lib.Learner):
 
         self._policy_optimizer.step()
         self._update_t += 1
-
-        # For logging only.
-        self._loss_t = loss.detach().cpu().item()
 
     def _calc_loss(self, transitions: replay_lib.OffPolicyTransition) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
@@ -298,11 +300,16 @@ class Learner(types_lib.Learner):
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = torch.mean(entropy_loss, dim=0)
-        baseline_loss = torch.mean(baseline_loss, dim=0)
+        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
+        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
-        # Combine policy loss, baseline loss, entropy loss
-        loss = policy_loss + self._baseline_coef * baseline_loss + self._entropy_coef * entropy_loss
+        # Combine policy loss, baseline loss, entropy loss.
+        loss = policy_loss + baseline_loss + entropy_loss
+
+        # For logging only.
+        self._policy_loss_t = policy_loss.detach().cpu().item()
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._entropy_loss_t = entropy_loss.detach().cpu().item()
 
         return loss
 
@@ -319,7 +326,9 @@ class Learner(types_lib.Learner):
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'loss': self._loss_t,
+            'policy_loss': self._policy_loss_t,
+            'baseline_loss': self._baseline_loss_t,
+            'entropy_loss': self._entropy_loss_t,
             'discount': self._discount,
             'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,

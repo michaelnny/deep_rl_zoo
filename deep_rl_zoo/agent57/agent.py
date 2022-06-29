@@ -18,7 +18,7 @@ From the paper "Agent57: Outperforming the Atari Human Benchmark"
 https://arxiv.org/pdf/2003.13350.
 """
 
-from typing import Mapping, Optional, Tuple, NamedTuple, Text
+from typing import Iterable, Mapping, Optional, Tuple, NamedTuple, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -99,6 +99,7 @@ def compute_transformed_q(ext_q: torch.Tensor, int_q: torch.Tensor, beta: torch.
 
 def no_autograd(net: torch.nn.Module):
     """Disable autograd for a network."""
+    net.eval()
     for p in net.parameters():
         p.requires_grad = False
 
@@ -212,15 +213,14 @@ class Actor(types_lib.Agent):
 
         self._ext_q_network = ext_q_network.to(device=device)
         self._int_q_network = int_q_network.to(device=device)
-        self._learner_ext_q_network = learner_ext_q_network.to(device=device)
-        self._learner_int_q_network = learner_int_q_network.to(device=device)
         self._rnd_target_network = rnd_target_network.to(device=device)
         self._rnd_predictor_network = rnd_predictor_network.to(device=device)
         self._embedding_network = embedding_network.to(device=device)
+
+        self._learner_ext_q_network = learner_ext_q_network.to(device=device)
+        self._learner_int_q_network = learner_int_q_network.to(device=device)
         self._learner_rnd_predictor_network = learner_rnd_predictor_network.to(device=device)
         self._learner_embedding_network = learner_embedding_network.to(device=device)
-
-        self._update_actor_q_network()
 
         # Disable autograd for actor's Q networks, embedding, and RND networks.
         no_autograd(self._ext_q_network)
@@ -228,6 +228,8 @@ class Actor(types_lib.Agent):
         no_autograd(self._rnd_target_network)
         no_autograd(self._rnd_predictor_network)
         no_autograd(self._embedding_network)
+
+        self._update_actor_q_network()
 
         self._queue = data_queue
         self._device = device
@@ -525,16 +527,21 @@ class Learner(types_lib.Learner):
         self.agent_name = 'Agent57-learner'
         self._device = device
         self._online_ext_q_network = ext_q_network.to(device=device)
+        self._online_ext_q_network.train()
         self._ext_q_optimizer = ext_q_optimizer
         self._online_int_q_network = int_q_network.to(device=device)
+        self._online_int_q_network.train()
         self._int_q_optimizer = int_q_optimizer
+        self._embedding_network = embedding_network.to(device=self._device)
+        self._embedding_network.train()
+        self._rnd_predictor_network = rnd_predictor_network.to(device=self._device)
+        self._rnd_predictor_network.train()
+        self._intrinsic_optimizer = intrinsic_optimizer
+
+        self._rnd_target_network = rnd_target_network.to(device=self._device)
         # Lazy way to create target Q networks
         self._target_ext_q_network = copy.deepcopy(self._online_ext_q_network).to(device=self._device)
         self._target_int_q_network = copy.deepcopy(self._online_int_q_network).to(device=self._device)
-        self._embedding_network = embedding_network.to(device=self._device)
-        self._rnd_target_network = rnd_target_network.to(device=self._device)
-        self._rnd_predictor_network = rnd_predictor_network.to(device=self._device)
-        self._intrinsic_optimizer = intrinsic_optimizer
 
         # Disable autograd for target Q networks, and RND target networks.
         no_autograd(self._target_ext_q_network)
@@ -565,19 +572,19 @@ class Learner(types_lib.Learner):
         self._int_q_loss_t = np.nan
         self._embedding_rnd_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
-            return None
+            return
 
         self._learn()
-        return self.statistics
+        yield self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""

@@ -22,7 +22,7 @@ Code based on a combination of the following sources:
 https://github.com/deepmind/scalable_agent
 https://github.com/facebookresearch/torchbeast
 """
-from typing import Mapping, Optional, Tuple, NamedTuple, Text
+from typing import Iterable, Mapping, Optional, Tuple, NamedTuple, Text
 import multiprocessing
 import numpy as np
 import torch
@@ -101,6 +101,7 @@ class Actor(types_lib.Agent):
 
         self._policy_network = policy_network.to(device=device)
         self._device = device
+        self._policy_network.eval()
 
         self._queue = data_queue
 
@@ -170,9 +171,6 @@ class Actor(types_lib.Agent):
         # Sample an action
         a_t = distributions.categorical_distribution(logits_t).sample()
 
-        # logits_t = torch.flatten(logits_t, 0, 1)
-        # a_t = torch.multinomial(F.softmax(logits_t, dim=1), num_samples=1)
-
         # Remove T and B dimensions.
         logits_t = logits_t.squeeze(0).squeeze(0)  # [num_actions]
         return (a_t.cpu().item(), logits_t.cpu().numpy(), pi_output.hidden_s)
@@ -235,7 +233,6 @@ class Learner(types_lib.Learner):
         batch_size: int,
         entropy_coef: float,
         baseline_coef: float,
-        kl_coef: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
@@ -250,7 +247,6 @@ class Learner(types_lib.Learner):
             batch_size: sample batch_size of transitions.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value loss.
-            kl_coef: the coefficient of KL loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
@@ -270,6 +266,7 @@ class Learner(types_lib.Learner):
         self._device = device
         self.actor_policy_network = actor_policy_network
         self._policy_network = policy_network.to(device=device)
+        self._policy_network.train()
         self._policy_optimizer = policy_optimizer
 
         self._discount = discount
@@ -280,7 +277,6 @@ class Learner(types_lib.Learner):
 
         self._entropy_coef = entropy_coef
         self._baseline_coef = baseline_coef
-        self._kl_coef = kl_coef
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
@@ -290,23 +286,21 @@ class Learner(types_lib.Learner):
         self._update_t = 0
         self._policy_loss_t = np.nan
         self._entropy_loss_t = np.nan
-        self._value_loss_t = np.nan
-        self._kl_loss_t = np.nan
+        self._baseline_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
-        # Get at least 4 samples before do next batch of learning.
-        if self._replay.size < self._batch_size or self._replay.num_added % self._batch_size != 0:
-            return None
+        if self._replay.size < self._batch_size:
+            return
 
         self._learn()
-        return self.statistics
+        yield self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
@@ -319,7 +313,7 @@ class Learner(types_lib.Learner):
     def _learn(self) -> None:
         transitions = self._replay.sample(self._batch_size)
         self._update(transitions)
-        # self._replay.reset()
+        self._replay.reset()
 
     def _update(self, transitions: ImpalaTransition) -> torch.Tensor:
         self._policy_optimizer.zero_grad()
@@ -378,52 +372,35 @@ class Learner(types_lib.Learner):
         # Use last baseline value (from the value function) to bootstrap.
         bootstrap_value = network_output.baseline[-1]
 
-        # We have unrolled T + 1 steps. The last step is only used as bootstrap value, so it's removed.
+        # At this point, the environment outputs at time step `t` are the inputs that
+        # lead to the learner_outputs at time step `t`. After the following shifting,
+        # the actions in agent_outputs and learner_outputs at time step `t` is what
+        # leads to the environment outputs at time step `t`.
         target_logits, baseline = network_output.pi_logits[:-1], network_output.baseline[:-1]
         action, behavior_logits = a_t[:-1], behavior_logits_t[:-1]
         reward, done = r_t[1:], done[1:]
 
         discount = (~done).float() * self._discount
 
-        # Compute policy log probabilitiy for action the agent taken.
-        target_action_log_probs = distributions.categorical_distribution(target_logits).log_prob(action)
-        behavior_action_log_probs = distributions.categorical_distribution(behavior_logits).log_prob(action)
-
-        vtrace_returns = vtrace.from_importance_weights(
-            target_action_log_probs=target_action_log_probs,
-            behavior_action_log_probs=behavior_action_log_probs,
+        # Compute vtrace target values and advantages
+        vtrace_returns = vtrace.from_logits(
+            behavior_policy_logits=behavior_logits,
+            target_policy_logits=target_logits,
+            actions=action,
             discounts=discount,
             rewards=reward,
             values=baseline,
             bootstrap_value=bootstrap_value,
         )
 
-        # Policy loss based on Policy Gradients
-        policy_loss = -torch.mean(target_action_log_probs * torch.detach(vtrace_returns.pg_advantages))
+        policy_loss = rl.policy_gradient_loss(target_logits, action, vtrace_returns.pg_advantages).loss
+        entropy_loss = rl.entropy_loss(target_logits).loss
+        baseline_loss = rl.baseline_loss(vtrace_returns.vs - baseline).loss
 
-        # Value function loss
-        v_error = vtrace_returns.vs - baseline
-        baseline_loss = self._baseline_coef * 0.5 * torch.mean(torch.square(v_error))
-
-        # Entropy reward
-        entropy = rl.entropy_loss(target_logits).extra.entropy
-        entropy_loss = self._entropy_coef * torch.mean(-entropy)
-
-        # KL(old_policy|new_policy) loss
-        kl = behavior_action_log_probs - target_action_log_probs
-        kl_loss = self._kl_coef * torch.mean(kl)
-
-        loss = policy_loss + baseline_loss + entropy_loss + kl_loss
-
-        # vtrace_returns = vtrace.from_logits(
-        #     behavior_policy_logits=behavior_logits,
-        #     target_policy_logits=target_logits,
-        #     actions=action,
-        #     discounts=discount,
-        #     rewards=reward,
-        #     values=baseline,
-        #     bootstrap_value=bootstrap_value,
-        # )
+        # Average over batch dimension.
+        policy_loss = torch.mean(policy_loss, dim=0)
+        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
+        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # policy_loss = compute_policy_gradient_loss(
         #     target_logits,
@@ -433,13 +410,12 @@ class Learner(types_lib.Learner):
         # baseline_loss = self._baseline_coef * compute_baseline_loss(vtrace_returns.vs - baseline)
         # entropy_loss = self._entropy_coef * compute_entropy_loss(target_logits)
 
-        # loss = policy_loss + baseline_loss + entropy_loss
+        loss = policy_loss + baseline_loss + entropy_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
         self._entropy_loss_t = entropy_loss.detach().cpu().item()
-        self._value_loss_t = baseline_loss.detach().cpu().item()
-        self._kl_loss_t = kl_loss.detach().cpu().item()
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
 
         return loss
 
@@ -450,8 +426,7 @@ class Learner(types_lib.Learner):
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'entropy_loss': self._entropy_loss_t,
-            'value_loss': self._value_loss_t,
-            'kl_loss': self._kl_loss_t,
+            'baseline_loss': self._baseline_loss_t,
             'discount': self._discount,
             'updates': self._update_t,
         }

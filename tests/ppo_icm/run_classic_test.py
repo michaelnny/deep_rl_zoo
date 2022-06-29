@@ -13,6 +13,8 @@
 # limitations under the License.
 # ============================================================================
 """Tests for PPO-ICM."""
+from pathlib import Path
+import shutil
 import multiprocessing
 from absl import flags
 from absl.testing import flagsaver
@@ -20,31 +22,39 @@ from absl.testing import absltest
 from deep_rl_zoo.ppo_icm import run_classic
 
 FLAGS = flags.FLAGS
+FLAGS.checkpoint_dir = '/tmp/e2e_test_checkpoint'
+FLAGS.results_csv_path = ''
+FLAGS.tensorboard = False
+FLAGS.num_train_frames = 500
+FLAGS.num_eval_frames = 200
+FLAGS.num_iterations = 1
 
 
 class RunClassicGameTest(absltest.TestCase):
     def setUp(self):
         super().setUp()
-        FLAGS.checkpoint_path = ''
-        FLAGS.results_csv_path = ''
-        FLAGS.tensorboard = False
+        self.checkpoint_dir = Path(FLAGS.checkpoint_dir)
 
     @flagsaver.flagsaver
     def test_can_run_agent(self):
         FLAGS.environment_name = 'CartPole-v1'
         FLAGS.num_actors = 2
-        FLAGS.num_train_steps = 500
-        FLAGS.num_eval_steps = 200
-        FLAGS.num_iterations = 1
         FLAGS.batch_size = 4
         FLAGS.n_step = 2
         FLAGS.unroll_length = 8
         FLAGS.update_k = 2
-        FLAGS.intrinsic_eta = 1.0
+        FLAGS.intrinsic_lambda = 1.0
         FLAGS.icm_beta = 0.2
-        FLAGS.policy_lambda = 1.0
+        FLAGS.policy_loss_coef = 1.0
         FLAGS.clip_grad = True
         run_classic.main(None)
+
+    def tearDown(self) -> None:
+        # Clean up
+        try:
+            shutil.rmtree(self.checkpoint_dir)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == '__main__':

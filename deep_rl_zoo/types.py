@@ -20,7 +20,7 @@
 """Common types"""
 import abc
 
-from typing import NamedTuple, Text, Mapping, Optional, Any
+from typing import NamedTuple, Text, Mapping, Iterable, Optional, Any
 import numpy as np
 
 Action = int
@@ -62,14 +62,14 @@ class Learner(abc.ABC):
     """Learner interface."""
 
     agent_name: str  # agent name
-    step_t: int  # train steps
+    step_t: int  # learner steps
 
     @abc.abstractmethod
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
-            learner statistics if network parameters update occurred, otherwise returns None.
+        Yields:
+            learner statistics if network parameters update occurred, otherwise None.
         """
 
     @abc.abstractmethod

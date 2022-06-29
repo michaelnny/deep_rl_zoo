@@ -39,7 +39,6 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height,
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width, for atari only.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip, for atari only.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack, for atari only.')
-flags.DEFINE_float('obscure_epsilon', 0.0, 'Make the problem POMDP by obsecure environment state with probability epsilon.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
 flags.DEFINE_integer('num_policies', 16, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
@@ -51,16 +50,11 @@ flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distan
 flags.DEFINE_float('max_similarity', 8.0, 'K-nearest neighbors custer distance.')
 
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
-flags.DEFINE_string(
-    'checkpoint_path',
-    'checkpoints/agent57',
-    'Path for checkpoint directory or a specific checkpoint file, if it is a directory, \
-        will try to find latest checkpoint file matching the environment name.',
-)
+flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
 flags.DEFINE_string(
     'recording_video_dir',
     'recordings/agent57',
@@ -81,9 +75,7 @@ def main(argv):
 
     # Create evaluation environments
     if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
-        eval_env = gym_env.create_classic_environment(
-            env_name=FLAGS.environment_name, obscure_epsilon=FLAGS.obscure_epsilon, seed=FLAGS.seed
-        )
+        eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed)
         input_shape = eval_env.observation_space.shape[0]
         num_actions = eval_env.action_space.n
         ext_q_network = NguDqnMlpNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies)
@@ -100,7 +92,6 @@ def main(argv):
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
             seed=FLAGS.seed,
-            obscure_epsilon=FLAGS.obscure_epsilon,
             noop_max=30,
             terminal_on_life_loss=False,
             clip_reward=False,
@@ -116,6 +107,23 @@ def main(argv):
     logging.info('Environment: %s', FLAGS.environment_name)
     logging.info('Action spec: %s', num_actions)
     logging.info('Observation spec: %s', input_shape)
+
+    # Setup checkpoint and load model weights from checkpoint.
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='Agent57', restore_only=True)
+    checkpoint.register_pair(('ext_q_network', ext_q_network))
+    checkpoint.register_pair(('int_q_network', int_q_network))
+    checkpoint.register_pair(('rnd_target_network', rnd_target_network))
+    checkpoint.register_pair(('rnd_predictor_network', rnd_predictor_network))
+    checkpoint.register_pair(('embedding_network', embedding_network))
+
+    if FLAGS.load_checkpoint_file:
+        checkpoint.restore(FLAGS.load_checkpoint_file)
+
+    ext_q_network.eval()
+    int_q_network.eval()
+    rnd_target_network.eval()
+    rnd_predictor_network.eval()
+    embedding_network.eval()
 
     # Create evaluation agent instance
     eval_agent = greedy_actors.Agent57EpsilonGreedyActor(
@@ -134,27 +142,10 @@ def main(argv):
         device=runtime_device,
     )
 
-    # Setup checkpoint and load model weights from checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path, False)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.ext_q_network = ext_q_network
-    state.int_q_network = int_q_network
-    state.rnd_target_network = rnd_target_network
-    state.rnd_predictor_network = rnd_predictor_network
-    state.embedding_network = embedding_network
-    checkpoint.restore(runtime_device)
-
-    ext_q_network.eval()
-    int_q_network.eval()
-    rnd_target_network.eval()
-    rnd_predictor_network.eval()
-    embedding_network.eval()
-
     # Run test N iterations.
-    main_loop.run_test_iterations(
+    main_loop.run_evaluation_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_eval_frames=FLAGS.num_eval_frames,
         eval_agent=eval_agent,
         eval_env=eval_env,
         tensorboard=FLAGS.tensorboard,

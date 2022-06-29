@@ -13,6 +13,8 @@
 # limitations under the License.
 # ============================================================================
 """Tests for synchronized A2C."""
+from pathlib import Path
+import shutil
 import multiprocessing
 from absl import flags
 from absl.testing import flagsaver
@@ -20,27 +22,35 @@ from absl.testing import absltest
 from deep_rl_zoo.a2c import run_atari_grad as run_atari
 
 FLAGS = flags.FLAGS
+FLAGS.checkpoint_dir = '/tmp/e2e_test_checkpoint'
+FLAGS.results_csv_path = ''
+FLAGS.tensorboard = False
+FLAGS.max_episode_steps = 500
+FLAGS.num_train_frames = 500
+FLAGS.num_eval_frames = 200
+FLAGS.num_iterations = 1
 
 
 class RunAtariTest(absltest.TestCase):
     def setUp(self):
         super().setUp()
-        FLAGS.checkpoint_path = ''
-        FLAGS.results_csv_path = ''
-        FLAGS.tensorboard = False
-        FLAGS.max_episode_steps = 500
+        self.checkpoint_dir = Path(FLAGS.checkpoint_dir)
 
     @flagsaver.flagsaver
     def test_can_run_agent(self):
         FLAGS.environment_name = 'Pong'
         FLAGS.num_actors = 2
-        FLAGS.num_train_steps = 500
-        FLAGS.num_eval_steps = 200
-        FLAGS.num_iterations = 1
         FLAGS.batch_size = 4
         FLAGS.n_step = 2
         FLAGS.clip_grad = True
         run_atari.main(None)
+
+    def tearDown(self) -> None:
+        # Clean up
+        try:
+            shutil.rmtree(self.checkpoint_dir)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == '__main__':

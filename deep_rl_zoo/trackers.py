@@ -238,7 +238,7 @@ class TensorboardAgentStatisticsTracker:
         self._num_steps_since_reset += 1
 
         # To improve performance, only logging at end of an episode.
-        # This should not block the traning if there's any exception.
+        # This should not block the training loop if there's any exception.
         if timestep_t.done:
             try:
                 stats = agent.statistics
@@ -267,13 +267,13 @@ class TensorboardLearnerStatisticsTracker:
 
     def step(self, stats) -> None:
         """Accumulates statistics from timestep."""
-        # Log every N train steps. This should not block the traning if there's any exception.
-        if self._num_steps_since_reset % 50 == 0:
+        # Log every N train steps. This should not block the training loop if there's any exception.
+        if self._num_steps_since_reset % 10 == 0:
             try:
                 if stats:
                     for k, v in stats.items():
                         if isinstance(v, (int, float)):
-                            self._writer.add_scalar(f'learner_statistics(train_steps)/{k}', v, self._num_steps_since_reset)
+                            self._writer.add_scalar(f'learner_statistics(learner_steps)/{k}', v, self._num_steps_since_reset)
             except Exception:
                 pass
 

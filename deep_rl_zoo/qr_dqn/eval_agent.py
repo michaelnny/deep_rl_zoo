@@ -41,16 +41,11 @@ flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack, f
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('num_quantiles', 201, 'Number of quantiles.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_steps', int(2e5), 'Number of evaluation steps per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
-flags.DEFINE_string(
-    'checkpoint_path',
-    'checkpoints/qr_dqn',
-    'Path for checkpoint directory or a specific checkpoint file, if it is a directory, \
-        will try to find latest checkpoint file matching the environment name.',
-)
+flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
 flags.DEFINE_string(
     'recording_video_dir',
     'recordings/qr_dqn',
@@ -98,6 +93,15 @@ def main(argv):
     logging.info('Action spec: %s', num_actions)
     logging.info('Observation spec: %s', input_shape)
 
+    # Setup checkpoint and load model weights from checkpoint.
+    checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='QR-DQN', restore_only=True)
+    checkpoint.register_pair(('network', network))
+
+    if FLAGS.load_checkpoint_file:
+        checkpoint.restore(FLAGS.load_checkpoint_file)
+
+    network.eval()
+
     # Create evaluation agent instance
     eval_agent = greedy_actors.EpsilonGreedyActor(
         network=network,
@@ -107,18 +111,10 @@ def main(argv):
         name='QR-DQN-greedy',
     )
 
-    # Setup checkpoint and load model weights from checkpoint.
-    checkpoint = PyTorchCheckpoint(FLAGS.checkpoint_path, False)
-    state = checkpoint.state
-    state.environment_name = FLAGS.environment_name
-    state.network = network
-    checkpoint.restore(runtime_device)
-    network.eval()
-
     # Run test N iterations.
-    main_loop.run_test_iterations(
+    main_loop.run_evaluation_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_eval_steps=FLAGS.num_eval_steps,
+        num_eval_frames=FLAGS.num_eval_frames,
         eval_agent=eval_agent,
         eval_env=eval_env,
         tensorboard=FLAGS.tensorboard,

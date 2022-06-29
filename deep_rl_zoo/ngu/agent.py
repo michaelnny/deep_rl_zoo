@@ -18,7 +18,7 @@ From the paper "Never Give Up: Learning Directed Exploration Strategies"
 https://arxiv.org/abs/2002.06038.
 """
 
-from typing import Mapping, Optional, Tuple, NamedTuple, Text
+from typing import Iterable, Mapping, Optional, Tuple, NamedTuple, Text
 import copy
 import multiprocessing
 import numpy as np
@@ -83,6 +83,7 @@ TransitionStructure = NguTransition(
 
 def no_autograd(net: torch.nn.Module):
     """Disable autograd for a network."""
+    net.eval()
     for p in net.parameters():
         p.requires_grad = False
 
@@ -184,13 +185,14 @@ class Actor(types_lib.Agent):
         self._learner_network = learner_network.to(device=device)
         self._learner_rnd_predictor_network = learner_rnd_predictor_network.to(device=device)
         self._learner_embedding_network = learner_embedding_network.to(device=device)
-        self._update_actor_q_network()
 
         # Disable autograd for actor's local networks
         no_autograd(self._network)
         no_autograd(rnd_target_network)
         no_autograd(rnd_predictor_network)
         no_autograd(embedding_network)
+
+        self._update_actor_q_network()
 
         self._queue = data_queue
 
@@ -456,13 +458,17 @@ class Learner(types_lib.Learner):
         self.agent_name = 'NGU-learner'
         self._device = device
         self._online_network = network.to(device=device)
+        self._online_network.train()
         self._optimizer = optimizer
+        self._embedding_network = embedding_network.to(device=self._device)
+        self._embedding_network.train()
+        self._rnd_predictor_network = rnd_predictor_network.to(device=self._device)
+        self._rnd_predictor_network.train()
+        self._intrinsic_optimizer = intrinsic_optimizer
+
+        self._rnd_target_network = rnd_target_network.to(device=self._device)
         # Lazy way to create target Q network
         self._target_network = copy.deepcopy(self._online_network).to(device=self._device)
-        self._embedding_network = embedding_network.to(device=self._device)
-        self._rnd_target_network = rnd_target_network.to(device=self._device)
-        self._rnd_predictor_network = rnd_predictor_network.to(device=self._device)
-        self._intrinsic_optimizer = intrinsic_optimizer
 
         # Disable autograd for target Q network and RND target network
         no_autograd(self._target_network)
@@ -491,19 +497,19 @@ class Learner(types_lib.Learner):
         self._retrace_loss_t = np.nan
         self._embedding_rnd_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
-            return None
+            return
 
         self._learn()
-        return self.statistics
+        yield self.statistics
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""

@@ -20,7 +20,7 @@ https://arxiv.org/abs/1705.05363
 From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 """
-from typing import NamedTuple, Mapping, Tuple, Optional, Text
+from typing import NamedTuple, Mapping, Tuple, Optional, Iterable, Text
 import itertools
 import multiprocessing
 import numpy as np
@@ -137,11 +137,9 @@ class Learner(types_lib.Learner):
         batch_size: int,
         update_k: int,
         unroll_length: int,
-        intrinsic_eta: float,
+        intrinsic_lambda: float,
         icm_beta: float,
-        policy_lambda: float,
-        extrinsic_reward_coef: float,
-        intrinsic_reward_coef: float,
+        policy_loss_coef: float,
         entropy_coef: float,
         baseline_coef: float,
         clip_grad: bool,
@@ -161,11 +159,9 @@ class Learner(types_lib.Learner):
             batch_size: sample batch_size of transitions.
             update_k: update k times when it's time to do learning.
             unroll_length: worker rollout horizon.
-            intrinsic_eta: scaling facotr for intrinsic reward when calculate using equaltion 6.
+            intrinsic_lambda: scaling facotr for intrinsic reward when calculate using equaltion 6.
             icm_beta: weights inverse model loss against the forward model loss.
-            policy_lambda: weights policy loss against the importance of learning the intrinsic reward.
-            extrinsic_reward_coef: weights intrinsic reward from environment.
-            intrinsic_reward_coef: weights intrinsic reward from ICM module.
+            policy_loss_coef: weights policy loss against the importance of learning the intrinsic reward.
             entropy_coef: the coefficient of entryopy loss.
             baseline_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
@@ -183,16 +179,12 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect update_k to be integer geater than or equal to 1, got {update_k}')
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
-        if not 0.0 <= intrinsic_eta:
-            raise ValueError(f'Expect intrinsic_eta to be greater than or equal to 0.0, got {intrinsic_eta}')
+        if not 0.0 <= intrinsic_lambda:
+            raise ValueError(f'Expect intrinsic_lambda to be greater than or equal to 0.0, got {intrinsic_lambda}')
         if not 0.0 <= icm_beta <= 1.0:
             raise ValueError(f'Expect icm_beta to in the range [0.0, 1.0], got {icm_beta}')
-        if not 0.0 <= policy_lambda <= 1.0:
-            raise ValueError(f'Expect policy_lambda to in the range [0.0, 1.0], got {policy_lambda}')
-        if not 0.0 <= extrinsic_reward_coef <= 10.0:
-            raise ValueError(f'Expect extrinsic_reward_coef to in the range [0.0, 10.0], got {extrinsic_reward_coef}')
-        if not 0.0 <= intrinsic_reward_coef <= 10.0:
-            raise ValueError(f'Expect intrinsic_reward_coef to in the range [0.0, 10.0], got {intrinsic_reward_coef}')
+        if not 0.0 <= policy_loss_coef <= 1.0:
+            raise ValueError(f'Expect policy_loss_coef to in the range [0.0, 1.0], got {policy_loss_coef}')
         if not 0.0 < entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to (0.0, 1.0], got {entropy_coef}')
         if not 0.0 < baseline_coef <= 1.0:
@@ -212,11 +204,9 @@ class Learner(types_lib.Learner):
         # this will also clip intrinsic reward values in the range [-10, 10]
         self._intrinsic_reward_normalizer = normalizer.Normalizer(eps=0.0001, clip_range=(-10, 10), device=self._device)
 
-        self._eta = intrinsic_eta
-        self._beta = icm_beta
-        self._lambda = policy_lambda
-        self._int_reward_coef = intrinsic_reward_coef
-        self._ext_reward_coef = extrinsic_reward_coef
+        self._intrinsic_lambda = intrinsic_lambda
+        self._icm_beta = icm_beta
+        self._policy_loss_coef = policy_loss_coef
 
         self._storage = []
         self._discount = discount
@@ -236,21 +226,23 @@ class Learner(types_lib.Learner):
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
-        self._icm_loss_t = np.nan
+        self._baseline_loss_t = np.nan
+        self._entropy_loss_t = np.nan
+        self._icm_inverse_loss_t = np.nan
+        self._icm_forward_loss_t = np.nan
 
-    def step(self) -> Mapping[Text, float]:
+    def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
 
-        Returns:
+        Yields:
             learner statistics if network parameters update occurred, otherwise returns None.
         """
         self._step_t += 1
 
         if len(self._storage) < self._batch_size:
-            return None
+            return
 
-        self._learn()
-        return self.statistics
+        return self._learn()
 
     def reset(self) -> None:
         """Should be called at the begining of every iteration."""
@@ -260,7 +252,7 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
         self._storage.append(item)  # This will store a list (length unroll_length) of  transitions.
 
-    def _learn(self) -> None:
+    def _learn(self) -> Iterable[Mapping[Text, float]]:
         # Merge list of lists into a single big list, this contains transitions from all workers.
         all_transitions = list(itertools.chain.from_iterable(self._storage))
 
@@ -278,6 +270,8 @@ class Learner(types_lib.Learner):
                 )
                 icm_output = self._update_icm(stacked_transition)
                 self._update_policy(stacked_transition, icm_output)
+                yield self.statistics
+
         self._storage = []  # discard old samples after using it
         self._update_old_policy()
 
@@ -295,9 +289,6 @@ class Learner(types_lib.Learner):
 
         self._icm_optimizer.step()
 
-        # For logging only.
-        self._icm_loss_t = loss.detach().cpu().item()
-
         return icm_output
 
     def _update_policy(self, transitions: replay_lib.OffPolicyTransition, icm_output: IcmModuleOutput) -> None:
@@ -314,9 +305,6 @@ class Learner(types_lib.Learner):
 
         self._policy_optimizer.step()
         self._update_t += 1
-
-        # For logging only.
-        self._policy_loss_t = loss.detach().cpu().item()
 
     def _calc_icm_loss(self, transitions: replay_lib.OffPolicyTransition) -> Tuple[torch.Tensor, IcmModuleOutput]:
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
@@ -344,7 +332,7 @@ class Learner(types_lib.Learner):
             raise RuntimeError(f'Expect forward_losses tensor to be a vector, got {forward_losses.shape}')
 
         # Compute intrinsic reward
-        intrinsic_reward = self._eta * forward_losses.detach()  # eq 6, (batch_size, )
+        intrinsic_reward = self._intrinsic_lambda * forward_losses.detach()  # eq 6, (batch_size, )
 
         # Update intrinsic reward normalization statistics
         self._intrinsic_reward_normalizer.update(intrinsic_reward)
@@ -410,8 +398,8 @@ class Learner(types_lib.Learner):
         # Calculates TD n-step target and advantages.
         with torch.no_grad():
             baseline_s_t = self._old_policy_network(s_t).baseline.squeeze(1)  # [batch_size]
-            # Add intrisic reward, re-weights with coefficients
-            r_t = self._ext_reward_coef * r_t + self._int_reward_coef * icm_intrinsic_reward
+            # Add intrisic reward
+            r_t = r_t + icm_intrinsic_reward
             target_baseline = r_t + discount_t * baseline_s_t
             advantages = target_baseline - baseline_tm1
 
@@ -432,14 +420,21 @@ class Learner(types_lib.Learner):
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = torch.mean(entropy_loss, dim=0)
-        baseline_loss = torch.mean(baseline_loss, dim=0)
+        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
+        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # Combine policy loss, baseline loss, entropy loss.
-        loss = policy_loss + self._baseline_coef * baseline_loss + self._entropy_coef * entropy_loss
+        loss = policy_loss + baseline_loss + entropy_loss
 
         # Re-weight policy loss, add ICM module inverse model loss, forward model loss.
-        loss = self._lambda * loss + (1.0 - self._beta) * icm_inverse_loss + self._beta * icm_forward_loss
+        loss = self._policy_loss_coef * loss + (1.0 - self._icm_beta) * icm_inverse_loss + self._icm_beta * icm_forward_loss
+
+        # For logging only.
+        self._policy_loss_t = policy_loss.detach().cpu().item()
+        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._entropy_loss_t = entropy_loss.detach().cpu().item()
+        self._icm_inverse_loss_t = icm_inverse_loss.detach().cpu().item()
+        self._icm_forward_loss_t = icm_forward_loss.detach().cpu().item()
 
         return loss
 
@@ -458,7 +453,10 @@ class Learner(types_lib.Learner):
             'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'icm_learning_rate': self._icm_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
-            'icm_loss': self._icm_loss_t,
+            'baseline_loss': self._baseline_loss_t,
+            'entropy_loss': self._entropy_loss_t,
+            'icm_inverse_loss': self._icm_inverse_loss_t,
+            'icm_forward_loss': self._icm_forward_loss_t,
             'discount': self._discount,
             'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,

@@ -1,6 +1,6 @@
 # Deep RL Zoo
 A collection of Deep RL algorithms implemented with PyTorch to solve classic control problems like CartPole, LunarLander, and Atari games.
-This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo), we adapted the code and migrated to PyTorch, also implemented some new algorithms.
+This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to support PyTorch, and implemented some new algorithms.
 
 
 ## Environment and requirements
@@ -19,11 +19,11 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low-end machine and speed up training.
 * The hyper-parameters and network architectures are not fine-tuned.
 * All agents have been fully tested on classic control problems like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
-* For Atari games, we only run tests on Pong for some agents selectively, other agents (marked below) not tested due to lack of access to powerful machine and GPUs.
-* We can't guarantee its bug free.
+* For Atari games, we only run tests on Pong for some agents selectively, other agents (marked below) not tested due to lack of access to powerful machines and GPUs.
+* We can't guarantee it's bug free.
 
 
-## Implemented algorithms (for discrete action space only)
+## Implemented algorithms
 ### Policy gradient algorithms
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                                               | Note |
@@ -31,15 +31,16 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 | `reinforce`          | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
 | `reinforce_baseline` | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
 | `actor_critic`       | [Actor-Critic Algorithms](https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)          | *    |
-| `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)                                      | P *  |
+| `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)                                      | P    |
 |                      | [synchronous, deterministic variant of A3C](https://openai.com/blog/baselines-acktr-a2c/)                                     |      |
-| `ppo`                | [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)                                                   | P *  |
+| `ppo`                | [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)                                                   | P    |
 | `sac`                | [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning](https://arxiv.org/abs/1801.01290)                 | P *  |
 |                      | [Soft Actor-Critic for Discrete Action Settings](https://arxiv.org/abs/1910.07207)                                            |      |
-| `ppo_icm`            | [Curiosity-driven Exploration by Self-supervised Prediction](https://arxiv.org/abs/1705.05363)                                | P *  |
+| `ppo_icm`            | [Curiosity-driven Exploration by Self-supervised Prediction](https://arxiv.org/abs/1705.05363)                                | P    |
 | `ppo_rnd`            | [Exploration by Random Network Distillation](https://arxiv.org/abs/1810.12894)                                                | P *  |
-| `impala`             | [IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures](https://arxiv.org/abs/1802.01561) | P *  |
+| `impala`             | [IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures](https://arxiv.org/abs/1802.01561) | P    |
 <!-- mdformat on -->
+
 
 ### Deep Q learning algorithms
 <!-- mdformat off(for readability) -->
@@ -65,14 +66,14 @@ This repos is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo)
 | `iqn`                | [Implicit Quantile Networks for Distributional Reinforcement Learning](https://arxiv.org/abs/1806.06923)      | *    |
 
 <!-- mdformat on -->
-Notes:
+**Notes**:
 * `P` means support parallel training with multiple actors and a single learner on a single machine.
-* `*` means not tested on Atari games due to lack of access to powerful machine and GPUs.
+* `*` means not tested on Atari games due to lack of access to powerful machines and GPUs.
 
 
 ## Code structure
-*   `deep_rl_zoo` directory contains all the source code for different algorithms, specificlly:
-    *   Each directory contains a algorithm, more specifically:
+*   `deep_rl_zoo` directory contains all the source code for different algorithms:
+    *   each directory contains a algorithm, more specifically:
         - `agent.py` module contains an agent class that includes `reset()`, `step()` methods,
         for agent that supports parallel training, we have `Actor` and `Learner` classes for the specific agent.
         - `run_classic.py` module use simple MLP network to solve classic problems like CartPole, MountainCar, and LunarLander.
@@ -91,7 +92,7 @@ Notes:
     *   `greedy_actors.py` module contains all the greedy actors for testing/evaluation.
         for example `EpsilonGreedyActor` for DQN agents, `PolicyGreedyActor` for general policy gradient agents.
 *   `tests` directory contains all the code for unit testing and end-to-end testing.
-*   `screenshots` directory contains images of Tensorboard statistics for some of the agent.
+*   `screenshots` directory contains images of Tensorboard statistics for some of the test runs.
 
 
 ## Quick start
@@ -135,17 +136,14 @@ pip3 install -r requirements.txt
 ## Train agents
 
 ### CartPole, LunarLander, and MountainCar
-
-* By default, we have the following settings for all `run_classic.py` module:
-    - `--num_iterations=2 --num_train_steps=5e5 --num_eval_steps=2e5`
-* For some agents (like advanced DQN agents, most of the policy gradient agents), it's impossible to solve MountainCar due to the nature of the problem (sparse reward).
+* For some agents (like advanced DQN agents, most of the policy gradient agents except agents using curiosity-driven exploration), it's impossible to solve MountainCar due to the nature of the problem (sparse reward).
 
 To run a agent on classic control problem, use the following command, replace the <agent_name> with the sub-directory name.
 ```
 python3 -m deep_rl_zoo.<agent_name>.run_classic
 ```
 
-Example of DQN agent
+**Example of DQN agent**
 ```
 python3 -m deep_rl_zoo.dqn.run_classic
 
@@ -155,12 +153,10 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 ```
 
 
-### Atari environment
-* By default, we have the following settings for all `run_atari.py` module:
-    - `--num_iterations=20 --num_train_steps=1e6 --num_eval_steps=2e5`
+### Atari games
 * Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 200000 instead of 1000000.
 * By default, we uses gym `NoFrameskip-v4` for Atari game, and we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
-* We don't scale the observation with the atari wrappers BEFORE store the states into experience replay, as that will require 4-5x more RAM.
+* We don't scale the observation with the atari wrappers before store the states into experience replay, as that will require 4-5x more RAM.
     - As a reference, consider tuple (Stm1, Atm1, Rt, St, Done) as one sample and we stack 4 frames, and we store 100000 samples in experience replay.
         - If we do scale before store into replay, it will allocate ~14GB of RAM.
         - But when don't scale the states, it only requires ~3GB of RAM.
@@ -171,11 +167,11 @@ To run a agent on Atari game, use the following command, replace the <agent_name
 python3 -m deep_rl_zoo.<agent_name>.run_atari
 ```
 
-Example of DQN agent
+**Example of DQN agent**
 ```
 python3 -m deep_rl_zoo.dqn.run_atari
 
-# Train DQN on Breakout may take 20-50 million env steps, and the hyper-parameters are not tuned.
+# Train DQN on Breakout may take 20-50 million frames, and the hyper-parameters are not tuned.
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
@@ -192,23 +188,16 @@ python3 -m deep_rl_zoo.impala.run_atari --num_actors=8
 
 ## Evaluate agents
 Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
-By default, it will record a video of agent's self-play at the `recordings` directory.
+By default, it will record a video of agent self-play at the `recordings` directory.
 
 To run a agent on Atari game, use the following command, replace the <agent_name> with the sub-directory name.
 ```
 python3 -m deep_rl_zoo.<agent_name>.eval_agent
 ```
 
-Example of DQN agent
+**Example of DQN agent**
 ```
-python3 -m deep_rl_zoo.dqn.eval_agent
-
-python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=MountainCar-v0
-
-python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=Pong
-
-# load checkpoint file from a specific checkpoint file
-python3 -m deep_rl_zoo.dqn.eval_agent --checkpoint_path=checkpoints/dqn/CartPole-v1_iteration_0.ckpt
+python3 -m deep_rl_zoo.dqn.eval_agent --environment_name=MountainCar-v0 --load_checkpoint_file=checkpoints/dqn/DQN_MountainCar-v0_0.ckpt
 ```
 
 
@@ -240,10 +229,10 @@ The classes for write logs to tensorboard is implemented in `trackers.py` module
 * it'll log whatever is exposed in the agent's `statistics` property such as train loss, learning rate, discount, updates etc.
 * for algorithm support parallel training (multiple actors), this is only the statistics for the actors.
 
-`learner_statistics(train_steps)` measurements available on Tensorboard:
-* measured over training step
+`learner_statistics(learner_steps)` measurements available on Tensorboard:
 * only available if support parallel training (multiple actors)
 * it'll log whatever is exposed in the learner's `statistics` property such as train loss, learning rate, discount, updates etc.
+* to improve performance, it logs every 100 learner steps
 
 ### Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances
@@ -252,7 +241,7 @@ python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag
 ```
 
 ### Debug with environment screenshots
-This could be handy if we want see what's happening during the training, we can set the `debug_screenshots_frequency` (measured every episode) to some value, and it'll add screenshots of the terminal state to Tensorboard. This should be used for debug only as it may use more resources and cause the system to become unstable.
+This could be handy if we want to see what's happening during the training, we can set the `debug_screenshots_frequency` (measured over episode) to some value, and it'll add screenshots of the terminal state to Tensorboard. This should be used for debug only as it may use more resources and cause the system to become unstable.
 
 ```
 python3 -m deep_rl_zoo.r2d2.run_classic --environment_name=MountainCar-v0 --debug_screenshots_frequency=100
