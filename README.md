@@ -4,26 +4,26 @@ A collection of Deep RL algorithms implemented with PyTorch to solve Atari games
 This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to support PyTorch, and implemented some SOTA algorithms like PPO, IMPALA, R2D2, and Agent57.
 
 
-## Content
-- [Environment and Requirements](##environment-and-requirements)
-- [Implemented Algorithms](##implemented-algorithms)
-    - [Policy Gradient Algorithms](###policy-gradient-algorithms)
-    - [Deep Q Learning Algorithms](###deep-q-learning-algorithms)
-    - [Distributional Q Learning Algorithms](###distributional-q-learning-algorithms)
-- [Code Structure](##code-structure)
-- [Notes](##notes)
-- [Quick Start](##quick-start)
-    - [Install required packages on Mac](###install-required-packages-on-mac)
-    - [Install required packages on Ubuntu Linux](###install-required-packages-on-ubuntu-linux)
-- [Train Agents](##train-agents)
-- [Evaluate Agents](##evaluate-agents)
-- [Monitoring with Tensorboard](##monitoring-with-tensorboard)
-- [Acknowledgments](##acknowledgments)
-- [License](##license)
-- [Citing our work](##citing-our-work)
+# Content
+- [Environment and Requirements](#environment-and-requirements)
+- [Implemented Algorithms](#implemented-algorithms)
+    - [Policy Gradient Algorithms](#policy-gradient-algorithms)
+    - [Deep Q Learning Algorithms](#deep-q-learning-algorithms)
+    - [Distributional Q Learning Algorithms](#distributional-q-learning-algorithms)
+- [Code Structure](#code-structure)
+- [Author's Notes](#authors-notes)
+- [Quick Start](#quick-start)
+    - [Install required packages on Mac](#install-required-packages-on-mac)
+    - [Install required packages on Ubuntu Linux](#install-required-packages-on-ubuntu-linux)
+- [Train Agents](#train-agents)
+- [Evaluate Agents](#evaluate-agents)
+- [Monitoring with Tensorboard](#monitoring-with-tensorboard)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
+- [Citing our work](#citing-our-work)
 
 
-## Environment and Requirements
+# Environment and Requirements
 * Python        3.9.12
 * pip           22.0.3
 * PyTorch       1.11.0
@@ -33,8 +33,8 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 
 
-## Implemented Algorithms
-### Policy Gradient Algorithms
+# Implemented Algorithms
+## Policy Gradient Algorithms
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                                               | Note |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---- |
@@ -50,7 +50,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 <!-- mdformat on -->
 
 
-### Deep Q Learning Algorithms
+## Deep Q Learning Algorithms
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                               | Note |
 | -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
@@ -65,7 +65,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 <!-- mdformat on -->
 
 
-### Distributional Q Learning Algorithms
+## Distributional Q Learning Algorithms
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                               | Note |
 | -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
@@ -79,7 +79,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 * `P` means support parallel training with multiple actors and a single learner, all running on a single machine.
 * `*` means not tested on Atari games because we don't have access to powerful machines and GPUs.
 
-## Code Structure
+# Code Structure
 *   `deep_rl_zoo` directory contains all the source code for different algorithms:
     *   each directory contains a algorithm, more specifically:
         - `agent.py` module contains an agent class that includes `reset()`, `step()` methods,
@@ -103,7 +103,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 *   `screenshots` directory contains images of Tensorboard statistics for some of the test runs.
 
 
-## Notes
+# Author's Notes
 * Only support deterministic, episodic environment with discrete action space.
 * Focus on study and implementation for each algorithms, rather than create a standard library.
 * Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
@@ -113,9 +113,9 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 * For Atari games, we only run some of the agents on Pong or Breakout, agents that are not tested on Atari are marked in below table.
 * We can't guarantee it's bug free.
 
-## Quick Start
+# Quick Start
 
-### Install required packages on Mac
+## Install required packages on Mac
 ```
 # install homebrew, skip this step if already installed
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -136,7 +136,7 @@ CPPFLAGS="-I/opt/homebrew/include -L/opt/homebrew/lib" pip3 install python-snapp
 pip3 install -r requirements.txt
 ```
 
-### Install required packages on Ubuntu Linux
+## Install required packages on Ubuntu Linux
 ```
 # install swig which is required for box-2d
 sudo apt install swig
@@ -151,9 +151,9 @@ pip3 install -r requirements.txt
 ```
 
 
-## Train Agents
+# Train Agents
 
-### Classic Control Tasks
+## Classic Control Tasks
 * We maintain a list of environment names at `gym_env.py` module, by default it contains ```['CartPole-v1', 'LunarLander-v2', 'MountainCar-v0', 'Acrobot-v1']```.
 * For some agents (like advanced DQN agents, most of the policy gradient agents except agents using curiosity-driven exploration), it's impossible to solve MountainCar due to the nature of the problem (sparse reward).
 
@@ -167,7 +167,7 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=MountainCar-v0
 python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 ```
 
-### Atari games
+## Atari games
 * Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 200000 instead of 1000000.
 * By default, we uses gym `NoFrameskip-v4` for Atari game, and we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
 * We don't scale the images before store into experience replay, as that will require 4-5x more RAM, we only scale them inside the model.forward() method.
@@ -182,7 +182,7 @@ python3 -m deep_rl_zoo.dqn.run_atari
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-### Training with multiple actors and singler learner (on single machine)
+## Training with multiple actors and singler learner (on single machine)
 For agents that support parallel training, we can adjust the parameter `num_actors` to specify how many actors to run.
 When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
 
@@ -191,7 +191,7 @@ python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
 ```
 
 
-## Evaluate Agents
+# Evaluate Agents
 Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
 By default, it will record a video of agent self-play at the `recordings` directory.
 
@@ -204,7 +204,7 @@ python3 -m deep_rl_zoo.rainbow.eval_agent --environment_name=Pong --load_checkpo
 ```
 
 
-## Monitoring with Tensorboard
+# Monitoring with Tensorboard
 By default, both training, evaluation, and testing will log to Tensorboard at the `runs` directory.
 To disable this, use the option `--notensorboard`.
 
@@ -219,7 +219,7 @@ The classes for write logs to tensorboard is implemented in `trackers.py` module
 * if algorithm support parallel training, we separate actor, learner logs
 * for agents that support parallel training, only log the first and last actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
 
-### Measurements available on Tensorboard
+## Measurements available on Tensorboard
 `performance(env_steps)`:
 * the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
 * `episode_return` the undiscounted sum of rewards of last episode
@@ -240,13 +240,13 @@ The classes for write logs to tensorboard is implemented in `trackers.py` module
 * to improve performance, it only logs every 100 learner steps
 ![Tensorboard learner_statistics](/screenshots/R2D2_CartPole_learner_statistics.png)
 
-### Add tags to Tensorboard
+## Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances
 ```
 python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag=LSTM-LR0.001
 ```
 
-### Debug with environment screenshots
+## Debug with environment screenshots
 This could be handy if we want to see what's happening during the training, we can set the `debug_screenshots_frequency` (measured over episode) to some value, and it'll add screenshots of the terminal state to Tensorboard. This should be used for debug only as it may use more resources and slows down the training process.
 
 ```
@@ -255,27 +255,27 @@ python3 -m deep_rl_zoo.r2d2.run_classic --environment_name=MountainCar-v0 --debu
 ![Tensorboard debug screenshots](/screenshots/Tensorboard_debug_screenshots.png)
 
 
-## Acknowledgments
+# Acknowledgments
 
-### This project is based on the work of DeepMind's projects.
+## This project is based on the work of DeepMind's projects.
 * [DeepMind DQN Zoo](http://github.com/deepmind/dqn_zoo) (for code strcture, replay, DQN agents, trackers, and more)
 * [DeepMind RLax](https://github.com/deepmind/rlax) (for modules to calculate losses for all different algorithms)
 * [DeepMind TRFL](https://github.com/deepmind/trfl) (for modules to calculate losses for all different algorithms)
 
-### Other reference projects which have been very helpful when we build our project
+## Other reference projects which have been very helpful when we build our project
 * [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) (for basic policy gradient agents)
 * [OpenAI Spinning Up](https://github.com/openai/spinningup) (for basic policy gradient agents)
 * [SEED RL](https://github.com/google-research/seed_rl) (for IMPALA, R2D2 and more)
 * [TorchBeast](https://github.com/facebookresearch/torchbeast) (for IMPALA)
 
 
-## License
+# License
 
 This project is licensed under the Apache License, Version 2.0 (the "License")
 see the LICENSE file for details
 
 
-## Citing our work
+# Citing our work
 
 If you reference or use our project in your research, please cite:
 
