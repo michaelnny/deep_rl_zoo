@@ -24,10 +24,10 @@ from deep_rl_zoo.r2d2 import run_atari
 FLAGS = flags.FLAGS
 FLAGS.checkpoint_dir = '/tmp/e2e_test_checkpoint'
 FLAGS.results_csv_path = ''
-FLAGS.tensorboard = False
+
 FLAGS.replay_capacity = 100
 FLAGS.min_replay_size = 4
-FLAGS.max_episode_steps = 500
+FLAGS.max_episode_steps = 100
 
 FLAGS.num_actors = 2
 FLAGS.num_train_frames = 500
@@ -47,6 +47,7 @@ class RunAtariGameTest(absltest.TestCase):
         FLAGS.unroll_length = 8
         FLAGS.burn_in = 0
         FLAGS.clip_grad = True
+        FLAGS.tensorboard = False
         run_atari.main(None)
 
     @flagsaver.flagsaver
@@ -56,6 +57,7 @@ class RunAtariGameTest(absltest.TestCase):
         FLAGS.unroll_length = 8
         FLAGS.burn_in = 4
         FLAGS.clip_grad = True
+        FLAGS.tensorboard = False
         run_atari.main(None)
 
     def tearDown(self) -> None:

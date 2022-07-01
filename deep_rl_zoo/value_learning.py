@@ -106,10 +106,8 @@ def qlearning(
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target_tm1 - qa_tm1
+    loss = 0.5 * td_error**2
 
-    # loss = 0.5 * td_error**2
-
-    loss = F.smooth_l1_loss(qa_tm1, target_tm1, reduction='none')
     return base.LossOutput(loss, QExtra(target_tm1, td_error))
 
 
@@ -181,9 +179,8 @@ def double_qlearning(
     # Temporal difference error and loss.
     # Loss is MSE scaled by 0.5, so the gradient is equal to the TD error.
     td_error = target_tm1 - qa_tm1
-    # loss = 0.5 * td_error**2
+    loss = 0.5 * td_error**2
 
-    loss = F.smooth_l1_loss(qa_tm1, target_tm1, reduction='none')
     return base.LossOutput(loss, DoubleQExtra(target_tm1, td_error, best_action))
 
 
@@ -686,5 +683,4 @@ def retrace(
     td_error = target_tm1 - qa_tm1
     loss = 0.5 * td_error**2
 
-    # loss = F.smooth_l1_loss(qa_tm1, target_tm1, reduction='none')
     return base.LossOutput(loss, QExtra(target=target_tm1, td_error=td_error))

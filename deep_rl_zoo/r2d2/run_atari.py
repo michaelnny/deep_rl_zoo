@@ -42,8 +42,8 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 4, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('replay_capacity', 2500, 'Maximum replay size.')  # out of RAM
+flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
@@ -58,7 +58,7 @@ flags.DEFINE_integer(
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 32, 'Batch size for learning, use larger batch size if possible.')
+flags.DEFINE_integer('batch_size', 4, 'Batch size for learning, use larger batch size if possible.')
 
 flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.6, 'Importance sampling exponent value.')
@@ -75,9 +75,9 @@ flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    2500,
+    1500,
     'Number of learner online Q network updates before update target Q networks.',
-)
+)  # 2500
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')

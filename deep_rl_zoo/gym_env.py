@@ -44,7 +44,7 @@ from absl import logging
 import deep_rl_zoo.types as types_lib
 
 # Not so complete classic env name lists.
-CLASSIC_ENV_NAMES = ['CartPole-v1', 'LunarLander-v2', 'MountainCar-v0']
+CLASSIC_ENV_NAMES = ['CartPole-v1', 'LunarLander-v2', 'MountainCar-v0', 'Acrobot-v1']
 
 
 class NoopReset(gym.Wrapper):
@@ -456,7 +456,7 @@ def create_classic_environment(
     obscure_epsilon: float = 0.0,
 ) -> gym.Env:
     """
-    Process gym env for classic games like CartPole, LunarLander, MountainCar
+    Process gym env for classic control tasks like CartPole, LunarLander, MountainCar
 
     Args:
         env_name: the environment name with version attached.
@@ -465,7 +465,7 @@ def create_classic_environment(
         obscure_epsilon: with epsilon probability [0.0, 1.0) obscure the state to make it POMDP.
 
     Returns:
-        gym.Env for classic games
+        gym.Env for classic control tasks
     """
 
     env = gym.make(env_name)
@@ -494,15 +494,19 @@ def play_and_record_video(
     Args:
         env: the gym environment to play.
         agent: the agent which should have step() method to return action for a given state.
-        save_dir: the recording video file directory, default save to 'recording/some_time_stamp'.
-        auto_fire: if True, take 'FIRE' action after loss a life, default off.
+        save_dir: the recording video file directory, default save to 'recordings/{agent_name}_{env.spec.id}_{timestamp}'.
+        auto_fire: if True, take 'FIRE' action after loss a life, default on.
+
+    Raises:
+        if agent is not an instance of types_lib.Agent.
     """
-    if not (hasattr(agent, 'step') and callable(getattr(agent, 'step'))):
+
+    if not isinstance(agent, types_lib.Agent):
         raise RuntimeError('Expect agent to have a callable step() method.')
 
     # Create a sub folder with name env.id + timestamp
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    full_save_dir = f'{save_dir}/{env.spec.id}_{ts}'
+    full_save_dir = f'{save_dir}/{agent.agent_name}_{env.spec.id}_{ts}'
     logging.info(f'Recording self-play video at "{full_save_dir}"')
 
     def take_fire_action(env):

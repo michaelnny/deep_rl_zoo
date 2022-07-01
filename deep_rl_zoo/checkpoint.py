@@ -102,7 +102,7 @@ class PyTorchCheckpoint:
 
     def save(self) -> str:
         """
-        Save pytorch model as checkpoint.
+        Save pytorch model as checkpoint, default file name is {agent_name}_{env_name}_{iteration}.ckpt, for example A2C_CartPole-v1_0.ckpt
 
         Returns:
             the full path of checkpoint file.

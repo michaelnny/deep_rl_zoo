@@ -269,11 +269,6 @@ class RainbowDqn(types_lib.Agent):
         self._target_update_t += 1
 
     @property
-    def exploration_epsilon(self):
-        """Make it consistent for logging, not used in rainbow."""
-        return 0.0
-
-    @property
     def statistics(self):
         """Returns current agent statistics as a dictionary."""
         return {
@@ -282,5 +277,4 @@ class RainbowDqn(types_lib.Agent):
             'discount': self._discount,
             'updates': self._update_t,
             'target_updates': self._target_update_t,
-            'exploration_epsilon': self.exploration_epsilon,
         }

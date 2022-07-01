@@ -578,7 +578,7 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(done, 1, torch.bool)
 
         # Calculate loss and priority, needs to add a batch dimension.
-        _, prioritiy = calculate_losses_and_priorities(
+        _, priority = calculate_losses_and_priorities(
             q_value=q_t.unsqueeze(1),
             action=a_t.unsqueeze(1),
             reward=r_t.unsqueeze(1),
@@ -591,7 +591,7 @@ class Learner(types_lib.Learner):
             eta=self._priority_eta,
         )
 
-        return prioritiy.item()
+        return priority.item()
 
     def _update_target_network(self):
         self._target_network.load_state_dict(self._online_network.state_dict())

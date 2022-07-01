@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A REINFORCE agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A REINFORCE agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "Policy Gradient Methods for Reinforcement Learning with Function Approximation"
 https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf.
@@ -34,7 +34,11 @@ from deep_rl_zoo import greedy_actors
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_bool('normalize_returns', False, 'Normalize episode returns, default off.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -56,7 +60,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains REINFORCE agent on classic games."""
+    """Trains REINFORCE agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

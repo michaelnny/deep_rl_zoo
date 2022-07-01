@@ -287,7 +287,7 @@ class Learner(types_lib.Learner):
 
     def _calc_rnd_loss(self, s_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Update observation normalization statistics and normalize state
-        s_t = self._normalize_observation(s_t)  # [batch_size, state_shape]
+        s_t = self._normalize_observation(s_t)  # [B, C, H, W] or [B, N]
 
         pred_s_t = self._rnd_predictor_network(s_t)
         with torch.no_grad():
@@ -398,7 +398,7 @@ class Learner(types_lib.Learner):
 
     def _normalize_observation(self, observation: torch.Tensor) -> torch.Tensor:
         # Normalize observation using online incremental algorithm
-        if len(observation.shape) > 2:
+        if len(observation.shape) > 2:  # shape of observation is [B, C, H, W]
             # Unstack frames, RND normalize one frame.
             _unstacked = torch.unbind(observation, dim=1)
             _results = []

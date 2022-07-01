@@ -192,13 +192,15 @@ class RndMlpNet(nn.Module):
         Args:
             input_shape: the shape of the input tensor to the neural network.
             is_target: if True, use one single linear layer at the head, default False.
-            latent_dim: the embedding latent dimension.
+            latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
 
         self.body = nn.Sequential(
             nn.Linear(input_shape, 128),
             nn.LeakyReLU(),
+            # nn.Linear(128, 128),
+            # nn.LeakyReLU(),
             nn.Linear(128, 128),
             nn.LeakyReLU(),
         )
@@ -236,7 +238,7 @@ class RndConvNet(nn.Module):
         Args:
             input_shape: the shape of the input tensor to the neural network.
             is_target: if True, use one single linear layer at the head, default False.
-            latent_dim: the embedding latent dimension.
+            latent_dim: the embedding latent dimension, default 256.
         """
         super().__init__()
 
@@ -262,8 +264,6 @@ class RndConvNet(nn.Module):
         else:
             self.head = nn.Sequential(
                 nn.Linear(conv2d_out_size, 512),
-                nn.ReLU(),
-                nn.Linear(512, 512),
                 nn.ReLU(),
                 nn.Linear(512, latent_dim),
             )
@@ -293,25 +293,31 @@ class NguEmbeddingMlpNet(nn.Module):
         Args:
             input_shape: the shape of the input tensor to the neural network.
             num_actions: the number of units for the output liner layer.
-            latent_dim: the embedding latent dimension.
+            latent_dim: the embedding latent dimension, default 64.
         """
         super().__init__()
 
         self.body = nn.Sequential(
             nn.Linear(input_shape, 128),
             nn.ReLU(),
+            # nn.Linear(128, 128),
+            # nn.ReLU(),
             nn.Linear(128, latent_dim),
             nn.ReLU(),
         )
 
-        self.inverse_head = nn.Linear(latent_dim * 2, num_actions)
+        self.inverse_head = nn.Sequential(
+            nn.Linear(latent_dim * 2, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_actions),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given state x, return the embedding."""
         return self.body(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
-        """Given combined embedding features of (s_tm1 + s_t), returns the predicted action a_tm1."""
+        """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
         pi_logits = self.inverse_head(x)  # [batch_size, num_actions]
         return pi_logits
 
@@ -328,18 +334,17 @@ class NguEmbeddingConvNet(nn.Module):
         Args:
             input_shape: the shape of the input tensor to the neural network.
             num_actions: the number of units for the output liner layer.
-            latent_dim: the embedding latent dimension.
+            latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
 
         self.net = common.NatureCnnBackboneNet(input_shape, out_features=latent_dim)
 
-        self.inverse_head = nn.Linear(latent_dim * 2, num_actions)
-        # self.inverse_head = nn.Sequential(
-        #     nn.Linear(latent_dim * 2, 128),
-        #     nn.ReLU(),
-        #     nn.Linear(128, num_actions),
-        # )
+        self.inverse_head = nn.Sequential(
+            nn.Linear(latent_dim * 2, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given state x, return the embedding."""
@@ -347,6 +352,6 @@ class NguEmbeddingConvNet(nn.Module):
         return self.net(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
-        """Given combined embedding features of (s_tm1 + s_t), returns the predicted action a_tm1."""
+        """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
         pi_logits = self.inverse_head(x)  # [batch_size, num_actions]
         return pi_logits

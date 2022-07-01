@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A A2C agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A A2C agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 Specifically:
     * Actors collects transitions and send to master through multiprocessing.Queue.
@@ -47,7 +47,11 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
@@ -73,7 +77,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains A2C agent on classic games."""
+    """Trains A2C agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A Prioritized DQN agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A Prioritized DQN agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "Prioritized Experience Replay" http://arxiv.org/abs/1511.05952.
 """
@@ -34,7 +34,11 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 64, 'Sample batch size when do learning.')
@@ -76,7 +80,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains Prioritized DQN agent on classic games."""
+    """Trains Prioritized DQN agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

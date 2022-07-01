@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests trained QR-DQN agent from checkpoint with a e-greedy actor.
-on classic games like CartPole, MountainCar, or LunarLander, and on Atari."""
+on classic control tasks like CartPole, MountainCar, or LunarLander, and on Atari."""
 from absl import app
 from absl import flags
 from absl import logging
@@ -32,7 +32,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string(
     'environment_name',
     'CartPole-v1',
-    'Both classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2, and Atari game like Pong, Breakout.',
+    'Both Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1. and Atari game like Pong, Breakout.',
 )
 flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height, for atari only.')
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width, for atari only.')
@@ -42,13 +42,13 @@ flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in
 flags.DEFINE_integer('num_quantiles', 201, 'Number of quantiles.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
 flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode, for atari only.')
+flags.DEFINE_integer('max_episode_steps', 28000, 'Maximum steps per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
 flags.DEFINE_string(
     'recording_video_dir',
-    'recordings/qr_dqn',
+    'recordings',
     'Path for recording a video of agent self-play.',
 )
 

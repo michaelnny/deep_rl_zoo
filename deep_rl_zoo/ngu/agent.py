@@ -383,13 +383,13 @@ class Actor(types_lib.Agent):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current actor's statistics as a dictionary."""
         return {
-            'policy_index': self._policy_index,
+            # 'policy_index': self._policy_index,
             'policy_discount': self._policy_discount,
             'policy_beta': self._policy_beta,
             'exploration_epsilon': self._exploration_epsilon,
             'intrinsic_reward': self.intrinsic_reward,
-            'episodic_bonus': self._episodic_bonus_t,
-            'lifelong_bonus': self._lifelong_bonus_t,
+            # 'episodic_bonus': self._episodic_bonus_t,
+            # 'lifelong_bonus': self._lifelong_bonus_t,
         }
 
 
@@ -877,7 +877,7 @@ class Learner(types_lib.Learner):
         """Returns current agent statistics as a dictionary."""
         return {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
-            'embedding_rnd_learning_rate': self._intrinsic_optimizer.param_groups[0]['lr'],
+            'embedding_rnd_lr': self._intrinsic_optimizer.param_groups[0]['lr'],
             'retrace_loss': self._retrace_loss_t,
             'embedding_rnd_loss': self._embedding_rnd_loss_t,
             'updates': self._update_t,

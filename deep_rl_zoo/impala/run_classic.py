@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A IMPALA agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A IMPALA agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures"
 https://arxiv.org/abs/1802.01561.
@@ -36,7 +36,11 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use.')
 flags.DEFINE_bool('use_lstm', False, 'Use LSTM layer, default off.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
@@ -66,7 +70,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains IMPALA agent on classic games."""
+    """Trains IMPALA agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A R2D2 agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A R2D2 agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "Recurrent Experience Replay in Distributed Reinforcement Learning"
 https://openreview.net/pdf?id=r1lyTjAqYX.
 
+Consider to increase the unroll_length and burn_in for LunarLander and other tasks.
 """
 
 from absl import app
@@ -37,20 +38,24 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use.')
 flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
-flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for adam.')
 flags.DEFINE_float('adam_eps', 0.001, 'Epsilon for adam.')
 flags.DEFINE_float('discount', 0.997, 'Discount rate.')
-flags.DEFINE_integer('unroll_length', 10, 'Sequence of transitions to unroll before add to replay.')
+flags.DEFINE_integer('unroll_length', 15, 'Sequence of transitions to unroll before add to replay.')
 flags.DEFINE_integer(
     'burn_in',
-    5,
+    0,
     'Sequence of transitions used to pass RNN before actual learning.'
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
@@ -64,7 +69,7 @@ flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prio
 
 flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
 flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible value rescaling for n-step targets.')
-flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
+flags.DEFINE_integer('n_step', 5, 'TD n-step bootstrap.')
 
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration, per actor.')
@@ -89,7 +94,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains R2D2 agent on classic games."""
+    """Trains R2D2 agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

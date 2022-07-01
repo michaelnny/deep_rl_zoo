@@ -23,7 +23,7 @@ from deep_rl_zoo.c51_dqn import run_atari
 FLAGS = flags.FLAGS
 FLAGS.checkpoint_dir = '/tmp/e2e_test_checkpoint'
 FLAGS.results_csv_path = ''
-FLAGS.max_episode_steps = 500
+FLAGS.max_episode_steps = 100
 FLAGS.num_train_frames = 500
 FLAGS.num_eval_frames = 200
 FLAGS.num_iterations = 1

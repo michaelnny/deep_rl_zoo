@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A REINFORCE with baseline agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A REINFORCE with baseline agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "Policy Gradient Methods for Reinforcement Learning with Function Approximation"
 https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf.
@@ -57,7 +57,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains REINFORCE-BASELINE agent on classic games."""
+    """Trains REINFORCE-BASELINE agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

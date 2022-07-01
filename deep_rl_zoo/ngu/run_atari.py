@@ -42,9 +42,9 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
-flags.DEFINE_integer('num_actors', 4, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 50000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
+flags.DEFINE_integer('replay_capacity', 2500, 'Maximum replay size.')  # out of RAM
+flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
@@ -57,12 +57,12 @@ flags.DEFINE_float('int_discount', 0.99, 'Intrinsic reward discount rate.')
 flags.DEFINE_integer('unroll_length', 80, 'Sequence of transitions to unroll before add to replay.')
 flags.DEFINE_integer(
     'burn_in',
-    0,
+    40,
     'Sequence of transitions used to pass RNN before actual learning.'
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 32, 'Batch size for learning, use larger batch size if possible.')
+flags.DEFINE_integer('batch_size', 8, 'Batch size for learning, use larger batch size if possible.')
 
 flags.DEFINE_float('policy_beta', 0.3, 'Scalar for the intrinsic reward scale.')
 flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')

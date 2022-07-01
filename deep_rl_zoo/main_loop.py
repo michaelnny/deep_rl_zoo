@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# The functions 'run_loop' has been modified
+# The functions 'run_env_loop' has been modified
 # by The Deep RL Zoo Authors to support gym environment
 # without DeepMin's dm.env wrapper.
 #
@@ -40,7 +40,7 @@ from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo import gym_env
 
 
-def run_loop(
+def run_env_loop(
     agent: types_lib.Agent, env: gym.Env
 ) -> Iterable[Tuple[gym.Env, types_lib.TimeStep, types_lib.Agent, types_lib.Action]]:
     """Repeatedly alternates step calls on environment and agent.
@@ -57,13 +57,11 @@ def run_loop(
         `a_t = agent.step(timestep_t)`.
 
     Raises:
-        RuntimeError if the `agent` do not have a callable reset() and step() method.
+        RuntimeError if the `agent` is not an instance of types_lib.Agent.
     """
 
-    if not (hasattr(agent, 'reset') and callable(getattr(agent, 'reset'))) or not (
-        hasattr(agent, 'step') and callable(getattr(agent, 'step'))
-    ):
-        raise RuntimeError('Expect agent to have a callable reset(), and step() method.')
+    if not isinstance(agent, types_lib.Agent):
+        raise RuntimeError('Expect agent to be an instance of types_lib.Agent.')
 
     while True:  # For each episode.
         agent.reset()
@@ -91,7 +89,7 @@ def run_loop(
                 break
 
 
-def run_some_steps(
+def run_env_steps(
     num_steps: int,
     agent: types_lib.Agent,
     env: gym.Env,
@@ -111,7 +109,7 @@ def run_some_steps(
         A Dict contains statistics about the result.
 
     """
-    seq = run_loop(agent, env)
+    seq = run_env_loop(agent, env)
     seq_truncated = itertools.islice(seq, num_steps)
     trackers = trackers_lib.make_default_trackers(log_dir, debug_screenshots_frequency)
     stats = trackers_lib.generate_statistics(trackers, seq_truncated)
@@ -176,7 +174,7 @@ def run_single_thread_training_iterations(
         train_tb_log_dir = f'{train_tb_log_prefix}-{iteration}' if tensorboard else None
 
         # Run training steps.
-        train_stats = run_some_steps(num_train_frames, train_agent, train_env, train_tb_log_dir, debug_screenshots_frequency)
+        train_stats = run_env_steps(num_train_frames, train_agent, train_env, train_tb_log_dir, debug_screenshots_frequency)
 
         checkpoint.set_iteration(iteration)
         saved_ckpt = checkpoint.save()
@@ -205,7 +203,7 @@ def run_single_thread_training_iterations(
             eval_tb_log_dir = f'{eval_tb_log_prefix}-{iteration}' if tensorboard else None
 
             # Run some evaluation steps.
-            eval_stats = run_some_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
+            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
 
             # Logging evaluation statistics.
             eval_output = [
@@ -395,9 +393,9 @@ def run_actor(
         train_tb_log_dir = f'{tb_log_prefix}-{iteration}' if tb_log_prefix is not None else None
 
         # Run training steps.
-        train_stats = run_some_steps(num_train_frames, actor, actor_env, train_tb_log_dir, debug_screenshots_frequency)
+        train_stats = run_env_steps(num_train_frames, actor, actor_env, train_tb_log_dir, debug_screenshots_frequency)
 
-        # Mark work done to avoid infinite loop in learner `run_train_loop`,
+        # Mark work done to avoid infinite loop in `run_learner_loop`,
         # also possible multiprocessing.Queue deadlock.
         data_queue.put('PROCESS_DONE')
 
@@ -485,7 +483,9 @@ def run_learner(
         start_iteration_event.set()
         learner.reset()
 
-        learner_tb_log_dir = f'{tb_log_prefix}-{iteration}' if tb_log_prefix is not None else None
+        learner_tb_log_dir = None
+        if tensorboard and tb_log_prefix is not None:
+            learner_tb_log_dir = f'{tb_log_prefix}-{iteration}'
 
         run_learner_loop(learner, data_queue, num_actors, learner_tb_log_dir)
 
@@ -510,7 +510,7 @@ def run_learner(
             eval_tb_log_dir = f'{eval_tb_log_prefix}-{iteration}' if eval_tb_log_prefix is not None else None
 
             # Run some evaluation steps.
-            eval_stats = run_some_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
+            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
 
             # Logging evaluation statistics
             log_output = [
@@ -525,7 +525,7 @@ def run_learner(
             log_queue.put(log_output)
 
         # Update shared iteration count.
-        iteration_count.value += 1
+        iteration_count.value = iteration
 
         time.sleep(5)
 
@@ -623,12 +623,12 @@ def run_evaluation_iterations(
     test_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, None, 'test')
 
     iteration = 0
-    while iteration < num_iterations:
+    while iteration < num_iterations and num_eval_frames > 0:
         logging.info(f'Testing iteration {iteration}')
         eval_tb_log_dir = f'{test_tb_log_prefix}-{iteration}' if tensorboard else None
 
         # Run some testing steps.
-        eval_stats = run_some_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
+        eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
 
         # Logging testing statistics.
         log_output = [

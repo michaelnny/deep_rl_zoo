@@ -100,12 +100,7 @@ class DqnMlpNet(nn.Module):
 class C51DqnMlpNet(nn.Module):
     """C51 DQN MLP network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        atoms: torch.Tensor,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -120,7 +115,6 @@ class C51DqnMlpNet(nn.Module):
             raise ValueError(f'Expect atoms to be a 1D tensor, got {atoms.shape}')
 
         super().__init__()
-
         self.num_actions = num_actions
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
@@ -135,11 +129,12 @@ class C51DqnMlpNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
-        q_logits = self.body(x).view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
+        x = self.body(x)
 
+        q_logits = x.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1)
+        q_values = torch.sum(q_dist * atoms, dim=-1)  # [batch_size, num_actions]
 
         return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
@@ -147,12 +142,7 @@ class C51DqnMlpNet(nn.Module):
 class RainbowDqnMlpNet(nn.Module):
     """Rainbow combines C51, dueling architecture, and noisy net."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        atoms: torch.Tensor,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -181,18 +171,6 @@ class RainbowDqnMlpNet(nn.Module):
 
         self.advantage_head = common.NoisyLinear(256, num_actions * self.num_atoms)
         self.value_head = common.NoisyLinear(256, 1 * self.num_atoms)
-
-        # self.advantage_head = nn.Sequential(
-        #     common.NoisyLinear(256, 256),
-        #     nn.ReLU(),
-        #     common.NoisyLinear(256, num_actions * self.num_atoms),
-        # )
-
-        # self.value_head = nn.Sequential(
-        #     common.NoisyLinear(256, 256),
-        #     nn.ReLU(),
-        #     common.NoisyLinear(256, 1 * self.num_atoms),
-        # )
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
@@ -224,12 +202,7 @@ class RainbowDqnMlpNet(nn.Module):
 class QRDqnMlpNet(nn.Module):
     """Quantile Regression DQN MLP network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        quantiles: torch.Tensor,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, quantiles: torch.Tensor):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -268,12 +241,7 @@ class QRDqnMlpNet(nn.Module):
 class IqnMlpNet(nn.Module):
     """Implicity Quantiel MLP network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        latent_dim: int,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, latent_dim: int):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -354,11 +322,7 @@ class IqnMlpNet(nn.Module):
 class DrqnMlpNet(nn.Module):
     """DRQN MLP network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-    ):
+    def __init__(self, input_shape: int, num_actions: int):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -423,11 +387,7 @@ class DrqnMlpNet(nn.Module):
 class R2d2DqnMlpNet(nn.Module):
     """R2D2 DQN MLP network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-    ):
+    def __init__(self, input_shape: int, num_actions: int):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -626,6 +586,7 @@ class DqnConvNet(nn.Module):
             raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
         if len(input_shape) != 3:
             raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+
         super().__init__()
         self.num_actions = num_actions
         self.body = common.NatureCnnBackboneNet(input_shape)
@@ -662,7 +623,6 @@ class C51DqnConvNet(nn.Module):
             raise ValueError(f'Expect atoms to be a 1D tensor, got {atoms.shape}')
 
         super().__init__()
-
         self.num_actions = num_actions
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
@@ -677,12 +637,12 @@ class C51DqnConvNet(nn.Module):
         """Given state, return state-action value for all possible actions"""
         x = x.float() / 255.0
         x = self.body(x)
-        q_logits = self.value_head(x)
-        q_logits = q_logits.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
+        x = self.value_head(x)
 
+        q_logits = x.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1)
+        q_values = torch.sum(q_dist * atoms, dim=-1)  # [batch_size, num_actions]
 
         return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
@@ -690,12 +650,7 @@ class C51DqnConvNet(nn.Module):
 class RainbowDqnConvNet(nn.Module):
     """Rainbow combines C51, dueling architecture, and noisy net."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        atoms: torch.Tensor,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -717,18 +672,7 @@ class RainbowDqnConvNet(nn.Module):
         self.body = common.NatureCnnBackboneNet(input_shape)
 
         self.advantage_head = common.NoisyLinear(self.body.out_features, num_actions * self.num_atoms)
-        self.value_head = common.NoisyLinear(512, 1 * self.num_atoms)
-
-        # self.advantage_head = nn.Sequential(
-        #     common.NoisyLinear(self.body.out_features, 512),
-        #     nn.ReLU(),
-        #     common.NoisyLinear(512, num_actions * self.num_atoms),
-        # )
-        # self.value_head = nn.Sequential(
-        #     common.NoisyLinear(self.body.out_features, 512),
-        #     nn.ReLU(),
-        #     common.NoisyLinear(512, 1 * self.num_atoms),
-        # )
+        self.value_head = common.NoisyLinear(self.body.out_features, 1 * self.num_atoms)
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -764,12 +708,7 @@ class RainbowDqnConvNet(nn.Module):
 class QRDqnConvNet(nn.Module):
     """Quantile Regression DQN Conv2d network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        quantiles: torch.Tensor,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, quantiles: torch.Tensor):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -811,12 +750,7 @@ class QRDqnConvNet(nn.Module):
 class IqnConvNet(nn.Module):
     """Implicit Quantile Conv2d network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-        latent_dim: int,
-    ):
+    def __init__(self, input_shape: int, num_actions: int, latent_dim: int):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -897,11 +831,7 @@ class IqnConvNet(nn.Module):
 class DrqnConvNet(nn.Module):
     """DRQN Conv2d network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-    ):
+    def __init__(self, input_shape: int, num_actions: int):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network
@@ -964,11 +894,7 @@ class DrqnConvNet(nn.Module):
 class R2d2DqnConvNet(nn.Module):
     """R2D2 DQN Conv2d network."""
 
-    def __init__(
-        self,
-        input_shape: int,
-        num_actions: int,
-    ):
+    def __init__(self, input_shape: int, num_actions: int):
         """
         Args:
             input_shape: the shape of the input tensor to the neural network

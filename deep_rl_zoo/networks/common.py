@@ -13,30 +13,37 @@
 # limitations under the License.
 # ==============================================================================
 """Common components for network."""
+from typing import Tuple
 import math
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 
-def calc_conv2d_output(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
-    """takes a tuple of (h,w) and returns a tuple of (h,w)"""
+def calc_conv2d_output(h_w: Tuple, kernel_size: int = 1, stride: int = 1, pad: int = 0, dilation: int = 1) -> Tuple[int, int]:
+    """Takes a tuple of (h,w) and returns a tuple of (h,w)"""
 
-    if not isinstance(kernel_size, tuple):
+    if not isinstance(kernel_size, Tuple):
         kernel_size = (kernel_size, kernel_size)
+
     h = math.floor(((h_w[0] + (2 * pad) - (dilation * (kernel_size[0] - 1)) - 1) / stride) + 1)
     w = math.floor(((h_w[1] + (2 * pad) - (dilation * (kernel_size[1] - 1)) - 1) / stride) + 1)
-    return h, w
+    return (h, w)
 
 
-def initialize_weights(net) -> None:
+def initialize_weights(net: nn.Module) -> None:
     """Initialize weights for Conv2d and Linear layers using kaming initializer."""
     assert isinstance(net, nn.Module)
 
-    for m in net.modules():
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            # nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+    for module in net.modules():
+        if isinstance(module, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+
+            # nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+
+            # nn.init.xavier_normal_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
 
 
 class NatureCnnBackboneNet(nn.Module):

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""An IQN agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""An IQN agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "Implicit Quantile Networks for Distributional Reinforcement
 Learning" http://arxiv.org/abs/1806.06923.
@@ -35,7 +35,11 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 64, 'Sample batch size when do learning.')
@@ -54,10 +58,10 @@ flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prio
 
 flags.DEFINE_float('huber_param', 1.0, 'Huber loss parameter.')
 flags.DEFINE_integer('tau_latent_dim', 64, 'Embeding layer dimenstion.')
-flags.DEFINE_integer('tau_samples_policy', 32, 'Number of samples to pull from the network when choose actions.')
+flags.DEFINE_integer('tau_samples_policy', 64, 'Number of samples to pull from the network when choose actions.')
 
 flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
-flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
+flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration.')
@@ -81,7 +85,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains IQN agent on classic games."""
+    """Trains IQN agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

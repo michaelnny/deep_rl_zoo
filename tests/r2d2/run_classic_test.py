@@ -24,7 +24,7 @@ from deep_rl_zoo.r2d2 import run_classic
 FLAGS = flags.FLAGS
 FLAGS.checkpoint_dir = '/tmp/e2e_test_checkpoint'
 FLAGS.results_csv_path = ''
-
+FLAGS.tensorboard = False
 FLAGS.replay_capacity = 100
 FLAGS.min_replay_size = 4
 FLAGS.num_actors = 2
@@ -45,7 +45,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.unroll_length = 8
         FLAGS.burn_in = 0
         FLAGS.clip_grad = True
-        FLAGS.tensorboard = False
         run_classic.main(None)
 
     @flagsaver.flagsaver
@@ -55,7 +54,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.unroll_length = 8
         FLAGS.burn_in = 4
         FLAGS.clip_grad = True
-        FLAGS.tensorboard = False
         run_classic.main(None)
 
     def tearDown(self) -> None:

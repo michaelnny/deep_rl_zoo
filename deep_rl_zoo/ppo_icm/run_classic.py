@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A PPO-ICM agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A PPO-ICM agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "Curiosity-driven Exploration by Self-supervised Prediction"
 https://arxiv.org/abs/1705.05363
@@ -42,10 +42,14 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
+flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('icm_learning_rate', 0.001, 'Learning rate for ICM module.')
 
@@ -79,7 +83,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains PPO-ICM agent on classic games."""
+    """Trains PPO-ICM agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

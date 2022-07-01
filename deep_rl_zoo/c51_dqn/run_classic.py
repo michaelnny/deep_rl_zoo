@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A C51 DQN agent training on classic games like CartPole, MountainCar, or LunarLander.
+"""A C51 DQN agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
 
 From the paper "A Distributional Perspective on Reinforcement Learning"
 http://arxiv.org/abs/1707.06887.
@@ -35,7 +35,11 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, MountainCar-v0, LunarLander-v2.')
+flags.DEFINE_string(
+    'environment_name',
+    'CartPole-v1',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
 flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 64, 'Sample batch size when do learning.')
@@ -53,8 +57,8 @@ flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when samp
 flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 
 flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the categorical DQN.')
-flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
-flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
+flags.DEFINE_float('v_min', -20.0, 'Minimum elements value in the support of the categorical DQN.')
+flags.DEFINE_float('v_max', 20.0, 'Maximum elements value in the support of the categorical DQN.')
 
 flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
@@ -81,7 +85,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains C51-DQN agent on classic games."""
+    """Trains C51-DQN agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A Agent57 agent training on classic games like LunarLander.
+"""A Agent57 agent training on classic control tasks like LunarLander.
 
 From the paper "Agent57: Outperforming the Atari Human Benchmark"
 https://arxiv.org/pdf/2003.13350.
+
 """
 
 from absl import app
@@ -37,8 +38,12 @@ from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'CartPole-v1', 'Classic game name like CartPole-v1, LunarLander-v2, MountainCar-v0.')
-flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use.')
+flags.DEFINE_string(
+    'environment_name',
+    'LunarLander-v2',
+    'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
+)
+flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use.')
 flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
@@ -50,29 +55,29 @@ flags.DEFINE_float(
 )
 flags.DEFINE_float('ext_discount', 0.997, 'Extrinsic reward discount rate.')
 flags.DEFINE_float('int_discount', 0.99, 'Intrinsic reward discount rate.')
-flags.DEFINE_integer('unroll_length', 15, 'Sequence of transitions to unroll before add to replay.')
+flags.DEFINE_integer('unroll_length', 20, 'Sequence of transitions to unroll before add to replay.')
 flags.DEFINE_integer(
     'burn_in',
-    0,
+    10,
     'Sequence of transitions used to pass RNN before actual learning.'
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 64, 'Batch size for learning.')
+flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')
 flags.DEFINE_float('policy_beta', 0.5, 'Scalar for the intrinsic reward scale.')
 flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
 
-flags.DEFINE_integer('ucb_window_size', 90, 'Sliding window size of the UCB algorithm.')
+flags.DEFINE_integer('ucb_window_size', 30, 'Sliding window size of the UCB algorithm.')
 flags.DEFINE_float('ucb_beta', 1.0, 'Beta for the UCB algorithm.')
 flags.DEFINE_float('ucb_epsilon', 0.5, 'Exploration epsilon for the UCB algorithm.')
 
-flags.DEFINE_integer('episodic_memory_capacity', 1000, 'Maximum size of episodic memory.')
+flags.DEFINE_integer('episodic_memory_capacity', 300, 'Maximum size of episodic memory.')
 flags.DEFINE_integer('num_neighbors', 10, 'Number of K-nearest neighbors.')
 flags.DEFINE_float('kernel_epsilon', 0.01, 'K-nearest neighbors kernel epsilon.')
 flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distance.')
 flags.DEFINE_float('max_similarity', 8.0, 'K-nearest neighbors custer distance.')
 
-flags.DEFINE_float('retrace_lambda', 0.97, 'Lambda coefficient for retrace.')
+flags.DEFINE_float('retrace_lambda', 0.95, 'Lambda coefficient for retrace.')
 flags.DEFINE_bool('transformed_retrace', True, 'Transformed retrace loss, default on.')
 
 flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
@@ -82,11 +87,11 @@ flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prio
 flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
 
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration, per actor.')
+flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration, per actor.')
 flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    50,
+    100,
     'Number of learner online Q network updates before update target Q networks.',
 )
 flags.DEFINE_integer('actor_update_frequency', 100, 'The frequency (measured in actor steps) to update actor local Q network.')
@@ -104,7 +109,7 @@ flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint direct
 
 
 def main(argv):
-    """Trains Agent57 agent on classic games."""
+    """Trains Agent57 agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
