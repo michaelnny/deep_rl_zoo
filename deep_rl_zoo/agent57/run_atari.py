@@ -38,14 +38,14 @@ from deep_rl_zoo import replay as replay_lib
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
-    'environment_name', 'Pitfall', 'Atari name without NoFrameskip and version, like Breakout, Pong, Seaquest.'
-)
+    'environment_name', 'MontezumaRevenge', 'Atari name without NoFrameskip and version, like Breakout, Pong, Seaquest.'
+)  # MontezumaRevenge, Pitfall, Solaris, Skiing
 flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.')
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 2500, 'Maximum replay size.')  # out of RAM
+flags.DEFINE_integer('replay_capacity', 5000, 'Maximum replay size.')  # out of RAM
 flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -72,7 +72,7 @@ flags.DEFINE_integer('ucb_window_size', 90, 'Sliding window size of the UCB algo
 flags.DEFINE_float('ucb_beta', 1.0, 'Beta for the UCB algorithm.')
 flags.DEFINE_float('ucb_epsilon', 0.5, 'Exploration epsilon for the UCB algorithm.')
 
-flags.DEFINE_integer('episodic_memory_capacity', 10000, 'Maximum size of episodic memory.')
+flags.DEFINE_integer('episodic_memory_capacity', 30000, 'Maximum size of episodic memory.')
 flags.DEFINE_integer('num_neighbors', 10, 'Number of K-nearest neighbors.')
 flags.DEFINE_float('kernel_epsilon', 0.0001, 'K-nearest neighbors kernel epsilon.')
 flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distance.')
@@ -93,9 +93,9 @@ flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    1500,
+    1000,
     'Number of learner online Q network updates before update target Q networks.',
-)
+)  # 1500
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
