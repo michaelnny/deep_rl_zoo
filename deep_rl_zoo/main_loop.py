@@ -479,6 +479,9 @@ def run_learner(
         logging.info(f'Training iteration {iteration}')
         logging.info(f'Starting {learner.agent_name} ...')
 
+        # Update shared iteration count.
+        iteration_count.value = iteration
+
         # Set start training event.
         start_iteration_event.set()
         learner.reset()
@@ -523,9 +526,6 @@ def run_learner(
                 ('duration', eval_stats['duration'], '%.2f'),
             ]
             log_queue.put(log_output)
-
-        # Update shared iteration count.
-        iteration_count.value = iteration
 
         time.sleep(5)
 
