@@ -42,8 +42,8 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 4, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 2500, 'Maximum replay size.')  # out of RAM
-flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('replay_capacity', 2500, 'Maximum replay size (in number of unrolls stored).')  # watch for out of RAM
+flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts (in number of unrolls stored).')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 

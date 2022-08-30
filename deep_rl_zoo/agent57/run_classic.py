@@ -44,8 +44,8 @@ flags.DEFINE_string(
     'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
 )
 flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use.')
-flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size.')
-flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
+flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size (in number of unrolls stored).')
+flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts (in number of unrolls stored).')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 
