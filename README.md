@@ -83,7 +83,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
         - `run_atari.py` module use Conv2d networks to solve Atari games, the default environment_name is set to Pong.
         - `eval_agent.py` module evaluate trained agents by using a greedy actor and loading model state from checkpoint file,
         you can run testing on both classic problems like CartPole, MountainCar, LunarLander, and Atari games.
-    *   `main_loop.py` module contains functions run single thread and parallel traning loops,
+    *   `main_loop.py` module contains functions run single thread and parallel training loops,
         it also contains the `run_env_loop` function where the agent interaction with the environment.
     *   `networks` directory contains both policy networks and q networks used by the agents.
     *   `trackers.py` module is used to accumulating statistics during training and testing/evaluation,
@@ -104,7 +104,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 * Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup.
 * The hyper-parameters and network architectures are not fine-tuned.
-* All agents have been fully tested on classic control tasks like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Unbuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
+* All agents have been fully tested on classic control tasks like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Ubuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
 * For Atari games, we only use Pong or Breakout for most of the agents, and we stop training once the agent have made some progress.
 * We can't guarantee it's bug free.
 
@@ -178,7 +178,7 @@ python3 -m deep_rl_zoo.dqn.run_atari
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-## Training with multiple actors and singler learner (on single machine)
+## Training with multiple actors and single learner (on single machine)
 For agents that support parallel training, we can adjust the parameter `num_actors` to specify how many actors to run.
 When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
 
@@ -208,7 +208,7 @@ To disable this, use the option `--notensorboard`.
 tensorboard --logdir=runs
 ```
 
-The classes for write logs to tensorboard is implemented in `trackers.py` module.
+The classes for write logs to Tensorboard is implemented in `trackers.py` module.
 
 * to improve performance, we only write logs at end of episode
 * we separate training and evaluation logs
@@ -218,7 +218,7 @@ The classes for write logs to tensorboard is implemented in `trackers.py` module
 ## Measurements available on Tensorboard
 `performance(env_steps)`:
 * the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
-* `episode_return` the undiscounted sum of rewards of last episode
+* `episode_return` the non-discounted sum of rewards of last episode
 * `episode_steps` the last episode steps
 * `num_episodes` how many episodes have been conducted
 * `step_rate(second)` step per seconds, per actors
