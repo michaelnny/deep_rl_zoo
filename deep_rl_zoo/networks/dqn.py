@@ -97,6 +97,54 @@ class DqnMlpNet(nn.Module):
         return DqnNetworkOutputs(q_values=q_values)
 
 
+class DuelingDqnMlpNet(nn.Module):
+    """MLP Dueling DQN network."""
+
+    def __init__(self, input_shape: int, num_actions: int):
+        """
+        Args:
+            input_shape: the shape of the input tensor to the neural network
+            num_actions: the number of units for the output liner layer
+        """
+        if num_actions < 1:
+            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
+        if input_shape < 1:
+            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+
+        super().__init__()
+
+        self.body = nn.Sequential(
+            nn.Linear(input_shape, 128),
+            nn.ReLU(),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+        )
+
+        self.advantage_head = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions),
+        )
+
+        self.value_head = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
+        """Given state, return state-action value for all possible actions"""
+
+        features = self.body(x)
+
+        advantages = self.advantage_head(features)  # [batch_size, num_actions]
+        values = self.value_head(features)  # [batch_size, 1]
+
+        q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))  # [batch_size, num_actions]
+
+        return DqnNetworkOutputs(q_values=q_values)
+
+
 class C51DqnMlpNet(nn.Module):
     """C51 DQN MLP network."""
 
@@ -169,8 +217,16 @@ class RainbowDqnMlpNet(nn.Module):
             nn.ReLU(),
         )
 
-        self.advantage_head = common.NoisyLinear(256, num_actions * self.num_atoms)
-        self.value_head = common.NoisyLinear(256, 1 * self.num_atoms)
+        self.advantage_head = nn.Sequential(
+            common.NoisyLinear(256, 256),
+            nn.ReLU(),
+            common.NoisyLinear(256, num_actions * self.num_atoms),
+        )
+        self.value_head = nn.Sequential(
+            common.NoisyLinear(256, 256),
+            nn.ReLU(),
+            common.NoisyLinear(256, 1 * self.num_atoms),
+        )
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
@@ -413,8 +469,16 @@ class R2d2DqnMlpNet(nn.Module):
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
-        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
-        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
+        self.advantage_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions),
+        )
+        self.value_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
 
     def forward(self, input_: RnnDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
@@ -506,8 +570,16 @@ class NguDqnMlpNet(nn.Module):
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
-        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
-        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
+        self.advantage_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions),
+        )
+        self.value_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
 
     def forward(self, input_: NguDqnNetworkInputs) -> RnnDqnNetworkOutputs:
         """
@@ -604,6 +676,50 @@ class DqnConvNet(nn.Module):
         return DqnNetworkOutputs(q_values=q_values)
 
 
+class DuelingDqnConvNet(nn.Module):
+    """Dueling DQN Conv2d network."""
+
+    def __init__(self, input_shape: int, num_actions: int):
+        """
+        Args:
+            input_shape: the shape of the input tensor to the neural network
+            num_actions: the number of units for the output liner layer
+        """
+        if num_actions < 1:
+            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
+        if input_shape < 1:
+            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+
+        super().__init__()
+
+        self.num_actions = num_actions
+        self.body = common.NatureCnnBackboneNet(input_shape)
+
+        self.advantage_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
+
+        self.value_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
+        """Given state, return state-action value for all possible actions"""
+
+        features = self.body(x)
+
+        advantages = self.advantage_head(features)  # [batch_size, num_actions]
+        values = self.value_head(features)  # [batch_size, 1]
+
+        q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))  # [batch_size, num_actions]
+
+        return DqnNetworkOutputs(q_values=q_values)
+
+
 class C51DqnConvNet(nn.Module):
     """C51 DQN Conv2d network."""
 
@@ -671,8 +787,16 @@ class RainbowDqnConvNet(nn.Module):
 
         self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.advantage_head = common.NoisyLinear(self.body.out_features, num_actions * self.num_atoms)
-        self.value_head = common.NoisyLinear(self.body.out_features, 1 * self.num_atoms)
+        self.advantage_head = nn.Sequential(
+            common.NoisyLinear(self.body.out_features, 512),
+            nn.ReLU(),
+            common.NoisyLinear(512, num_actions * self.num_atoms),
+        )
+        self.value_head = nn.Sequential(
+            common.NoisyLinear(self.body.out_features, 512),
+            nn.ReLU(),
+            common.NoisyLinear(512, 1 * self.num_atoms),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -915,8 +1039,16 @@ class R2d2DqnConvNet(nn.Module):
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=512, num_layers=1)
 
-        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
-        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
+        self.advantage_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
+        self.value_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -1006,8 +1138,16 @@ class NguDqnConvNet(nn.Module):
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=512, num_layers=1)
 
-        self.advantage_head = nn.Linear(self.lstm.hidden_size, num_actions)
-        self.value_head = nn.Linear(self.lstm.hidden_size, 1)
+        self.advantage_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
+        self.value_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
