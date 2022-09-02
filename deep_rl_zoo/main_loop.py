@@ -135,6 +135,11 @@ def run_single_thread_training_iterations(
     The same code structure is shared by most single-threaded DQN agents,
     and some policy gradients agents like reinforce, actor-critic.
 
+    For every iteration:
+        1. Start to run agent for num_train_frames steps.
+        2. Create checkpoint file.
+        3. (Optinal) Run some evaluation steps with a separate evaluation actor.
+
     Args:
         num_iterations: number of iterations to run.
         num_train_frames: number of frames (or env steps) to run, per iteration.
@@ -237,7 +242,8 @@ def run_parallel_training_iterations(
     tag: str = None,
     debug_screenshots_frequency: int = 0,
 ) -> None:
-    """Run parallel traning with multiple actors processes, single learner process.
+    """This is the place to kick start parallel traning with multiple actors processes and a single learner process.
+    The actual work is controld by 'run_learner'.
 
     Args:
         num_iterations: number of iterations to run.
@@ -354,8 +360,9 @@ def run_actor(
     """
     Run actor process for as long as required, only terminate if the `stop_event` is set to True.
     Which is set by the main process.
-    Actors will wait for the `start_iteration_event` signal to start run actual training session.
-    The actor whoever finished the iteration first will reset `start_iteration_event` to False,
+
+    * Each actor will wait for the `start_iteration_event` signal to start run num_train_frames steps (for one iteration).
+    * The actor whoever finished the current iteration first will reset `start_iteration_event` to False,
     so it does not run into a loop that is out of control.
 
     Args:
@@ -436,6 +443,12 @@ def run_learner(
     tag: str = None,
 ) -> None:
     """Run learner for N iterations.
+
+    For every iteration:
+        1. Signal actors to start a new iteration.
+        2. Start to run the learner loop until all actors are finished their work.
+        3. Create checkpoint file.
+        4. (Optinal) Run evaluation steps with a single and separate evaluation actor.
 
     At the begining of every iteration, learner will set the `start_iteration_event` to True, to signal actors to start training.
     The actor whoever finished the iteration first will reset `start_iteration_event` to False.
