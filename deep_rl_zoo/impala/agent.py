@@ -402,15 +402,9 @@ class Learner(types_lib.Learner):
         entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
         baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
-        # policy_loss = compute_policy_gradient_loss(
-        #     target_logits,
-        #     action,
-        #     vtrace_returns.pg_advantages,
-        # )
-        # baseline_loss = self._baseline_coef * compute_baseline_loss(vtrace_returns.vs - baseline)
-        # entropy_loss = self._entropy_coef * compute_entropy_loss(target_logits)
-
-        loss = policy_loss + baseline_loss + entropy_loss
+        # Combine policy loss, baseline loss, entropy loss.
+        # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
+        loss = -(policy_loss + entropy_loss) + baseline_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()

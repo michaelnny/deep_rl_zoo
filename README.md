@@ -35,7 +35,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---- |
 | `reinforce`          | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
 | `reinforce_baseline` | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
-| `actor_critic`       | [Actor-Critic Algorithms](https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)          |      |
+| `actor_critic`       | [Actor-Critic Algorithms](https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)          | *    |
 | `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783) \| [synchronous, deterministic variant of A3C](https://openai.com/blog/baselines-acktr-a2c/)  | P    |
 | `sac`                | [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning](https://arxiv.org/abs/1801.01290) \| [Soft Actor-Critic for Discrete Action Settings](https://arxiv.org/abs/1910.07207) | P *  |
 | `ppo`                | [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)                                                   | P    |
@@ -55,7 +55,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 | `drqn`               | [Deep Recurrent Q-Learning for Partially Observable MDPs](https://arxiv.org/abs/1507.06527)                   | *    |
 | `r2d2`               | [Recurrent Experience Replay in Distributed Reinforcement Learning](https://openreview.net/pdf?id=r1lyTjAqYX) | P    |
 | `ngu`                | [Never Give Up: Learning Directed Exploration Strategies](https://arxiv.org/abs/2002.06038)                   | P *  |
-| `agent57`            | [Agent57: Outperforming the Atari Human Benchmark](https://arxiv.org/pdf/2003.13350)                          | P    |
+| `agent57`            | [Agent57: Outperforming the Atari Human Benchmark](https://arxiv.org/pdf/2003.13350)                          | P *   |
 
 <!-- mdformat on -->
 
@@ -72,7 +72,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 <!-- mdformat on -->
 **Notes**:
 * `P` means support parallel training with multiple actors and a single learner, all running on a single machine.
-* `*` means not tested on Atari games because we don't have access to powerful machines and GPUs.
+* `*` means not fully tested on Atari games.
 
 # Code Structure
 *   `deep_rl_zoo` directory contains all the source code for different algorithms:
@@ -99,7 +99,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 
 # Author's Notes
-* Only support deterministic, episodic environment with discrete action space.
+* Only support episodic environment with discrete action space.
 * Focus on study and implementation for each algorithms, rather than create a standard library.
 * Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup.
@@ -164,7 +164,6 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 ```
 
 ## Atari games
-* Due to hardware limitation, for DQN (and the enhancements like double Q, rainbow, IQN, etc.), we set the maximum experience replay size to 200000 instead of 1000000.
 * By default, we uses gym `NoFrameskip-v4` for Atari game, and we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
 * We don't scale the images before store into experience replay, as that will require 4-5x more RAM, we only scale them inside the model.forward() method.
 
@@ -173,18 +172,25 @@ To run a agent on Atari game, use the following command, replace the <agent_name
 python3 -m deep_rl_zoo.<agent_name>.run_atari
 
 # example of running DQN on Atari Pong and Breakout
-python3 -m deep_rl_zoo.dqn.run_atari
+python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Pong
 
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-## Training with multiple actors and single learner (on single machine)
+## Training with multiple actors and single learner (on the same machine)
 For agents that support parallel training, we can adjust the parameter `num_actors` to specify how many actors to run.
 When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
 
 ```
 python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
 ```
+
+Notice the code does not support running on multiple GPUs out of the box, you can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs.
+```
+# Change here to map to dedicated device if have multiple GPUs
+actor_devices = [runtime_device] * FLAGS.num_actors
+```
+
 
 
 # Evaluate Agents

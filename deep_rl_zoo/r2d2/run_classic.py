@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A R2D2 agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
-
+"""
 From the paper "Recurrent Experience Replay in Distributed Reinforcement Learning"
 https://openreview.net/pdf?id=r1lyTjAqYX.
-
-Consider to increase the unroll_length and burn_in for LunarLander and other tasks.
 """
 
 from absl import app
@@ -72,8 +69,8 @@ flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible val
 flags.DEFINE_integer('n_step', 5, 'TD n-step bootstrap.')
 
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration, per actor.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
     100,
@@ -97,20 +94,22 @@ def main(argv):
     """Trains R2D2 agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs R2D2 agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
-
-    # Listen to signals to exit process.
-    main_loop.handle_exit_signal()
-
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
+    # Listen to signals to exit process.
+    main_loop.handle_exit_signal()
+
     # Create environment.
-    def environment_builder(random_int=0):
-        return gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed + int(random_int))
+    def environment_builder():
+        return gym_env.create_classic_environment(
+            env_name=FLAGS.environment_name,
+            seed=random_state.randint(1, 2**32),
+        )
 
     eval_env = environment_builder()
 
@@ -121,17 +120,13 @@ def main(argv):
     input_shape = eval_env.observation_space.shape[0]
     num_actions = eval_env.action_space.n
 
-    # Test environment and state shape.
-    obs = eval_env.reset()
-    assert isinstance(obs, np.ndarray)
-    assert obs.shape == (input_shape,)
-
     # Create network for learner to optimize, actor will use the same network with share memory.
     network = R2d2DqnMlpNet(input_shape=input_shape, num_actions=num_actions)
     network.share_memory()
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate, eps=FLAGS.adam_eps)
 
     # Test network output.
+    obs = eval_env.reset()
     x = RnnDqnNetworkInputs(
         s_t=torch.from_numpy(obs[None, None, ...]).float(),
         a_tm1=torch.zeros(1, 1).long(),
@@ -184,7 +179,7 @@ def main(argv):
     )
 
     # Create actor environments, actor instances.
-    actor_envs = [environment_builder(i) for i in range(FLAGS.num_actors)]
+    actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
     # TODO map to dedicated device if have multiple GPUs
     actor_devices = [runtime_device] * FLAGS.num_actors
 

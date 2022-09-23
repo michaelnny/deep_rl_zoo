@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A Double DQN agent training on Atari.
-
+"""
 From the paper "Deep Reinforcement Learning with Double Q-learning"
 http://arxiv.org/abs/1509.06461.
 """
@@ -40,27 +39,31 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
-flags.DEFINE_integer('replay_capacity', 200000, 'Maximum replay size.')
+flags.DEFINE_integer('replay_capacity', int(1e6), 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 50000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_end_value', 0.1, 'End (decayed) value of the exploration rate in e-greedy policy.')
-flags.DEFINE_float('exploration_epsilon_decay_step', 1000000, 'Total steps to decay value of the exploration rate.')
+flags.DEFINE_float(
+    'exploration_epsilon_decay_step',
+    int(1e6 / 4),
+    'Total steps (after frame skip) to decay value of the exploration rate.',
+)
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
-flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
+flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
+flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to update parameters.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    2000,
-    'The frequency (measured in number of online Q network parameter updates) to update target Q networks.',
+    2500 * 3,
+    'The frequency (measured in number of Q network parameter updates) to update target networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
@@ -78,7 +81,7 @@ def main(argv):
     """Trains Double DQN agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs double DQN agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
@@ -86,7 +89,7 @@ def main(argv):
         torch.backends.cudnn.deterministic = True
 
     # Create environment.
-    def environment_builder(random_int=0):
+    def environment_builder():
         return gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
             screen_height=FLAGS.environment_height,
@@ -94,25 +97,25 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=FLAGS.seed + int(random_int),
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=True,
         )
 
-    env = environment_builder()
+    train_env = environment_builder()
     eval_env = environment_builder()
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', env.action_space.n)
-    logging.info('Observation spec: %s', env.observation_space.shape)
+    logging.info('Action spec: %s', train_env.action_space.n)
+    logging.info('Observation spec: %s', train_env.observation_space.shape)
 
-    input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
-    num_actions = env.action_space.n
+    input_shape = train_env.observation_space.shape
+    num_actions = train_env.action_space.n
 
     # Test environment and state shape.
-    obs = env.reset()
+    obs = train_env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == input_shape
+    assert obs.shape == input_shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     network = DqnConvNet(input_shape=input_shape, num_actions=num_actions)
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate)
@@ -176,7 +179,7 @@ def main(argv):
         num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         train_agent=train_agent,
-        train_env=env,
+        train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,

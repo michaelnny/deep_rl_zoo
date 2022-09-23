@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A DRQN agent training on Atari.
-
+"""
 From the paper "Deep Recurrent Q-Learning for Partially Observable MDPs"
 https://arxiv.org/abs/1507.06527.
 """
@@ -56,11 +55,11 @@ flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('obscure_epsilon', 0.5, 'Make the problem POMDP by obsecure environment state with probability epsilon.')
-flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
-flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
+flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
+flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to update parameters.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
     2000,
@@ -82,7 +81,7 @@ def main(argv):
     """Trains DRQN agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs DRQN agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
@@ -90,7 +89,7 @@ def main(argv):
         torch.backends.cudnn.deterministic = True
 
     # Create environment.
-    def environment_builder(random_int=0):
+    def environment_builder():
         return gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
             screen_height=FLAGS.environment_height,
@@ -99,25 +98,25 @@ def main(argv):
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
             obscure_epsilon=FLAGS.obscure_epsilon,
-            seed=FLAGS.seed + int(random_int),
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=True,
         )
 
-    env = environment_builder()
+    train_env = environment_builder()
     eval_env = environment_builder()
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', env.action_space.n)
-    logging.info('Observation spec: %s', env.observation_space.shape)
+    logging.info('Action spec: %s', train_env.action_space.n)
+    logging.info('Observation spec: %s', train_env.observation_space.shape)
 
-    input_shape = (FLAGS.environment_frame_skip, FLAGS.environment_height, FLAGS.environment_width)
-    num_actions = env.action_space.n
+    input_shape = train_env.observation_space.shape
+    num_actions = train_env.action_space.n
 
     # Test environment and state shape.
-    obs = env.reset()
+    obs = train_env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == input_shape
+    assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     network = DrqnConvNet(input_shape=input_shape, num_actions=num_actions)
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate)
@@ -181,7 +180,7 @@ def main(argv):
         num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         train_agent=train_agent,
-        train_env=env,
+        train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,

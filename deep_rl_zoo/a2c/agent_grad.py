@@ -218,7 +218,7 @@ class Actor(types_lib.Agent):
             target_baseline = r_t + discount_t * baseline_s_t
             advantages = target_baseline - baseline_s_tm1
 
-        # Compute policy gradient loss.
+        # Compute policy gradient a.k.a. log-likelihood loss.
         policy_loss = rl.policy_gradient_loss(logits_tm1, a_tm1, advantages).loss
 
         # Compute entropy loss.
@@ -233,7 +233,8 @@ class Actor(types_lib.Agent):
         baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # Combine policy loss, baseline loss, entropy loss.
-        loss = policy_loss + baseline_loss + entropy_loss
+        # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
+        loss = -(policy_loss + entropy_loss) + baseline_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()

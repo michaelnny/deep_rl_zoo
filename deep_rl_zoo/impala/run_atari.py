@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A IMPALA agent training on Atari.
-
+"""
 From the paper "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures"
 https://arxiv.org/abs/1802.01561.
 """
@@ -40,7 +39,7 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
-flags.DEFINE_integer('num_actors', 4, 'Number of actor processes to use, consider to use larger number like 32, 64.')
+flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use, consider to use larger number like 32, 64.')
 flags.DEFINE_bool('use_lstm', False, 'Use LSTM layer, default off.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -51,14 +50,16 @@ flags.DEFINE_float('rmsprop_eps', 0.01, 'RMSProp epsilon.')
 flags.DEFINE_float('rmsprop_alpha', 0.99, 'RMSProp alpha.')
 
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.00025, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_integer('unroll_length', 80, 'How many agent time step to unroll for actor.')
 flags.DEFINE_integer('batch_size', 4, 'Batch size for learning, use larger batch size if possible.')
-flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of actor running steps measured over env step, per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer(
+    'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
+)
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_integer(
@@ -75,7 +76,7 @@ def main(argv):
     """Trains IMPALA agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs IMPALA agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     # Listen to signals to exit process.
     main_loop.handle_exit_signal()
@@ -86,7 +87,7 @@ def main(argv):
         torch.backends.cudnn.deterministic = True
 
     # Create environment.
-    def environment_builder(random_int=0):
+    def environment_builder():
         return gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
             screen_height=FLAGS.environment_height,
@@ -94,7 +95,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=FLAGS.seed + int(random_int),
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=True,
         )
@@ -105,13 +106,13 @@ def main(argv):
     logging.info('Action spec: %s', eval_env.action_space.n)
     logging.info('Observation spec: %s', eval_env.observation_space.shape)
 
-    input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+    input_shape = eval_env.observation_space.shape
     num_actions = eval_env.action_space.n
 
     # Test environment and state shape.
     obs = eval_env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == input_shape
+    assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network for actors, learner will copy new weights to this network after batch learning
     actor_policy_network = ImpalaActorCriticConvNet(input_shape=input_shape, num_actions=num_actions, use_lstm=FLAGS.use_lstm)
@@ -167,9 +168,9 @@ def main(argv):
     )
 
     # Create actor environments, runtime devices, and actor instances.
-    actor_envs = [environment_builder(i) for i in range(FLAGS.num_actors)]
+    actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
     # TODO map to dedicated device if have multiple GPUs
-    actor_devices = ['cpu'] * FLAGS.num_actors
+    actor_devices = [runtime_device] * FLAGS.num_actors
 
     actors = [
         agent.Actor(

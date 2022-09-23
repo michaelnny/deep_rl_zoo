@@ -164,10 +164,12 @@ class Reinforce(types_lib.Agent):
         # Get policy action logits for s_tm1.
         logits_tm1 = self._policy_network(s_tm1).pi_logits
 
-        # Compute policy gradient loss.
+        # Compute policy gradient a.k.a. log-likelihood loss.
         loss = rl.policy_gradient_loss(logits_tm1, a_tm1, returns).loss
+
         # Average over batch dimension.
-        loss = torch.mean(loss, dim=0)
+        # Negative sign to indicate we want to maximize the policy gradient objective function
+        loss = -torch.mean(loss, dim=0)
 
         return loss
 

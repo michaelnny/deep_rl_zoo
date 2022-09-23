@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A PPO agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
-
+"""
 From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 
@@ -47,7 +46,7 @@ flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.05, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
@@ -56,8 +55,8 @@ flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('unroll_length', 128, 'Actor unroll length.')
 flags.DEFINE_integer('update_k', 3, 'Run update k times when do learning.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration, per actor.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_integer(
@@ -74,18 +73,19 @@ def main(argv):
     """Trains PPO agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Listen to signals to exit process.
-    main_loop.handle_exit_signal()
-
+    logging.info(f'Runs PPO agent on {runtime_device}')
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
     # Create environment.
-    def environment_builder(random_int=0):
-        return gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed + int(random_int))
+    def environment_builder():
+        return gym_env.create_classic_environment(
+            env_name=FLAGS.environment_name,
+            seed=random_state.randint(1, 2**32),
+        )
 
     eval_env = environment_builder()
 
@@ -96,11 +96,6 @@ def main(argv):
     input_shape = eval_env.observation_space.shape[0]
     num_actions = eval_env.action_space.n
 
-    # Test environment and state shape.
-    obs = eval_env.reset()
-    assert isinstance(obs, np.ndarray)
-    assert obs.shape == (input_shape,)
-
     # Create policy network, master will optimize this network
     policy_network = ActorCriticMlpNet(input_shape=input_shape, num_actions=num_actions)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
@@ -110,6 +105,7 @@ def main(argv):
     old_policy_network.share_memory()
 
     # Test network output.
+    obs = eval_env.reset()
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
     pi_logits = network_output.pi_logits
@@ -146,7 +142,7 @@ def main(argv):
     )
 
     # Create actor environments, runtime devices, and actor instances.
-    actor_envs = [environment_builder(i) for i in range(FLAGS.num_actors)]
+    actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
 
     # TODO map to dedicated device if have multiple GPUs
     actor_devices = [runtime_device] * FLAGS.num_actors

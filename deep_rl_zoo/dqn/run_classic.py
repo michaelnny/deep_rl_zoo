@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A DQN agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
-
-From the paper "Human Level Control Through Deep Reinforcement Learning"
+"""From the paper "Human Level Control Through Deep Reinforcement Learning"
 http://www.nature.com/articles/nature14236.
 """
 from absl import app
@@ -53,13 +51,13 @@ flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('learn_frequency', 2, 'The frequency (measured in agent steps) to do learning.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
+flags.DEFINE_integer('learn_frequency', 2, 'The frequency (measured in agent steps) to update parameters.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
     100,
-    'The frequency (measured in number of online Q network parameter updates) to update target Q networks.',
+    'The frequency (measured in number of Q network parameter updates) to update target networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
@@ -77,7 +75,7 @@ def main(argv):
     """Trains DQN agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs DQN agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
@@ -85,28 +83,27 @@ def main(argv):
         torch.backends.cudnn.deterministic = True
 
     # Create environment.
-    def environment_builder(random_int=0):
-        return gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed + int(random_int))
+    def environment_builder():
+        return gym_env.create_classic_environment(
+            env_name=FLAGS.environment_name,
+            seed=random_state.randint(1, 2**32),
+        )
 
-    env = environment_builder()
+    train_env = environment_builder()
     eval_env = environment_builder()
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', env.action_space.n)
-    logging.info('Observation spec: %s', env.observation_space.shape[0])
+    logging.info('Action spec: %s', train_env.action_space.n)
+    logging.info('Observation spec: %s', train_env.observation_space.shape[0])
 
-    input_shape = env.observation_space.shape[0]
-    num_actions = env.action_space.n
-
-    # Test environment and state shape..
-    obs = env.reset()
-    assert isinstance(obs, np.ndarray)
-    assert obs.shape == (input_shape,)
+    input_shape = train_env.observation_space.shape[0]
+    num_actions = train_env.action_space.n
 
     network = DqnMlpNet(input_shape=input_shape, num_actions=num_actions)
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network input and output.
+    obs = train_env.reset()
     q = network(torch.from_numpy(obs[None, ...]).float()).q_values
     assert q.shape == (1, num_actions)
 
@@ -163,7 +160,7 @@ def main(argv):
         num_eval_frames=FLAGS.num_eval_frames,
         network=network,
         train_agent=train_agent,
-        train_env=env,
+        train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,

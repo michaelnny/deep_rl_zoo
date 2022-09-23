@@ -33,39 +33,28 @@ from deep_rl_zoo import distributions
 class EntropyLossTest(parameterized.TestCase):
     def setUp(self):
         super().setUp()
-        self.logits = torch.tensor([[0, 1], [1, 2], [0, 2], [1, 1], [0, -1000], [0, 1000]], dtype=torch.float32)
-        self.expected_entropy = np.array([0.58220309, 0.58220309, 0.36533386, 0.69314718, 0, 0])
+        self.logits = torch.tensor(
+            [[1.0, 1.0, 1.0], [2.0, 0.0, 0.0], [-1.0, -2.0, -3.0]], dtype=torch.float32
+        )  # torch.tensor([[0, 1], [1, 2], [0, 2], [1, 1], [0, -1000], [0, 1000]], dtype=torch.float32)
+        self.expected_entropy = np.array(
+            [1.0986123, 0.66557276, 0.83239555], dtype=np.float32
+        )  # np.array([0.58220309, 0.58220309, 0.36533386, 0.69314718, 0, 0])
 
     def test_entropy_loss_2d(self):
         # Large values check numerical stability through the logs
-        # B=6
-        entropy_op = policy_gradients.entropy_loss(self.logits)
-        entropy = entropy_op.extra.entropy
-        self.assertEqual(entropy.shape, (6,))
-        # Get these reference values in Torch with:
-        #   c = nnd.EntropyCriterion()
-        #   s = nn.LogSoftMax()
-        #   result = c:forward(s:forward(logits))
+        # B=3
 
-        np.testing.assert_allclose(entropy.numpy(), self.expected_entropy, atol=1e-4)
-        np.testing.assert_allclose(entropy_op.loss.numpy(), -self.expected_entropy, atol=1e-4)
+        entropy_op = policy_gradients.entropy_loss(self.logits)
+        np.testing.assert_allclose(entropy_op.loss.numpy(), self.expected_entropy, atol=1e-4)
 
     def test_entropy_loss_3d(self):
         # Large values check numerical stability through the logs
-        # T=5, B=6
+        # T=5, B=3
         logits = torch.stack([self.logits] * 5)
-        expected_entropy = torch.stack([torch.tensor(self.expected_entropy)] * 5).mean(dim=0)
 
         entropy_op = policy_gradients.entropy_loss(logits)
-        entropy = entropy_op.extra.entropy
-        self.assertEqual(entropy.shape, (6,))
-        # Get these reference values in Torch with:
-        #   c = nnd.EntropyCriterion()
-        #   s = nn.LogSoftMax()
-        #   result = c:forward(s:forward(logits))
 
-        np.testing.assert_allclose(entropy.numpy(), expected_entropy.numpy(), atol=1e-4)
-        np.testing.assert_allclose(entropy_op.loss.numpy(), -self.expected_entropy, atol=1e-4)
+        np.testing.assert_allclose(entropy_op.loss.numpy(), self.expected_entropy, atol=1e-4)
 
 
 class PolicyGradientLossTest(parameterized.TestCase):
@@ -75,11 +64,7 @@ class PolicyGradientLossTest(parameterized.TestCase):
         self.logits = torch.tensor([[1.0, 1.0, 1.0], [2.0, 0.0, 0.0], [-1.0, -2.0, -3.0]], dtype=torch.float32)
         self.advantages = torch.tensor([0.3, 0.2, 0.1], dtype=torch.float32)
         self.actions = torch.tensor([0, 1, 2], dtype=torch.int64)
-
-        # m = Categorical(logits=self.logits)
-        # logprob = m.log_prob(self.actions)
-        # expected = -logprob * self.advantages
-        self.expected = np.array([0.3296, 0.4479, 0.2408], dtype=np.float32)
+        self.expected = np.array([-0.3296, -0.4479, -0.2408], dtype=np.float32)
 
     def test_policy_gradient_loss_2d_batch(self):
         """Tests for a full batch."""
@@ -115,7 +100,7 @@ class ClippedSurrogatePGLossTest(parameterized.TestCase):
         self.advantages = torch.tensor([0.3, 0.2, 0.1], dtype=torch.float32)
         self.actions = torch.tensor([0, 1, 2], dtype=torch.int64)
         self.epsilon = 0.2
-        self.expected = np.array([-0.3000, -0.2000, -0.0135])
+        self.expected = np.array([0.3000, 0.2000, 0.0135])
 
     def test_clipped_surrogate_pg_loss_batch(self):
         """Tests for a full batch."""

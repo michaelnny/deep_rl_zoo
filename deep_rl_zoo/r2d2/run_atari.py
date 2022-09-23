@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A R2D2 agent training on Atari.
-
+"""
 From the paper "Recurrent Experience Replay in Distributed Reinforcement Learning"
 https://openreview.net/pdf?id=r1lyTjAqYX.
 """
@@ -42,7 +41,7 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 4, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
-flags.DEFINE_integer('replay_capacity', 2500, 'Maximum replay size (in number of unrolls stored).')  # watch for out of RAM
+flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size (in number of unrolls stored).')  # watch for out of RAM
 flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts (in number of unrolls stored).')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
@@ -69,15 +68,17 @@ flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean ab
 flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible value rescaling for n-step targets.')
 flags.DEFINE_integer('n_step', 5, 'TD n-step bootstrap.')
 
-flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration, per actor.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer(
+    'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
+)
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    1500,
+    2500,
     'Number of learner online Q network updates before update target Q networks.',
-)  # 2500
+)
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -96,18 +97,18 @@ def main(argv):
     """Trains R2D2 agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs R2D2 agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
-    # Listen to signals to exit process.
-    main_loop.handle_exit_signal()
-
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
+    # Listen to signals to exit process.
+    main_loop.handle_exit_signal()
+
     # Create evaluation environment, like R2D2, we disable terminate-on-life-loss and clip reward.
-    def environment_builder(random_int=0):
+    def environment_builder():
         return gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
             screen_height=FLAGS.environment_height,
@@ -115,7 +116,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=FLAGS.seed + int(random_int),
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=False,
             clip_reward=False,
@@ -127,13 +128,13 @@ def main(argv):
     logging.info('Action spec: %s', eval_env.action_space.n)
     logging.info('Observation spec: %s', eval_env.observation_space.shape)
 
-    input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+    input_shape = eval_env.observation_space.shape
     num_actions = eval_env.action_space.n
 
     # Test environment and state shape.
     obs = eval_env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == input_shape
+    assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create network for learner to optimize, actor will use the same network with share memory.
     network = R2d2DqnConvNet(input_shape=input_shape, num_actions=num_actions)
@@ -193,7 +194,7 @@ def main(argv):
     )
 
     # Create actor environments, actor instances.
-    actor_envs = [environment_builder(i) for i in range(FLAGS.num_actors)]
+    actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
     # TODO map to dedicated device if have multiple GPUs
     actor_devices = [runtime_device] * FLAGS.num_actors
 

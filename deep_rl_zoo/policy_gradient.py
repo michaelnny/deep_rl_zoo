@@ -43,7 +43,7 @@ def baseline_loss(delta: torch.Tensor) -> base.LossOutput:
         A namedtuple with fields:
         * `loss`: Baseline 'loss', shape `[B]`.
     """
-    loss = torch.square(delta)  # 0.5 * torch.square(delta)
+    loss = 0.5 * torch.square(delta)
 
     if len(loss.shape) == 2:
         # Average over time dimension.
@@ -74,14 +74,12 @@ def entropy_loss(logits_t: torch.Tensor) -> base.LossOutput:
 
     m = Categorical(logits=logits_t)
     entropy = m.entropy()
-    loss = -entropy
 
-    if len(loss.shape) == 2:
+    if len(entropy.shape) == 2:
         # Average over time dimension.
-        loss = torch.mean(loss, dim=0)
         entropy = torch.mean(entropy, dim=0)
 
-    return base.LossOutput(loss, EntropyExtra(entropy))
+    return base.LossOutput(entropy, None)
 
 
 def policy_gradient_loss(
@@ -89,7 +87,7 @@ def policy_gradient_loss(
     a_t: torch.Tensor,
     adv_t: torch.Tensor,
 ) -> base.LossOutput:
-    """Calculates the policy gradient loss.
+    """Calculates the policy gradient a.k.a. log-likelihood loss.
 
     See "Simple Gradient-Following Algorithms for Connectionist RL" by Williams.
     (http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf)
@@ -119,7 +117,7 @@ def policy_gradient_loss(
 
     m = Categorical(logits=logits_t)
     logprob_a_t = m.log_prob(a_t).view_as(adv_t)
-    loss = -logprob_a_t * adv_t.detach()
+    loss = logprob_a_t * adv_t.detach()
 
     if len(loss.shape) == 2:
         # Average over time dimention.
@@ -135,7 +133,7 @@ def clipped_surrogate_gradient_loss(
 ) -> base.LossOutput:
     """Computes the clipped surrogate policy gradient loss for PPO algorithms.
 
-    L_clipₜ(θ) = - min(rₜ(θ)Âₜ, clip(rₜ(θ), 1-ε, 1+ε)Âₜ)
+    L_clipₜ(θ) = min(rₜ(θ)Âₜ, clip(rₜ(θ), 1-ε, 1+ε)Âₜ)
 
     Where rₜ(θ) = π_θ(aₜ| sₜ) / π_θ_old(aₜ| sₜ) and Âₜ are the advantages.
 
@@ -156,6 +154,6 @@ def clipped_surrogate_gradient_loss(
     base.assert_rank_and_dtype(adv_t, 1, torch.float32)
 
     clipped_ratios_t = torch.clamp(prob_ratios_t, 1.0 - epsilon, 1.0 + epsilon)
-    clipped_objective = -torch.min(prob_ratios_t * adv_t.detach(), clipped_ratios_t * adv_t.detach())
+    clipped_objective = torch.min(prob_ratios_t * adv_t.detach(), clipped_ratios_t * adv_t.detach())
 
     return base.LossOutput(clipped_objective, extra=None)

@@ -185,15 +185,17 @@ class ReinforceBaseline(types_lib.Agent):
 
         delta = returns - baseline_s_tm1
 
-        # Compute policy gradient loss.
+        # Compute policy gradient a.k.a. log-likelihood loss.
         policy_loss = rl.policy_gradient_loss(logits_tm1, a_tm1, delta).loss
 
         # Compute baseline state-value loss.
         baseline_loss = rl.baseline_loss(baseline_s_tm1 - returns).loss
 
         # Average over batch dimension.
-        policy_loss = torch.mean(policy_loss, dim=0)
         baseline_loss = torch.mean(baseline_loss, dim=0)
+
+        # Negative sign to indicate we want to maximize the policy gradient objective function
+        policy_loss = -torch.mean(policy_loss, dim=0)
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()

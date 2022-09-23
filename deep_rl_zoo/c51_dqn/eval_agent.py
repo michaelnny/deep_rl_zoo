@@ -43,8 +43,8 @@ flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the 
 flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
 flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 28000, 'Maximum steps per episode, for atari only.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 58000, 'Maximum steps (before frame skip) per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
@@ -59,7 +59,6 @@ def main(argv):
     """Tests C51 DQN agent."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
@@ -69,7 +68,7 @@ def main(argv):
     # Create evaluation environments
     atoms = torch.linspace(FLAGS.v_min, FLAGS.v_max, FLAGS.num_atoms).to(device=runtime_device, dtype=torch.float32)
     if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
-        eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed)
+        eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=random_state.randint(1, 2**32))
         input_shape = eval_env.observation_space.shape[0]
         num_actions = eval_env.action_space.n
         network = C51DqnMlpNet(input_shape=input_shape, num_actions=num_actions, atoms=atoms)
@@ -81,7 +80,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=FLAGS.seed,
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=False,
             clip_reward=False,

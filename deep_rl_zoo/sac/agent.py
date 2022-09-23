@@ -383,17 +383,18 @@ class Learner(types_lib.Learner):
 
         # Compute entropy temperature parameter loss.
         ent_coef_losses = (
-            -1 * self._log_ent_coef * (logprob_tm1 + self._target_entropy).detach()
+            self._log_ent_coef * (logprob_tm1 + self._target_entropy).detach()
         )  # eq 11, (batch_size, num_actions)
 
         # Compute SAC policy gradient loss.
-        policy_losses = -1 * prob_tm1 * (q_tm1 - self.ent_coef * logprob_tm1)  # [batch_size, num_actions]
+        policy_losses = prob_tm1 * (q_tm1 - self.ent_coef * logprob_tm1)  # [batch_size, num_actions]
         # alternative, we can calculate it according to original paper eq 12
         # policy_losses = prob_tm1 * (self.ent_coef * logprob_tm1 - q_tm1)  # eq 12, (batch_size, num_actions)
 
-        # Sum over all actions, average over batch dimension
-        policy_loss = torch.mean(torch.sum(policy_losses, dim=-1), dim=0)
-        ent_coef_loss = torch.mean(torch.sum(ent_coef_losses, dim=-1), dim=0)
+        # Sum over all actions, average over batch dimension.
+        # Negative sign to indicate we want to maximize the policy gradient objective function
+        ent_coef_loss = -torch.mean(torch.sum(ent_coef_losses, dim=-1), dim=0)
+        policy_loss = -torch.mean(torch.sum(policy_losses, dim=-1), dim=0)
 
         return policy_loss, ent_coef_loss
 

@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A REINFORCE agent training on classic control tasks like CartPole, MountainCar, or LunarLander.
-
+"""
 From the paper "Policy Gradient Methods for Reinforcement Learning with Function Approximation"
 https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf.
 """
@@ -45,8 +44,8 @@ flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients 
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of frames (or env steps) to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
+flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_integer(
@@ -63,36 +62,36 @@ def main(argv):
     """Trains REINFORCE agent on classic control tasks."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs REINFORCE agent on {runtime_device}')
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
     # Create environment.
-    def environment_builder(random_int=0):
-        return gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed + int(random_int))
+    def environment_builder():
+        return gym_env.create_classic_environment(
+            env_name=FLAGS.environment_name,
+            seed=random_state.randint(1, 2**32),
+        )
 
-    env = environment_builder()
+    train_env = environment_builder()
     eval_env = environment_builder()
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', env.action_space.n)
-    logging.info('Observation spec: %s', env.observation_space.shape)
+    logging.info('Action spec: %s', train_env.action_space.n)
+    logging.info('Observation spec: %s', train_env.observation_space.shape[0])
 
-    input_shape = env.observation_space.shape[0]
-    num_actions = env.action_space.n
-
-    # Test environment and state shape.
-    obs = env.reset()
-    assert isinstance(obs, np.ndarray)
-    assert obs.shape == (input_shape,)
+    input_shape = train_env.observation_space.shape[0]
+    num_actions = train_env.action_space.n
 
     # Create policy network and optimizer
     policy_network = ActorMlpNet(input_shape=input_shape, num_actions=num_actions)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network output.
+    obs = train_env.reset()
     pi_logits = policy_network(torch.from_numpy(obs[None, ...]).float()).pi_logits
     assert pi_logits.shape == (1, num_actions)
 
@@ -128,7 +127,7 @@ def main(argv):
         num_eval_frames=FLAGS.num_eval_frames,
         network=policy_network,
         train_agent=train_agent,
-        train_env=env,
+        train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,

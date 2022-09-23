@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A SAC (for Discrete Action) agent training on Atari.
-
+"""
 From the paper "Soft Actor-Critic for Discrete Action Settings"
 https://arxiv.org/abs/1910.07207.
 
@@ -55,11 +54,13 @@ flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('q_target_tau', 0.995, 'Target Q network weights update ratio.')
 flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
-flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to do learning.')
-flags.DEFINE_integer('num_iterations', 20, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6), 'Number of frames (or env steps) to run per iteration, per actor.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps per episode. 0 means no limit.')
+flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to update parameters.')
+flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer(
+    'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
+)
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_integer(
@@ -76,19 +77,18 @@ def main(argv):
     """Trains SAC agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    logging.info(f'Runs SAC agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
-
-    # Listen to signals to exit process.
-    main_loop.handle_exit_signal()
-
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
+    # Listen to signals to exit process.
+    main_loop.handle_exit_signal()
+
     # Create environment.
-    def environment_builder(random_int=0):
+    def environment_builder():
         return gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
             screen_height=FLAGS.environment_height,
@@ -96,7 +96,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=FLAGS.seed + int(random_int),
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=True,
         )
@@ -107,13 +107,13 @@ def main(argv):
     logging.info('Action spec: %s', eval_env.action_space.n)
     logging.info('Observation spec: %s', eval_env.observation_space.shape)
 
-    input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+    input_shape = eval_env.observation_space.shape
     num_actions = eval_env.action_space.n
 
     # Test environment and state shape.
     obs = eval_env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == input_shape
+    assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network which is shared between actors and learner.
     policy_network = ActorConvNet(input_shape=input_shape, num_actions=num_actions)
@@ -165,7 +165,7 @@ def main(argv):
     )
 
     # Create actor environments, runtime devices, and actor instances.
-    actor_envs = [environment_builder(i) for i in range(FLAGS.num_actors)]
+    actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
 
     # TODO map to dedicated device if have multiple GPUs
     actor_devices = [runtime_device] * FLAGS.num_actors

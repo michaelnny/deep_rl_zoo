@@ -366,7 +366,7 @@ class Learner(types_lib.Learner):
         if ratio.shape != advantages.shape:
             raise RuntimeError(f'Expect ratio and advantages have same shape, got {ratio.shape} and {advantages.shape}')
 
-        # Compute PPO policy gradient loss.
+        # Compute clipped surrogate policy gradient loss.
         policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantages, self.clip_epsilon).loss
 
         # Compute entropy loss.
@@ -383,7 +383,8 @@ class Learner(types_lib.Learner):
         baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
 
         # Combine policy loss, baseline loss, entropy loss.
-        loss = policy_loss + baseline_loss + entropy_loss
+        # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
+        loss = -(policy_loss + entropy_loss) + baseline_loss
 
         # Add RND predictor loss.
         loss += rnd_loss

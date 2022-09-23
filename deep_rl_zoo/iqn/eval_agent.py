@@ -42,8 +42,8 @@ flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in
 flags.DEFINE_integer('tau_latent_dim', 64, 'Embeding layer dimenstion.')
 flags.DEFINE_integer('tau_samples_policy', 64, 'Number of samples to pull from the network when choose actions.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_frames', int(2e5), 'Number of evaluation frames (or env steps) to run during per iteration.')
-flags.DEFINE_integer('max_episode_steps', 28000, 'Maximum steps per episode, for atari only.')
+flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer('max_episode_steps', 58000, 'Maximum steps (before frame skip) per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
@@ -58,7 +58,6 @@ def main(argv):
     """Tests IQN agent."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
@@ -67,7 +66,7 @@ def main(argv):
 
     # Create evaluation environments
     if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
-        eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=FLAGS.seed)
+        eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=random_state.randint(1, 2**32))
         input_shape = eval_env.observation_space.shape[0]
         num_actions = eval_env.action_space.n
         network = IqnMlpNet(input_shape=input_shape, num_actions=num_actions, latent_dim=FLAGS.tau_latent_dim)
@@ -79,7 +78,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=FLAGS.seed,
+            seed=random_state.randint(1, 2**32),
             noop_max=30,
             terminal_on_life_loss=False,
             clip_reward=False,
