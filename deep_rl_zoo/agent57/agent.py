@@ -1006,9 +1006,9 @@ class Learner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
-            'ext_q_learning_rate': self._ext_q_optimizer.param_groups[0]['lr'],
-            'int_q_learning_rate': self._int_q_optimizer.param_groups[0]['lr'],
-            'embedding_rnd_lr': self._intrinsic_optimizer.param_groups[0]['lr'],
+            # 'ext_q_learning_rate': self._ext_q_optimizer.param_groups[0]['lr'],
+            # 'int_q_learning_rate': self._int_q_optimizer.param_groups[0]['lr'],
+            # 'embedding_rnd_lr': self._intrinsic_optimizer.param_groups[0]['lr'],
             'ext_q_retrace_loss': self._ext_q_loss_t,
             'int_q_retrace_loss': self._int_q_loss_t,
             'embedding_rnd_loss': self._embedding_rnd_loss_t,

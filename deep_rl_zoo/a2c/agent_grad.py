@@ -210,13 +210,13 @@ class Actor(types_lib.Agent):
         # Get policy action logits and baseline for s_tm1.
         policy_output = self._policy_network(s_tm1)
         logits_tm1 = policy_output.pi_logits
-        baseline_s_tm1 = policy_output.baseline.squeeze(1)  # [batch_size]
+        baseline_tm1 = policy_output.baseline.squeeze(1)  # [batch_size]
 
         # Calculates TD n-step target and advantages.
         with torch.no_grad():
             baseline_s_t = self._policy_network(s_t).baseline.squeeze(1)  # [batch_size]
             target_baseline = r_t + discount_t * baseline_s_t
-            advantages = target_baseline - baseline_s_tm1
+            advantages = target_baseline - baseline_tm1
 
         # Compute policy gradient a.k.a. log-likelihood loss.
         policy_loss = rl.policy_gradient_loss(logits_tm1, a_tm1, advantages).loss
@@ -225,7 +225,7 @@ class Actor(types_lib.Agent):
         entropy_loss = rl.entropy_loss(logits_tm1).loss
 
         # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(baseline_s_tm1 - target_baseline).loss
+        baseline_loss = rl.baseline_loss(target_baseline, baseline_tm1).loss
 
         # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
@@ -348,6 +348,6 @@ class Learner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'updates': self._update_t,
         }

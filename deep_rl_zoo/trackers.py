@@ -136,7 +136,7 @@ class StepRateTracker:
             step_rate = np.nan
         return {
             'step_rate': step_rate,
-            'num_steps': self._num_steps_since_reset,
+            'num_steps_since_reset': self._num_steps_since_reset,
             'duration': duration,
         }
 
@@ -144,26 +144,28 @@ class StepRateTracker:
 class TensorboardEpisodTracker(EpisodeTracker):
     """Extend EpisodeTracker to write to tensorboard"""
 
-    # def __init__(self, log_dir: str):
     def __init__(self, writer: SummaryWriter):
         super().__init__()
+        self._total_steps = 0  # keep track total number of steps, does not reset
+        self._total_episodes = 0  # keep track total number of episodes, does not reset
         self._writer = writer
 
     def step(self, env, timestep_t, agent, a_t) -> None:
         super().step(env, timestep_t, agent, a_t)
 
+        self._total_steps += 1
+
         # To improve performance, only logging at end of an episode.
         if timestep_t.done:
-            # if self._num_steps_since_reset % 1000 == 0:
-            tb_steps = self._num_steps_since_reset
-            num_episodes = len(self._episode_returns)
+            self._total_episodes += 1
+            tb_steps = self._total_steps
 
             # tracker per episode
             episode_return = self._episode_returns[-1]
             episode_step = self._episode_steps[-1]
 
             # tracker per step
-            self._writer.add_scalar('performance(env_steps)/num_episodes', num_episodes, tb_steps)
+            self._writer.add_scalar('performance(env_steps)/num_episodes', self._total_episodes, tb_steps)
             self._writer.add_scalar('performance(env_steps)/episode_return', episode_return, tb_steps)
             self._writer.add_scalar('performance(env_steps)/episode_steps', episode_step, tb_steps)
 
@@ -173,51 +175,48 @@ class TensorboardStepRateTracker(StepRateTracker):
 
     def __init__(self, writer: SummaryWriter):
         super().__init__()
+
+        self._total_steps = 0  # keep track total number of steps, does not reset
         self._writer = writer
 
     def step(self, env, timestep_t, agent, a_t) -> None:
         """Accumulates statistics from timestep."""
         super().step(env, timestep_t, agent, a_t)
 
+        self._total_steps += 1
+
         # To improve performance, only logging at end of an episode.
         if timestep_t.done:
-            # if self._num_steps_since_reset % 1000 == 0:
             time_stats = self.get()
-
-            # tracker per step
-            tb_steps = time_stats['num_steps']
-            # self._writer.add_scalar('performance(env_steps)/run_duration(minutes)', time_stats['duration'] / 60, tb_steps)
-            self._writer.add_scalar('performance(env_steps)/step_rate(second)', time_stats['step_rate'], tb_steps)
+            self._writer.add_scalar('performance(env_steps)/step_rate', time_stats['step_rate'], self._total_steps)
 
 
 class TensorboardAgentStatisticsTracker:
     """Write agent statistics to tensorboard"""
 
     def __init__(self, writer: SummaryWriter):
-        self._num_steps_since_reset = None
+        self._total_steps = 0  # keep track total number of steps, does not reset
         self._writer = writer
 
     def step(self, env, timestep_t, agent, a_t) -> None:
         """Accumulates statistics from timestep."""
         del (env, a_t)
-        self._num_steps_since_reset += 1
+        self._total_steps += 1
 
         # To improve performance, only logging at end of an episode.
         # This should not block the training loop if there's any exception.
         if timestep_t.done:
-            # if self._num_steps_since_reset % 1000 == 0:
             try:
                 stats = agent.statistics
                 if stats:
                     for k, v in stats.items():
                         if isinstance(v, (int, float)):
-                            self._writer.add_scalar(f'agent_statistics(env_steps)/{k}', v, self._num_steps_since_reset)
+                            self._writer.add_scalar(f'agent_statistics(env_steps)/{k}', v, self._total_steps)
             except Exception:
                 pass
 
     def reset(self) -> None:
         """Reset statistics."""
-        self._num_steps_since_reset = 0
 
     def get(self) -> Mapping[Text, float]:
         """Returns statistics as a dictionary."""
@@ -229,7 +228,7 @@ class TensorboardScreenshotTracker:
     This should be used for debugging only."""
 
     def __init__(self, writer: SummaryWriter, log_interval: int = 100):
-        self._num_steps_since_reset = None
+        self._total_episodes = 0  # keep track total number of episodes, does not reset
         self._log_interval = log_interval
         self._writer = writer
 
@@ -238,15 +237,15 @@ class TensorboardScreenshotTracker:
         del (agent, a_t)
 
         if timestep_t.done:
-            self._num_steps_since_reset += 1
+            self._total_episodes += 1
 
-            if self._num_steps_since_reset % self._log_interval == 0:
+            if self._total_episodes % self._log_interval == 0:
                 try:
                     img = env.render(mode='rgb_array')
                     self._writer.add_image(
-                        f'debug(episode)/done_episode_{self._num_steps_since_reset}',
+                        f'debug(episode)/done_episode_{self._total_episodes}',
                         img,
-                        self._num_steps_since_reset,
+                        self._total_episodes,
                         dataformats='HWC',
                     )
                 except Exception:
@@ -254,7 +253,6 @@ class TensorboardScreenshotTracker:
 
     def reset(self) -> None:
         """Reset statistics."""
-        self._num_steps_since_reset = 0
 
     def get(self) -> Mapping[Text, float]:
         """Returns statistics as a dictionary."""
@@ -265,29 +263,29 @@ class TensorboardLearnerStatisticsTracker:
     """Write learner statistics to tensorboard, for parallel training agents with actor-learner scheme"""
 
     def __init__(self, writer: SummaryWriter):
-        self._writer = writer
 
-        self._num_steps_since_reset = None
-        self._start = None
+        self._total_steps = 0  # keep track total number of steps, does not reset
+        self._num_steps_since_reset = 0
+        self._start = timeit.default_timer()
+        self._writer = writer
 
     def step(self, stats) -> None:
         """Accumulates statistics from timestep."""
+
+        self._total_steps += 1
         self._num_steps_since_reset += 1
 
         # Log every N learner steps.
-        if self._num_steps_since_reset % 100 == 0:
+        if self._total_steps % 100 == 0:
             time_stats = self.get()
-            tb_steps = time_stats['num_steps']
-            self._writer.add_scalar(
-                'learner_statistics(learner_steps)/step_rate(minutes)', time_stats['step_rate'] * 60, tb_steps
-            )
+            self._writer.add_scalar('learner_statistics(learner_steps)/step_rate', time_stats['step_rate'], self._total_steps)
 
             # This should not block the training loop if there's any exception.
             try:
                 if stats:
                     for k, v in stats.items():
                         if isinstance(v, (int, float)):
-                            self._writer.add_scalar(f'learner_statistics(learner_steps)/{k}', v, tb_steps)
+                            self._writer.add_scalar(f'learner_statistics(learner_steps)/{k}', v, self._total_steps)
             except Exception:
                 pass
 
@@ -305,7 +303,7 @@ class TensorboardLearnerStatisticsTracker:
             step_rate = np.nan
         return {
             'step_rate': step_rate,
-            'num_steps': self._num_steps_since_reset,
+            'num_steps_since_reset': self._num_steps_since_reset,
             'duration': duration,
         }
 

@@ -306,7 +306,6 @@ class Learner(types_lib.Learner):
         stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
         stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
         stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
-
         stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
 
         discount_tp1 = (~stacked_done_tp1).float() * self._discount
@@ -488,7 +487,7 @@ class Learner(types_lib.Learner):
         policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantage_t, self.clip_epsilon).loss
 
         # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns_t - v_t).loss
+        baseline_loss = rl.baseline_loss(returns_t, v_t).loss
 
         # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
@@ -523,14 +522,14 @@ class Learner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'icm_learning_rate': self._icm_optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'icm_learning_rate': self._icm_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'baseline_loss': self._baseline_loss_t,
             'entropy_loss': self._entropy_loss_t,
             'icm_inverse_loss': self._icm_inverse_loss_t,
             'icm_forward_loss': self._icm_forward_loss_t,
-            'discount': self._discount,
-            'updates': self._update_t,
+            # 'discount': self._discount,
+            # 'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }

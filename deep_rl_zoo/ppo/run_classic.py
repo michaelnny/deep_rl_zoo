@@ -41,7 +41,7 @@ flags.DEFINE_string(
     'Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1.',
 )
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
+flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0003, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')

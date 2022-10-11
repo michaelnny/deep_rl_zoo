@@ -31,11 +31,12 @@ class EntropyExtra(NamedTuple):
     entropy: Optional[torch.Tensor]
 
 
-def baseline_loss(delta: torch.Tensor) -> base.LossOutput:
+def baseline_loss(target: torch.Tensor, predict: torch.Tensor) -> base.LossOutput:
     """Calculates the squared error loss.
 
     Args:
-      delta: the difference between predicted baseline value and estimated target value, shape [B,] or [T, B].
+      target: the estimated target value, shape [B,] or [T, B].
+      predict: the predicted value, shape [B,] or [T, B].
 
     Returns:
 
@@ -43,7 +44,13 @@ def baseline_loss(delta: torch.Tensor) -> base.LossOutput:
         A namedtuple with fields:
         * `loss`: Baseline 'loss', shape `[B]`.
     """
-    loss = torch.square(delta)
+    # Rank and compatibility checks.
+    base.assert_rank_and_dtype(target, (1, 2), torch.float32)
+    base.assert_rank_and_dtype(predict, (1, 2), torch.float32)
+
+    assert target.shape == predict.shape
+
+    loss = 0.5 * torch.square(target - predict)
 
     if len(loss.shape) == 2:
         # Averaging over time dimension.

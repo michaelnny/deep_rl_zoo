@@ -417,10 +417,10 @@ class Learner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
-            'discount': self._discount,
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'q1_learning_rate': self._q1_optimizer.param_groups[0]['lr'],
-            'q2_learning_rate': self._q2_optimizer.param_groups[0]['lr'],
+            # 'discount': self._discount,
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'q1_learning_rate': self._q1_optimizer.param_groups[0]['lr'],
+            # 'q2_learning_rate': self._q2_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'q1_loss': self._q1_loss_t,
             'q2_loss': self._q2_loss_t,

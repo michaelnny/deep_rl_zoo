@@ -19,7 +19,7 @@
 #
 # ==============================================================================
 """Training loops for Deep RL Zoo."""
-from typing import Iterable, List, Tuple, Text, Mapping, Union
+from typing import Iterable, List, Tuple, Text, Mapping, Union, Any
 import itertools
 import collections
 import sys
@@ -89,21 +89,14 @@ def run_env_loop(
                 break
 
 
-def run_env_steps(
-    num_steps: int,
-    agent: types_lib.Agent,
-    env: gym.Env,
-    log_dir: str = None,
-    debug_screenshots_frequency: int = 0,
-) -> Mapping[Text, float]:
+def run_env_steps(num_steps: int, agent: types_lib.Agent, env: gym.Env, trackers: Iterable[Any]) -> Mapping[Text, float]:
     """Run some steps and return the statistics, this could be either training, evaluation, or testing steps.
 
     Args:
         max_episode_steps: maximum steps per episode.
         agent: agent to run, expect the agent to have step(), reset(), and a agent_name property.
         train_env: training environment.
-        log_dir: tensorboard runtime log directory.
-        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
+        trackers: statistics trackers.
 
     Returns:
         A Dict contains statistics about the result.
@@ -111,7 +104,6 @@ def run_env_steps(
     """
     seq = run_env_loop(agent, env)
     seq_truncated = itertools.islice(seq, num_steps)
-    trackers = trackers_lib.make_default_trackers(log_dir, debug_screenshots_frequency)
     stats = trackers_lib.generate_statistics(trackers, seq_truncated)
     return stats
 
@@ -166,8 +158,16 @@ def run_single_thread_training_iterations(
     # Create log file writer.
     writer = CsvWriter(csv_file)
 
-    # Tensorboard log dir prefix.
-    train_tb_log_prefix = get_tb_log_prefix(train_env.spec.id, train_agent.agent_name, tag, 'train')
+    # Create trackers for training and evaluation
+    train_tb_log_prefix = get_tb_log_prefix(train_env.spec.id, train_agent.agent_name, tag, 'train') if tensorboard else None
+    train_trackers = trackers_lib.make_default_trackers(train_tb_log_prefix, debug_screenshots_frequency)
+
+    should_run_evaluator = False
+    eval_trackers = None
+    if num_eval_frames > 0 and eval_agent is not None and eval_env is not None:
+        should_run_evaluator = True
+        eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval') if tensorboard else None
+        eval_trackers = trackers_lib.make_default_trackers(eval_tb_log_prefix, debug_screenshots_frequency)
 
     # Start training
     for iteration in range(num_iterations):
@@ -176,10 +176,9 @@ def run_single_thread_training_iterations(
             net.train()
 
         logging.info(f'Training iteration {iteration}')
-        train_tb_log_dir = f'{train_tb_log_prefix}-{iteration}' if tensorboard else None
 
         # Run training steps.
-        train_stats = run_env_steps(num_train_frames, train_agent, train_env, train_tb_log_dir, debug_screenshots_frequency)
+        train_stats = run_env_steps(num_train_frames, train_agent, train_env, train_trackers)
 
         checkpoint.set_iteration(iteration)
         saved_ckpt = checkpoint.save()
@@ -197,18 +196,16 @@ def run_single_thread_training_iterations(
             ('train_duration', train_stats['duration'], '%.2f'),
         ]
 
-        if num_eval_frames > 0 and eval_agent is not None and eval_env is not None:
-            eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval')
-
+        # Run evaluation steps.
+        if should_run_evaluator is True:
             # Set netwrok in eval mode.
             for net in networks:
                 net.eval()
 
             logging.info(f'Evaluation iteration {iteration}')
-            eval_tb_log_dir = f'{eval_tb_log_prefix}-{iteration}' if tensorboard else None
 
             # Run some evaluation steps.
-            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
+            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_trackers)
 
             # Logging evaluation statistics.
             eval_output = [
@@ -390,6 +387,8 @@ def run_actor(
     # Listen to signals to exit process.
     handle_exit_signal()
 
+    actor_trackers = trackers_lib.make_default_trackers(tb_log_prefix, debug_screenshots_frequency)
+
     while not stop_event.is_set():
         # Wait for start training event signal, which is set by the main process.
         if not start_iteration_event.is_set():
@@ -397,10 +396,9 @@ def run_actor(
 
         logging.info(f'Starting {actor.agent_name} ...')
         iteration = iteration_count.value
-        train_tb_log_dir = f'{tb_log_prefix}-{iteration}' if tb_log_prefix is not None else None
 
         # Run training steps.
-        train_stats = run_env_steps(num_train_frames, actor, actor_env, train_tb_log_dir, debug_screenshots_frequency)
+        train_stats = run_env_steps(num_train_frames, actor, actor_env, actor_trackers)
 
         # Mark work done to avoid infinite loop in `run_learner_loop`,
         # also possible multiprocessing.Queue deadlock.
@@ -481,7 +479,18 @@ def run_learner(
     elif isinstance(network, torch.nn.Module):
         networks.append(network)
 
-    tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, learner.agent_name, tag, 'train')
+    # Create trackers for learner and evaluator
+    learner_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, learner.agent_name, tag, 'train') if tensorboard else None
+    learner_trackers = trackers_lib.make_learner_trackers(learner_tb_log_prefix)
+    for tracker in learner_trackers:
+        tracker.reset()
+
+    should_run_evaluator = False
+    eval_trackers = None
+    if num_eval_frames > 0 and eval_agent is not None and eval_env is not None:
+        should_run_evaluator = True
+        eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval') if tensorboard else None
+        eval_trackers = trackers_lib.make_default_trackers(eval_tb_log_prefix)
 
     # Start training
     for iteration in range(num_iterations):
@@ -499,11 +508,7 @@ def run_learner(
         start_iteration_event.set()
         learner.reset()
 
-        learner_tb_log_dir = None
-        if tensorboard and tb_log_prefix is not None:
-            learner_tb_log_dir = f'{tb_log_prefix}-{iteration}'
-
-        run_learner_loop(learner, data_queue, num_actors, learner_tb_log_dir)
+        run_learner_loop(learner, data_queue, num_actors, learner_trackers)
 
         start_iteration_event.clear()
         checkpoint.set_iteration(iteration)
@@ -513,20 +518,15 @@ def run_learner(
             logging.info(f'New checkpoint created at "{saved_ckpt}"')
 
         # Run evaluation steps.
-        if num_eval_frames > 0 and eval_agent and eval_env:
-            eval_tb_log_prefix = None
-            if tensorboard:
-                eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval')
-
+        if should_run_evaluator is True:
             # Set netwrok in eval mode.
             for net in networks:
                 net.eval()
 
             logging.info(f'Evaluation iteration {iteration}')
-            eval_tb_log_dir = f'{eval_tb_log_prefix}-{iteration}' if eval_tb_log_prefix is not None else None
 
             # Run some evaluation steps.
-            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_tb_log_dir)
+            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_trackers)
 
             # Logging evaluation statistics
             log_output = [
@@ -552,15 +552,11 @@ def run_learner_loop(
     learner: types_lib.Learner,
     data_queue: multiprocessing.Queue,
     num_actors: int,
-    learner_tb_log_dir: str,
+    learner_trackers: Iterable[Any],
 ) -> None:
     """
     Run learner loop by constantly pull item off multiprocessing.queue and calls the learner.step() method.
     """
-
-    trackers = trackers_lib.make_learner_trackers(run_log_dir=learner_tb_log_dir)
-    for tracker in trackers:
-        tracker.reset()
 
     num_done_actors = 0
 
@@ -588,7 +584,7 @@ def run_learner_loop(
         if stats_sequences is not None:
             # Some agents may perform multiple network updates in a single call to method step(), like PPO.
             for stats in stats_sequences:
-                for tracker in trackers:
+                for tracker in learner_trackers:
                     tracker.step(stats)
 
 

@@ -22,12 +22,11 @@ from absl import app
 from absl import flags
 from absl import logging
 import multiprocessing
-from typing import Tuple
 import numpy as np
 import torch
-from torch import nn
 
 # pylint: disable=import-error
+from deep_rl_zoo.networks.policy import GaussianActorMlpNet, GaussianCriticMlpNet
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo.schedule import LinearSchedule
 from deep_rl_zoo import main_loop
@@ -42,20 +41,20 @@ flags.DEFINE_string(
     'Classic continuous control task name, like Hopper-v4, HalfCheetah-v4, Humanoid-v4, Swimmer-v4, Walker2d-v4.',
 )
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
+flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0003, 'Learning rate.')
 flags.DEFINE_float('critric_learning_rate', 0.0005, 'Learning rate for critic.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
 flags.DEFINE_float('entropy_coef', 0.0, 'Coefficient for the entropy loss.')
-flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
+flags.DEFINE_float('clip_epsilon_begin_value', 0.1, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
 flags.DEFINE_integer('hidden_size', 64, 'Number of units in the hidden layer.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('unroll_length', 2048, 'Collect N transitions (cross episodes) before send to learner, per actor.')
 flags.DEFINE_integer('update_k', 10, 'Run update k times when do learning.')
-flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 1, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(5e6), 'Number of training env steps to run per iteration, per actor.')
 flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
@@ -68,59 +67,6 @@ flags.DEFINE_integer(
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/ppo_classic_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
-
-
-class ActorMlpNet(nn.Module):
-    """Actor MLP network."""
-
-    def __init__(self, input_shape: int, num_actions: int, hidden_size: int) -> None:
-        super().__init__()
-        self.body = nn.Sequential(
-            nn.Linear(input_shape, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
-            # nn.Linear(hidden_size, hidden_size),
-            # nn.Tanh(),
-        )
-
-        self.sigma_head = nn.Linear(hidden_size, num_actions)
-        self.mu_head = nn.Linear(hidden_size, num_actions)
-
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor]:
-        """Given raw state x, predict the action probability distribution
-        and baseline state-value."""
-        features = self.body(x)
-
-        # Predict action distributions wrt policy
-        pi_mu = self.mu_head(features)
-        pi_sigma = torch.exp(self.sigma_head(features))
-
-        return pi_mu, pi_sigma
-
-
-class CriticMlpNet(nn.Module):
-    """Critic MLP network."""
-
-    def __init__(self, input_shape: int, hidden_size: int) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_shape, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
-            # nn.Linear(hidden_size, hidden_size),
-            # nn.Tanh(),
-            nn.Linear(hidden_size, 1),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Given raw state x, predict the baseline state-value."""
-
-        # Predict state-value
-        baseline = self.net(x)
-
-        return baseline
 
 
 def main(argv):
@@ -151,14 +97,14 @@ def main(argv):
     logging.info('Observation spec: %s', action_dim)
 
     # Create policy network, master will optimize this network
-    policy_network = ActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)
+    policy_network = GaussianActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
-    critic_network = CriticMlpNet(input_shape=state_dim, hidden_size=FLAGS.hidden_size)
+    critic_network = GaussianCriticMlpNet(input_shape=state_dim, hidden_size=FLAGS.hidden_size)
     critic_optimizer = torch.optim.Adam(critic_network.parameters(), lr=FLAGS.critric_learning_rate)
 
     # The 'old' policy for actors to act
-    old_policy_network = ActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)
+    old_policy_network = GaussianActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)
     old_policy_network.share_memory()
 
     # Create queue shared between actors and learner
@@ -174,7 +120,7 @@ def main(argv):
     )
 
     # Create PPO learner agent instance
-    learner_agent = agent.GuassianLearner(
+    learner_agent = agent.GaussianLearner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         old_policy_network=old_policy_network,
@@ -199,7 +145,7 @@ def main(argv):
     actor_devices = [runtime_device] * FLAGS.num_actors
 
     actors = [
-        agent.GuassianActor(
+        agent.GaussianActor(
             rank=i,
             data_queue=data_queue,
             policy_network=old_policy_network,
@@ -210,7 +156,7 @@ def main(argv):
     ]
 
     # Create evaluation agent instance
-    eval_agent = greedy_actors.GuassianPolicyGreedyActor(
+    eval_agent = greedy_actors.GaussianPolicyGreedyActor(
         network=policy_network,
         device=runtime_device,
         name='PPO-greedy',

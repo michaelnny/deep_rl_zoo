@@ -563,8 +563,8 @@ class ImpalaGreedyActor(PolicyGreedyActor):
         return {}
 
 
-class GuassianPolicyGreedyActor(PolicyGreedyActor):
-    """Guassian Agent that acts with a given set of policy network parameters."""
+class GaussianPolicyGreedyActor(PolicyGreedyActor):
+    """Gaussian Agent that acts with a given set of policy network parameters."""
 
     @torch.no_grad()
     def _select_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:

@@ -287,9 +287,9 @@ class C51Dqn(types_lib.Agent):
     def statistics(self):
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._optimizer.param_groups[0]['lr'],
             'loss': self._loss_t,
-            'discount': self._discount,
+            # 'discount': self._discount,
             'updates': self._update_t,
             'target_updates': self._target_update_t,
             'exploration_epsilon': self.exploration_epsilon,

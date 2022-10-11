@@ -177,8 +177,8 @@ class Reinforce(types_lib.Agent):
     def statistics(self):
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'loss': self._loss_t,
-            'discount': self._discount,
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            'policy_loss': self._loss_t,
+            # 'discount': self._discount,
             'updates': self._update_t,
         }

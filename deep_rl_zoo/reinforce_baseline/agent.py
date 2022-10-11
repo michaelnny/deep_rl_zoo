@@ -181,15 +181,15 @@ class ReinforceBaseline(types_lib.Agent):
         # Get policy action logits for s_tm1.
         logits_tm1 = self._policy_network(s_tm1).pi_logits
         # Get baseline state-value
-        baseline_s_tm1 = self._baseline_network(s_tm1).baseline.squeeze(1)  # [batch_size]
+        baseline_tm1 = self._baseline_network(s_tm1).baseline.squeeze(1)  # [batch_size]
 
-        delta = returns - baseline_s_tm1
+        delta = returns - baseline_tm1
 
         # Compute policy gradient a.k.a. log-likelihood loss.
         policy_loss = rl.policy_gradient_loss(logits_tm1, a_tm1, delta).loss
 
         # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(baseline_s_tm1 - returns).loss
+        baseline_loss = rl.baseline_loss(returns, baseline_tm1).loss
 
         # Averaging over batch dimension.
         baseline_loss = torch.mean(baseline_loss, dim=0)
@@ -207,10 +207,10 @@ class ReinforceBaseline(types_lib.Agent):
     def statistics(self):
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'baseline_learning_rate': self._baseline_optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'baseline_learning_rate': self._baseline_optimizer.param_groups[0]['lr'],
             'baseline_loss': self._baseline_loss_t,
             'policy_loss': self._policy_loss_t,
-            'discount': self._discount,
+            # 'discount': self._discount,
             'updates': self._update_t,
         }

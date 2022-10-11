@@ -198,27 +198,6 @@ class Actor(types_lib.Agent):
         return {}
 
 
-def compute_baseline_loss(advantages):
-    return 0.5 * torch.sum(advantages**2)
-
-
-def compute_entropy_loss(logits):
-    """Return the entropy loss, i.e., the negative entropy of the policy."""
-    policy = F.softmax(logits, dim=-1)
-    log_policy = F.log_softmax(logits, dim=-1)
-    return torch.sum(policy * log_policy)
-
-
-def compute_policy_gradient_loss(logits, actions, advantages):
-    cross_entropy = F.nll_loss(
-        F.log_softmax(torch.flatten(logits, 0, 1), dim=-1),
-        target=torch.flatten(actions, 0, 1),
-        reduction='none',
-    )
-    cross_entropy = cross_entropy.view_as(advantages)
-    return torch.sum(cross_entropy * advantages.detach())
-
-
 class Learner(types_lib.Learner):
     """IMPALA learner"""
 
@@ -395,7 +374,7 @@ class Learner(types_lib.Learner):
 
         policy_loss = rl.policy_gradient_loss(target_logits, action, vtrace_returns.pg_advantages).loss
         entropy_loss = rl.entropy_loss(target_logits).loss
-        baseline_loss = rl.baseline_loss(vtrace_returns.vs - baseline).loss
+        baseline_loss = rl.baseline_loss(vtrace_returns.vs, baseline).loss
 
         # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
@@ -417,10 +396,10 @@ class Learner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current learner's statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'entropy_loss': self._entropy_loss_t,
             'baseline_loss': self._baseline_loss_t,
-            'discount': self._discount,
+            # 'discount': self._discount,
             'updates': self._update_t,
         }

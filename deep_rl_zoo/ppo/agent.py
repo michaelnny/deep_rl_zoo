@@ -265,7 +265,6 @@ class Learner(types_lib.Learner):
         stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
         stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
         stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
-
         stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
 
         discount_tp1 = (~stacked_done_tp1).float() * self._discount
@@ -361,7 +360,7 @@ class Learner(types_lib.Learner):
         policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantage_t, self.clip_epsilon).loss
 
         # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns_t - v_t).loss
+        baseline_loss = rl.baseline_loss(returns_t, v_t).loss
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss)
@@ -391,18 +390,18 @@ class Learner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'baseline_loss': self._baseline_loss_t,
             'entropy_loss': self._entropy_loss_t,
-            'discount': self._discount,
-            'updates': self._update_t,
+            # 'discount': self._discount,
+            # 'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }
 
 
-class GuassianActor(Actor):
-    """Guassian PPO actor for continuous action space"""
+class GaussianActor(Actor):
+    """Gaussian PPO actor for continuous action space"""
 
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[np.ndarray]:
@@ -419,7 +418,7 @@ class GuassianActor(Actor):
         return a_t.cpu().numpy(), logprob_a_t.cpu().numpy()
 
 
-class GuassianLearner(types_lib.Learner):
+class GaussianLearner(types_lib.Learner):
     """Learner PPO learner for continuous action space"""
 
     def __init__(
@@ -547,10 +546,8 @@ class GuassianLearner(types_lib.Learner):
         discount_tp1 = (~stacked_done_tp1).float() * self._discount
 
         # Get output from old policy
-        output_t = self._old_policy_network(stacked_s_t)
-        v_t = output_t.baseline.squeeze(-1)
-
-        v_tp1 = self._old_policy_network(stacked_s_tp1).baseline.squeeze(-1)
+        v_t = self._critic_network(stacked_s_t).squeeze(-1)
+        v_tp1 = self._critic_network(stacked_s_tp1).squeeze(-1)
         advantage_t = multistep.truncated_generalized_advantage_estimation(stacked_r_t, v_t, v_tp1, discount_tp1, self._lambda)
 
         returns_t = advantage_t + v_t
@@ -670,7 +667,7 @@ class GuassianLearner(types_lib.Learner):
         v_t = self._critic_network(s_t).squeeze(-1)  # [batch_size]
 
         # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns_t - v_t).loss
+        baseline_loss = rl.baseline_loss(returns_t, v_t).loss
 
         # Average over batch dimension.
         baseline_loss = torch.mean(baseline_loss)
@@ -692,11 +689,11 @@ class GuassianLearner(types_lib.Learner):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current agent statistics as a dictionary."""
         return {
-            'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'baseline_loss': self._baseline_loss_t,
             'entropy_loss': self._entropy_loss_t,
-            'discount': self._discount,
-            'updates': self._update_t,
+            # 'discount': self._discount,
+            # 'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }

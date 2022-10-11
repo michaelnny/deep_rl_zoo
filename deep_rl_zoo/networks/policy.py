@@ -127,6 +127,59 @@ class ActorCriticMlpNet(nn.Module):
         return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
 
 
+class GaussianActorMlpNet(nn.Module):
+    """Gaussian Actor MLP network for continuous action space."""
+
+    def __init__(self, input_shape: int, num_actions: int, hidden_size: int) -> None:
+        super().__init__()
+        self.body = nn.Sequential(
+            nn.Linear(input_shape, hidden_size),
+            nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
+            # nn.Linear(hidden_size, hidden_size),
+            # nn.Tanh(),
+        )
+
+        self.sigma_head = nn.Linear(hidden_size, num_actions)
+        self.mu_head = nn.Linear(hidden_size, num_actions)
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor]:
+        """Given raw state x, predict the action probability distribution
+        and baseline state-value."""
+        features = self.body(x)
+
+        # Predict action distributions wrt policy
+        pi_mu = self.mu_head(features)
+        pi_sigma = torch.exp(self.sigma_head(features))
+
+        return pi_mu, pi_sigma
+
+
+class GaussianCriticMlpNet(nn.Module):
+    """Gaussian Critic MLP network for continuous action space."""
+
+    def __init__(self, input_shape: int, hidden_size: int) -> None:
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_shape, hidden_size),
+            nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
+            # nn.Linear(hidden_size, hidden_size),
+            # nn.Tanh(),
+            nn.Linear(hidden_size, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Given raw state x, predict the baseline state-value."""
+
+        # Predict state-value
+        baseline = self.net(x)
+
+        return baseline
+
+
 class ImpalaActorCriticMlpNet(nn.Module):
     """IMPALA Actor-Critic MLP network, with LSTM."""
 
