@@ -63,11 +63,11 @@ class ActorMlpNet(nn.Module):
     def __init__(self, input_shape: int, num_actions: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions),
+            nn.Linear(128, num_actions),
         )
 
     def forward(self, x: torch.Tensor) -> ActorNetworkOutputs:
@@ -84,11 +84,11 @@ class CriticMlpNet(nn.Module):
     def __init__(self, input_shape: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
@@ -103,26 +103,26 @@ class ActorCriticMlpNet(nn.Module):
     def __init__(self, input_shape: int, num_actions: int) -> None:
         super().__init__()
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(256, num_actions)
-        self.baseline_head = nn.Linear(256, 1)
+        self.policy_head = nn.Linear(128, num_actions)
+        self.baseline_head = nn.Linear(128, 1)
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
         and baseline state-value."""
         # Extract features from raw input state
-        x = self.body(x)
+        features = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(x)
+        pi_logits = self.policy_head(features)
 
         # Predict state-value
-        baseline = self.baseline_head(x)
+        baseline = self.baseline_head(features)
 
         return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
 
@@ -143,14 +143,14 @@ class ImpalaActorCriticMlpNet(nn.Module):
         self.use_lstm = use_lstm
 
         self.body = nn.Sequential(
-            nn.Linear(self.input_shape, 128),
+            nn.Linear(self.input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
         # Feature representation output size + one-hot of last action + last reward.
-        core_output_size = 256 + self.num_actions + 1
+        core_output_size = 128 + self.num_actions + 1
 
         if self.use_lstm:
             self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
@@ -254,29 +254,29 @@ class RndActorCriticMlpNet(nn.Module):
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(256, num_actions)
+        self.policy_head = nn.Linear(128, num_actions)
 
-        self.ext_baseline_head = nn.Linear(256, 1)
-        self.int_baseline_head = nn.Linear(256, 1)
+        self.ext_baseline_head = nn.Linear(128, 1)
+        self.int_baseline_head = nn.Linear(128, 1)
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,
         and extrinsic and intrinsic baseline values."""
         # Extract features from raw input state
-        x = self.body(x)
+        features = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(x)
+        pi_logits = self.policy_head(features)
 
         # Predict state-value
-        ext_baseline = self.ext_baseline_head(x)
-        int_baseline = self.int_baseline_head(x)
+        ext_baseline = self.ext_baseline_head(features)
+        int_baseline = self.int_baseline_head(features)
 
         return RndActorCriticNetworkOutputs(pi_logits=pi_logits, ext_baseline=ext_baseline, int_baseline=int_baseline)
 
@@ -297,10 +297,10 @@ class ActorConvNet(nn.Module):
         """Given raw state x, predict the action probability distribution."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        x = self.body(x)
+        features = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(x)
+        pi_logits = self.policy_head(features)
         return ActorNetworkOutputs(pi_logits=pi_logits)
 
 
@@ -320,10 +320,10 @@ class CriticConvNet(nn.Module):
         """Given raw state x, predict the state-value."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        x = self.body(x)
+        features = self.body(x)
 
         # Predict state-value
-        baseline = self.baseline_head(x)
+        baseline = self.baseline_head(features)
         return CriticNetworkOutputs(baseline=baseline)
 
 
@@ -346,13 +346,13 @@ class ActorCriticConvNet(nn.Module):
         and baseline state-value."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        x = self.body(x)
+        features = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(x)
+        pi_logits = self.policy_head(features)
 
         # Predict state-value
-        baseline = self.baseline_head(x)
+        baseline = self.baseline_head(features)
 
         return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
 
@@ -575,13 +575,13 @@ class RndActorCriticConvNet(nn.Module):
         and extrinsic and intrinsic baseline values."""
         # Extract features from raw input state
         x = x.float() / 255.0
-        x = self.body(x)
+        features = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(x)
+        pi_logits = self.policy_head(features)
 
         # Predict state-value
-        ext_baseline = self.ext_baseline_head(x)
-        int_baseline = self.int_baseline_head(x)
+        ext_baseline = self.ext_baseline_head(features)
+        int_baseline = self.int_baseline_head(features)
 
         return RndActorCriticNetworkOutputs(pi_logits=pi_logits, ext_baseline=ext_baseline, int_baseline=int_baseline)

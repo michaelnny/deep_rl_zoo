@@ -132,30 +132,30 @@ def main(argv):
 
     eval_env = environment_builder()
 
-    logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', eval_env.action_space.n)
-    logging.info('Observation spec: %s', eval_env.observation_space.shape)
-
-    input_shape = eval_env.observation_space.shape[0]
+    state_dim = eval_env.observation_space.shape[0]
     num_actions = eval_env.action_space.n
 
+    logging.info('Environment: %s', FLAGS.environment_name)
+    logging.info('Action spec: %s', num_actions)
+    logging.info('Observation spec: %s', state_dim)
+
     # Create extrinsic and intrinsic reward Q networks for learner to optimize.
-    ext_q_network = NguDqnMlpNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies)
+    ext_q_network = NguDqnMlpNet(input_shape=state_dim, num_actions=num_actions, num_policies=FLAGS.num_policies)
     ext_q_network.share_memory()
     ext_q_optimizer = torch.optim.Adam(ext_q_network.parameters(), lr=FLAGS.learning_rate)
 
-    int_q_network = NguDqnMlpNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies)
+    int_q_network = NguDqnMlpNet(input_shape=state_dim, num_actions=num_actions, num_policies=FLAGS.num_policies)
     int_q_network.share_memory()
     int_q_optimizer = torch.optim.Adam(int_q_network.parameters(), lr=FLAGS.learning_rate)
 
     # Create RND target and predictor networks.
-    rnd_target_network = RndMlpNet(input_shape=input_shape)
+    rnd_target_network = RndMlpNet(input_shape=state_dim)
     rnd_target_network.share_memory()
-    rnd_predictor_network = RndMlpNet(input_shape=input_shape)
+    rnd_predictor_network = RndMlpNet(input_shape=state_dim)
     rnd_predictor_network.share_memory()
 
     # Create embedding networks.
-    embedding_network = NguEmbeddingMlpNet(input_shape=input_shape, num_actions=num_actions)
+    embedding_network = NguEmbeddingMlpNet(input_shape=state_dim, num_actions=num_actions)
     embedding_network.share_memory()
 
     # Second Adam optimizer for embedding and RND predictor networks.
@@ -175,11 +175,8 @@ def main(argv):
         hidden_s=ext_q_network.get_initial_hidden_state(1),
     )
     network_output = ext_q_network(x)
-    q_values = network_output.q_values
-    hidden_s = network_output.hidden_s
-
-    assert q_values.shape == (1, 1, num_actions)
-    assert len(hidden_s) == 2
+    assert network_output.q_values.shape == (1, 1, num_actions)
+    assert len(network_output.hidden_s) == 2
 
     # Create prioritized transition replay, no importance_sampling_exponent decay
     importance_sampling_exponent = FLAGS.importance_sampling_exponent
@@ -231,19 +228,19 @@ def main(argv):
     actor_devices = [runtime_device] * FLAGS.num_actors
 
     # Each actor has it's own embedding and RND predictor networks,
-    # because we don't want to update these network weights in the middle of an episode,
+    # because we don't want to update these network parameters in the middle of an episode,
     # it will only update these networks at the begining of an episode.
     actors = [
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            ext_q_network=NguDqnMlpNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies),
-            int_q_network=NguDqnMlpNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies),
+            ext_q_network=NguDqnMlpNet(input_shape=state_dim, num_actions=num_actions, num_policies=FLAGS.num_policies),
+            int_q_network=NguDqnMlpNet(input_shape=state_dim, num_actions=num_actions, num_policies=FLAGS.num_policies),
             learner_ext_q_network=ext_q_network,
             learner_int_q_network=int_q_network,
             rnd_target_network=rnd_target_network,
-            rnd_predictor_network=RndMlpNet(input_shape=input_shape),
-            embedding_network=NguEmbeddingMlpNet(input_shape=input_shape, num_actions=num_actions),
+            rnd_predictor_network=RndMlpNet(input_shape=state_dim),
+            embedding_network=NguEmbeddingMlpNet(input_shape=state_dim, num_actions=num_actions),
             learner_rnd_predictor_network=rnd_predictor_network,
             learner_embedding_network=embedding_network,
             random_state=np.random.RandomState(FLAGS.seed + int(i)),  # pylint: disable=no-member

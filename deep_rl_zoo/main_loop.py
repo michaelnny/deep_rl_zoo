@@ -191,7 +191,7 @@ def run_single_thread_training_iterations(
         log_output = [
             ('iteration', iteration, '%3d'),
             ('train_step', num_eval_frames, '%5d'),
-            ('train_episode_return', train_stats['episode_return'], '%2.2f'),
+            ('train_episode_return', train_stats['mean_episode_return'], '%2.2f'),
             ('train_num_episodes', train_stats['num_episodes'], '%3d'),
             ('train_step_rate', train_stats['step_rate'], '%4.0f'),
             ('train_duration', train_stats['duration'], '%.2f'),
@@ -212,7 +212,7 @@ def run_single_thread_training_iterations(
 
             # Logging evaluation statistics.
             eval_output = [
-                ('eval_episode_return', eval_stats['episode_return'], '% 2.2f'),
+                ('eval_episode_return', eval_stats['mean_episode_return'], '% 2.2f'),
                 ('eval_num_episodes', eval_stats['num_episodes'], '%3d'),
                 ('eval_step_rate', eval_stats['step_rate'], '%4.0f'),
                 ('eval_duration', eval_stats['duration'], '%.2f'),
@@ -415,7 +415,7 @@ def run_actor(
             ('iteration', iteration, '%3d'),
             ('type', actor.agent_name, '%2s'),
             ('step', num_train_frames, '%5d'),
-            ('episode_return', train_stats['episode_return'], '% 2.2f'),
+            ('episode_return', train_stats['mean_episode_return'], '% 2.2f'),
             ('num_episodes', train_stats['num_episodes'], '%3d'),
             ('step_rate', train_stats['step_rate'], '%4.0f'),
             ('duration', train_stats['duration'], '%.2f'),
@@ -533,7 +533,7 @@ def run_learner(
                 ('iteration', iteration, '%3d'),
                 ('type', 'evaluation', '%3s'),
                 ('step', num_eval_frames, '%5d'),
-                ('episode_return', eval_stats['episode_return'], '%2.2f'),
+                ('episode_return', eval_stats['mean_episode_return'], '%2.2f'),
                 ('num_episodes', eval_stats['num_episodes'], '%3d'),
                 ('step_rate', eval_stats['step_rate'], '%4.0f'),
                 ('duration', eval_stats['duration'], '%.2f'),

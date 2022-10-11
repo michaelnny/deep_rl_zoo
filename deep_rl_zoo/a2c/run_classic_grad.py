@@ -17,7 +17,7 @@ Notes:
     * Actors sample batch of transitions to calculate loss, but not optimization step.
     * Actors collects local gradients, and send to master through multiprocessing.Queue.
     * Learner will aggregates batch of gradients then do the optimization step.
-    * Learner update policy network weights for workers (shared_memory).
+    * Learner update policy network parameters for workers (shared_memory).
 
 Note only supports training on single machine.
 
@@ -57,7 +57,7 @@ flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.01, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.0025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 32, 'Accumulate batch size transitions before do learning.')
@@ -100,15 +100,15 @@ def main(argv):
 
     eval_env = environment_builder()
 
-    logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', eval_env.action_space.n)
-    logging.info('Observation spec: %s', eval_env.observation_space.shape)
-
-    input_shape = eval_env.observation_space.shape[0]
+    state_dim = eval_env.observation_space.shape[0]
     num_actions = eval_env.action_space.n
 
+    logging.info('Environment: %s', FLAGS.environment_name)
+    logging.info('Action spec: %s', num_actions)
+    logging.info('Observation spec: %s', state_dim)
+
     # Create policy network and optimizer
-    policy_network = ActorCriticMlpNet(input_shape=input_shape, num_actions=num_actions)
+    policy_network = ActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions)
     policy_network.share_memory()
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
@@ -116,10 +116,8 @@ def main(argv):
     obs = eval_env.reset()
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    pi_logits = network_output.pi_logits
-    baseline = network_output.baseline
-    assert pi_logits.shape == (1, num_actions)
-    assert baseline.shape == (1, 1)
+    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.baseline.shape == (1, 1)
 
     # Create gradient replay, which is just a simple list with some optimization to speed up gradient aggregation
     gradient_replay = replay_lib.GradientReplay(FLAGS.num_actors, policy_network, FLAGS.compress_gradient)

@@ -17,7 +17,7 @@ Notes:
     * Actors sample batch of transitions to calculate loss, but not optimization step.
     * Actors collects local gradients, and send to master through multiprocessing.Queue.
     * Learner will aggregates batch of gradients then do the optimization step.
-    * Learner update policy network weights for workers (shared_memory).
+    * Learner update policy network parameters for workers (shared_memory).
 
 Note only supports training on single machine.
 
@@ -57,7 +57,7 @@ flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.01, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.0025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 32, 'Accumulate batch size transitions before do learning, for actor only.')
@@ -110,12 +110,12 @@ def main(argv):
 
     eval_env = environment_builder()
 
-    logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', eval_env.action_space.n)
-    logging.info('Observation spec: %s', eval_env.observation_space.shape)
-
-    input_shape = eval_env.observation_space.shape
+    state_dim = eval_env.observation_space.shape
     num_actions = eval_env.action_space.n
+
+    logging.info('Environment: %s', FLAGS.environment_name)
+    logging.info('Action spec: %s', num_actions)
+    logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape.
     obs = eval_env.reset()
@@ -123,17 +123,15 @@ def main(argv):
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network and optimizer
-    policy_network = ActorCriticConvNet(input_shape=input_shape, num_actions=num_actions)
+    policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
     policy_network.share_memory()
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    pi_logits = network_output.pi_logits
-    baseline = network_output.baseline
-    assert pi_logits.shape == (1, num_actions)
-    assert baseline.shape == (1, 1)
+    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.baseline.shape == (1, 1)
 
     # Create global gradient queue
     gradient_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)

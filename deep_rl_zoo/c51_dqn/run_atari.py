@@ -136,10 +136,8 @@ def main(argv):
     # Test network input and output
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = network(s)
-    q_logits = network_output.q_logits
-    q_values = network_output.q_values
-    assert q_logits.shape == (1, num_actions, FLAGS.num_atoms)
-    assert q_values.shape == (1, num_actions)
+    assert network_output.q_logits.shape == (1, num_actions, FLAGS.num_atoms)
+    assert network_output.q_values.shape == (1, num_actions)
 
     # Create e-greedy exploration epsilon schdule
     exploration_epsilon_schedule = LinearSchedule(

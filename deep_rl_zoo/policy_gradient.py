@@ -32,7 +32,7 @@ class EntropyExtra(NamedTuple):
 
 
 def baseline_loss(delta: torch.Tensor) -> base.LossOutput:
-    """Calculates the baseline loss.
+    """Calculates the squared error loss.
 
     Args:
       delta: the difference between predicted baseline value and estimated target value, shape [B,] or [T, B].
@@ -43,10 +43,10 @@ def baseline_loss(delta: torch.Tensor) -> base.LossOutput:
         A namedtuple with fields:
         * `loss`: Baseline 'loss', shape `[B]`.
     """
-    loss = 0.5 * torch.square(delta)
+    loss = torch.square(delta)
 
     if len(loss.shape) == 2:
-        # Average over time dimension.
+        # Averaging over time dimension.
         loss = torch.mean(loss, dim=0)
 
     return base.LossOutput(loss, extra=None)
@@ -76,7 +76,7 @@ def entropy_loss(logits_t: torch.Tensor) -> base.LossOutput:
     entropy = m.entropy()
 
     if len(entropy.shape) == 2:
-        # Average over time dimension.
+        # Averaging over time dimension.
         entropy = torch.mean(entropy, dim=0)
 
     return base.LossOutput(entropy, None)
@@ -120,7 +120,7 @@ def policy_gradient_loss(
     loss = logprob_a_t * adv_t.detach()
 
     if len(loss.shape) == 2:
-        # Average over time dimention.
+        # Averaging over time dimention.
         loss = torch.mean(loss, dim=0)
 
     return base.LossOutput(loss, extra=None)
@@ -153,7 +153,8 @@ def clipped_surrogate_gradient_loss(
     base.assert_rank_and_dtype(prob_ratios_t, 1, torch.float32)
     base.assert_rank_and_dtype(adv_t, 1, torch.float32)
 
-    clipped_ratios_t = torch.clamp(prob_ratios_t, 1.0 - epsilon, 1.0 + epsilon)
+    # clipped_ratios_t = torch.clamp(prob_ratios_t, 1.0 - epsilon, 1.0 + epsilon)
+    clipped_ratios_t = torch.where(adv_t > 0, 1.0 + epsilon, 1.0 - epsilon)
     clipped_objective = torch.min(prob_ratios_t * adv_t.detach(), clipped_ratios_t * adv_t.detach())
 
     return base.LossOutput(clipped_objective, extra=None)

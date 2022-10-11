@@ -191,7 +191,7 @@ class ReinforceBaseline(types_lib.Agent):
         # Compute baseline state-value loss.
         baseline_loss = rl.baseline_loss(baseline_s_tm1 - returns).loss
 
-        # Average over batch dimension.
+        # Averaging over batch dimension.
         baseline_loss = torch.mean(baseline_loss, dim=0)
 
         # Negative sign to indicate we want to maximize the policy gradient objective function

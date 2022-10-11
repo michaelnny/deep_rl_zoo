@@ -72,15 +72,14 @@ class PyTorchCheckpoint:
             restore_only: only used for evaluation, will not able to create checkpoints, default off.
         """
 
-        if not restore_only:
-            if not save_dir or save_dir == '':
-                raise ValueError('Invalid save_dir for checkpoint instance.')
+        # if not restore_only and (self.save_dir is None or self.save_dir == ''):
+        #     raise ValueError('Invalid save_dir for checkpoint instance.')
 
         self.save_dir = save_dir
         self.file_ext = file_ext
         self.base_path = None
 
-        if not restore_only:
+        if not restore_only and self.save_dir is not None and self.save_dir != '':
             self.base_path = Path(self.save_dir)
             if not self.base_path.exists():
                 self.base_path.mkdir(parents=True, exist_ok=True)
@@ -107,6 +106,8 @@ class PyTorchCheckpoint:
         Returns:
             the full path of checkpoint file.
         """
+        if self.base_path is None:
+            return
 
         file_name = f'{self.state.agent_name}_{self.state.environment_name}_{self.state.iteration}.{self.file_ext}'
         save_path = self.base_path / file_name

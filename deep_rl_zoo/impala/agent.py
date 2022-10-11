@@ -257,10 +257,10 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not 0.0 < entropy_coef <= 1.0:
-            raise ValueError(f'Expect entropy_coef to (0.0, 1.0], got {entropy_coef}')
-        if not 0.0 < baseline_coef <= 1.0:
-            raise ValueError(f'Expect baseline_coef to (0.0, 1.0], got {baseline_coef}')
+        if not 0.0 <= entropy_coef <= 1.0:
+            raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
+        if not 0.0 <= baseline_coef <= 1.0:
+            raise ValueError(f'Expect baseline_coef to [0.0, 1.0], got {baseline_coef}')
 
         self.agent_name = 'IMPALA-learner'
         self._device = device
@@ -397,7 +397,7 @@ class Learner(types_lib.Learner):
         entropy_loss = rl.entropy_loss(target_logits).loss
         baseline_loss = rl.baseline_loss(vtrace_returns.vs - baseline).loss
 
-        # Average over batch dimension.
+        # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
         entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
         baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)

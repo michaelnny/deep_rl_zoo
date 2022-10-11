@@ -20,6 +20,7 @@
 """Common ops for multistep return evaluation."""
 
 import torch
+import numpy as np
 
 from deep_rl_zoo import base
 
@@ -96,6 +97,52 @@ def n_step_bellman_target(
         bellman_target = rewards + gamma * (1.0 - done.float()) * bellman_target[1:]
 
     return bellman_target
+
+
+def truncated_generalized_advantage_estimation(
+    r_t: torch.Tensor,
+    value_t: torch.Tensor,
+    value_tp1: torch.Tensor,
+    discount_tp1: torch.Tensor,
+    lambda_: float,
+) -> torch.Tensor:
+    """Computes truncated generalized advantage estimates for a sequence length k.
+
+    The advantages are computed in a backwards fashion according to the equation:
+    Âₜ = δₜ + (γλ) * δₜ₊₁ + ... + ... + (γλ)ᵏ⁻ᵗ⁺¹ * δₖ₋₁
+    where δₜ = rₜ + γₜ * v(sₜ₊₁) - v(sₜ).
+
+    See Proximal Policy Optimization Algorithms, Schulman et al.:
+    https://arxiv.org/abs/1707.06347
+
+    Args:
+      r_t: Sequence of rewards at times [0, k]
+      value_t: Sequence of values under π at times [0, k]
+      value_tp1: Sequence of values under π at times [1, k+1]
+      discount_tp1: Sequence of discounts at times [1, k+1]
+      lambda_: a scalar
+
+    Returns:
+      Multistep truncated generalized advantage estimation at times [0, k-1].
+    """
+
+    base.assert_rank_and_dtype(r_t, 1, torch.float32)
+    base.assert_rank_and_dtype(value_t, 1, torch.float32)
+    base.assert_rank_and_dtype(value_tp1, 1, torch.float32)
+    base.assert_rank_and_dtype(discount_tp1, 1, torch.float32)
+
+    lambda_ = torch.ones_like(discount_tp1) * lambda_  # If scalar, make into vector.
+
+    delta_t = r_t + discount_tp1 * value_tp1 - value_t
+
+    advantage_t = torch.zeros_like(delta_t, dtype=torch.float32)
+
+    gae_t = 0
+    for i in reversed(range(len(delta_t))):
+        gae_t = delta_t[i] + discount_tp1[i] * lambda_[i] * gae_t
+        advantage_t[i] = gae_t
+
+    return advantage_t
 
 
 def general_off_policy_returns_from_action_values(

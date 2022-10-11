@@ -83,11 +83,11 @@ class DqnMlpNet(nn.Module):
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions),
+            nn.Linear(128, num_actions),
         )
 
     def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
@@ -114,22 +114,22 @@ class DuelingDqnMlpNet(nn.Module):
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
         self.advantage_head = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions),
+            nn.Linear(128, num_actions),
         )
 
         self.value_head = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
@@ -168,11 +168,11 @@ class C51DqnMlpNet(nn.Module):
         self.num_atoms = atoms.size(0)
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions * self.num_atoms),
+            nn.Linear(128, num_actions * self.num_atoms),
         )
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
@@ -211,21 +211,21 @@ class RainbowDqnMlpNet(nn.Module):
         self.num_atoms = atoms.size(0)
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
         self.advantage_head = nn.Sequential(
-            common.NoisyLinear(256, 256),
+            common.NoisyLinear(128, 128),
             nn.ReLU(),
-            common.NoisyLinear(256, num_actions * self.num_atoms),
+            common.NoisyLinear(128, num_actions * self.num_atoms),
         )
         self.value_head = nn.Sequential(
-            common.NoisyLinear(256, 256),
+            common.NoisyLinear(128, 128),
             nn.ReLU(),
-            common.NoisyLinear(256, 1 * self.num_atoms),
+            common.NoisyLinear(128, 1 * self.num_atoms),
         )
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
@@ -278,11 +278,11 @@ class QRDqnMlpNet(nn.Module):
         self.num_actions = num_actions
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions * self.num_taus),
+            nn.Linear(128, num_actions * self.num_taus),
         )
 
     def forward(self, x: torch.Tensor) -> QRDqnNetworkOutputs:
@@ -318,15 +318,15 @@ class IqnMlpNet(nn.Module):
         self.pis = torch.arange(1, self.latent_dim + 1).float() * 3.141592653589793  # [latent_dim]
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
-        self.embedding_layer = nn.Linear(latent_dim, 256)
+        self.embedding_layer = nn.Linear(latent_dim, 128)
 
-        self.value_head = nn.Linear(256, num_actions)
+        self.value_head = nn.Linear(128, num_actions)
 
     def sample_taus(self, batch_size: int, num_taus: int) -> torch.Tensor:
         """Returns sampled batch taus."""
@@ -393,13 +393,13 @@ class DrqnMlpNet(nn.Module):
         self.num_actions = num_actions
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
-        self.lstm = nn.LSTM(input_size=256, hidden_size=128, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(input_size=128, hidden_size=128, num_layers=1, batch_first=True)
 
         self.value_head = nn.Linear(self.lstm.hidden_size, num_actions)
 
@@ -458,26 +458,26 @@ class R2d2DqnMlpNet(nn.Module):
         self.num_actions = num_actions
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
         # Feature representation output size + one-hot of last action + last reward.
-        core_output_size = 256 + self.num_actions + 1
+        core_output_size = 128 + self.num_actions + 1
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
         self.advantage_head = nn.Sequential(
-            nn.Linear(self.lstm.hidden_size, 256),
+            nn.Linear(self.lstm.hidden_size, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions),
+            nn.Linear(128, num_actions),
         )
         self.value_head = nn.Sequential(
-            nn.Linear(self.lstm.hidden_size, 256),
+            nn.Linear(self.lstm.hidden_size, 128),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, input_: RnnDqnNetworkInputs) -> RnnDqnNetworkOutputs:
@@ -554,9 +554,9 @@ class NguDqnMlpNet(nn.Module):
         self.num_policies = num_policies  # intrinsic reward scale betas
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(64, 128),
             nn.ReLU(),
         )
 
@@ -566,19 +566,19 @@ class NguDqnMlpNet(nn.Module):
         # one-hot of last action
         # last intrinsic reward
         # last extrinsic reward
-        core_output_size = 256 + self.num_policies + self.num_actions + 1 + 1
+        core_output_size = 128 + self.num_policies + self.num_actions + 1 + 1
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
         self.advantage_head = nn.Sequential(
-            nn.Linear(self.lstm.hidden_size, 256),
+            nn.Linear(self.lstm.hidden_size, 128),
             nn.ReLU(),
-            nn.Linear(256, num_actions),
+            nn.Linear(128, num_actions),
         )
         self.value_head = nn.Sequential(
-            nn.Linear(self.lstm.hidden_size, 256),
+            nn.Linear(self.lstm.hidden_size, 128),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, input_: NguDqnNetworkInputs) -> RnnDqnNetworkOutputs:

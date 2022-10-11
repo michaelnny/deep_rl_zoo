@@ -128,10 +128,8 @@ def main(argv):
 
     # Test network input and output
     network_output = network(torch.from_numpy(obs[None, ...]).float())
-    q_logits = network_output.q_logits
-    q_values = network_output.q_values
-    assert q_logits.shape == (1, num_actions, FLAGS.num_atoms)
-    assert q_values.shape == (1, num_actions)
+    assert network_output.q_logits.shape == (1, num_actions, FLAGS.num_atoms)
+    assert network_output.q_values.shape == (1, num_actions)
 
     # Create prioritized transition replay
     # Note the t in the replay is not exactly aligned with the agent t.

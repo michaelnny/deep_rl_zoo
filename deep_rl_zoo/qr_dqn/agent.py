@@ -72,7 +72,7 @@ class QRDqn(types_lib.Agent):
             exploration_epsilon: external schedul of e in e-greedy exploration rate.
             learn_frequency: the frequency (measured in agent steps) to do learning.
             target_network_update_frequency: the frequency (measured in number of online Q network parameter updates)
-                 to update target Q network weights.
+                 to Update target network parameters.
             min_replay_size: Minimum replay size before start to do learning.
             batch_size: sample batch size.
             num_actions: number of valid actions in the environment.
@@ -202,7 +202,7 @@ class QRDqn(types_lib.Agent):
         transitions, indices, weights = self._replay.sample(self._batch_size)
         priorities = self._update(transitions, weights)
 
-        # Update target Q network weights
+        # Update target network parameters
         if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
@@ -218,7 +218,7 @@ class QRDqn(types_lib.Agent):
 
         self._optimizer.zero_grad()
         loss, priorities = self._calc_loss(transitions)
-        # Multiply loss by sampling weights, average over batch dimension
+        # Multiply loss by sampling weights, averaging over batch dimension
         loss = torch.mean(loss * weights.detach())
         loss.backward()
 
@@ -276,7 +276,7 @@ class QRDqn(types_lib.Agent):
         return loss, priorities
 
     def _update_target_network(self):
-        """Copy online network weights to target network."""
+        """Copy online network parameters to target network."""
         self._target_network.load_state_dict(self._online_network.state_dict())
         self._target_update_t += 1
 

@@ -185,13 +185,11 @@ When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMOR
 python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
 ```
 
-Notice the code does not support running on multiple GPUs out of the box, you can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs.
+Notice the code DOES NOT SUPPORT running on multiple GPUs out of the box, you can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs, but there's no guarantee it will work.
 ```
 # Change here to map to dedicated device if have multiple GPUs
 actor_devices = [runtime_device] * FLAGS.num_actors
 ```
-
-
 
 # Evaluate Agents
 Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
@@ -224,7 +222,7 @@ The classes for write logs to Tensorboard is implemented in `trackers.py` module
 ## Measurements available on Tensorboard
 `performance(env_steps)`:
 * the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
-* `episode_return` the non-discounted sum of rewards of last episode
+* `episode_return` the non-discounted sum of rewards of last episode (counted after apply reward clipping)
 * `episode_steps` the last episode steps
 * `num_episodes` how many episodes have been conducted
 * `step_rate(second)` step per seconds, per actors

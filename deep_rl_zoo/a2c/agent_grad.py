@@ -18,7 +18,7 @@ Specifically:
     * Actors sample batch of transitions to calculate loss, but not optimization step.
     * Actors collects local gradients, and send to master through multiprocessing.Queue.
     * Learner will aggregates batch of gradients then do the optimization step.
-    * Learner update policy network weights for workers (shared_memory).
+    * Learner update policy network parameters for workers (shared_memory).
 
 Note only supports training on single machine.
 
@@ -96,9 +96,9 @@ class Actor(types_lib.Agent):
             raise ValueError(f'Expect n_step to be integer geater than 1, got {n_step}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to be [1, 512], got {batch_size}')
-        if not 0.0 < entropy_coef <= 1.0:
+        if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to be (0.0, 1.0], got {entropy_coef}')
-        if not 0.0 < baseline_coef <= 1.0:
+        if not 0.0 <= baseline_coef <= 1.0:
             raise ValueError(f'Expect baseline_coef to be (0.0, 1.0], got {baseline_coef}')
 
         self.rank = rank
@@ -227,7 +227,7 @@ class Actor(types_lib.Agent):
         # Compute baseline state-value loss.
         baseline_loss = rl.baseline_loss(baseline_s_tm1 - target_baseline).loss
 
-        # Average over batch dimension.
+        # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
         entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
         baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
@@ -306,7 +306,7 @@ class Learner(types_lib.Learner):
         if self._replay.size < self._batch_size:
             return
 
-        # Blocking while master is updating network weights
+        # Blocking while master is updating network parameters
         with self._lock:
             self._learn()
         yield self.statistics
@@ -332,7 +332,7 @@ class Learner(types_lib.Learner):
 
         # Manually set gradients
         for param, grad in zip(self._policy_network.parameters(), gradients):
-            # Average over batch dimension
+            # Averaging over batch dimension
             param.grad = torch.tensor(grad).to(device=self._device, dtype=torch.float32).mean(dim=0)
 
         if self._clip_grad:

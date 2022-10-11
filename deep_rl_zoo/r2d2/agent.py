@@ -340,7 +340,7 @@ class Learner(types_lib.Learner):
             network: the Q network we want to train and optimize.
             optimizer: the optimizer for Q network.
             replay: prioritized recurrent experience replay.
-            target_network_update_frequency: how often to copy online network weights to target.
+            target_network_update_frequency: how often to copy online network parameters to target.
             min_replay_size: wait till experience replay buffer this number before start to learn.
             batch_size: sample batch_size of transitions.
             n_step: TD n-step bootstrap.
@@ -430,7 +430,7 @@ class Learner(types_lib.Learner):
         priorities = np.abs(priorities)
         self._replay.update_priorities(indices, priorities)
 
-        # Copy online Q network weights to target Q network, every m updates
+        # Copy online Q network parameters to target Q network, every m updates
         if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
@@ -452,7 +452,7 @@ class Learner(types_lib.Learner):
         # [batch_size]
         loss, priorities = self._calc_loss(learn_transitions, hidden_online_q, hidden_target_q)
 
-        # Multiply loss by sampling weights, averages over batch dimension
+        # Multiply loss by sampling weights, averaging over batch dimension
         loss = torch.mean(loss * weights.detach())
         loss.backward()
 

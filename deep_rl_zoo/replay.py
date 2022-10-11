@@ -47,19 +47,7 @@ class Transition(NamedTuple):
     done: Optional[bool]
 
 
-class OffPolicyTransition(NamedTuple):
-    """A full transition with action logits used for off-policy agents like PPO."""
-
-    s_tm1: Optional[np.ndarray]
-    a_tm1: Optional[int]
-    logits_tm1: Optional[np.ndarray]
-    r_t: Optional[float]
-    s_t: Optional[np.ndarray]
-    done: Optional[bool]
-
-
 TransitionStructure = Transition(s_tm1=None, a_tm1=None, r_t=None, s_t=None, done=None)
-OffPolicyTransitionStructure = OffPolicyTransition(s_tm1=None, a_tm1=None, logits_tm1=None, r_t=None, s_t=None, done=None)
 
 
 class UniformReplay(Generic[ReplayStructure]):
@@ -549,41 +537,43 @@ class PrioritizedReplay(Generic[ReplayStructure]):
         self._distribution.set_state(state['distribution'])
 
 
-# class PrioritizedReplay(Generic[ReplayStructure]):
+# class PrioritizedReplay:
 #     """Prioritized replay, with circular buffer storage for flat named tuples.
 #     This is the proportional variant as described in
 #     http://arxiv.org/abs/1511.05952.
-#     Code for priority calculation adapted from seed-rl
+
+#     Code for propotional prioritization adapted from seed-rl
 #     https://github.com/google-research/seed_rl/blob/66e8890261f09d0355e8bf5f1c5e41968ca9f02b/common/utils.py#L345
 #     """
 
 #     def __init__(
 #         self,
-#         # capacity: int,
-#         # structure: ReplayStructure,
-#         # priority_exponent: float,
-#         # importance_sampling_exponent: Callable[[int], float],
-#         # time_major: bool = False,
 #         capacity: int,
 #         structure: ReplayStructure,
 #         priority_exponent: float,
-#         importance_sampling_exponent: Callable[[int], float],
-#         uniform_sample_probability: float,
-#         normalize_weights: bool,
+#         importance_sampling_exponent: float,
 #         random_state: np.random.RandomState,
-#         time_major: bool = False,
+#         normalize_weights: bool = True,
+#         encoder: Optional[Callable[[ReplayStructure], Any]] = None,
+#         decoder: Optional[Callable[[Any], ReplayStructure]] = None,
 #     ):
+
 #         if capacity <= 0:
 #             raise ValueError(f'Expect capacity to be a positive integer, got {capacity}')
 #         self.structure = structure
 #         self._capacity = capacity
-#         self._priorities = np.zeros((capacity,), dtype=np.float32)
-#         self._priority_exponent = priority_exponent
-#         self._importance_sampling_exponent = importance_sampling_exponent
-#         self._time_major = time_major
+#         self._random_state = random_state
+#         self._encoder = encoder or (lambda s: s)
+#         self._decoder = decoder or (lambda s: s)
 
 #         self._storage = [None] * capacity
 #         self._num_added = 0
+
+#         self._priorities = np.zeros((capacity,), dtype=np.float32)
+#         self._priority_exponent = priority_exponent
+#         self._importance_sampling_exponent = importance_sampling_exponent
+
+#         self._normalize_weights = normalize_weights
 
 #     def add(self, item: ReplayStructure, priority: float) -> None:
 #         """Adds a single item with a given priority to the replay buffer."""
@@ -592,38 +582,36 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 
 #         index = self._num_added % self._capacity
 #         self._priorities[index] = priority
-#         self._storage[index] = item
+#         self._storage[index] = self._encoder(item)
 #         self._num_added += 1
 
-#     def get(self, indices: Sequence[int]) -> List[ReplayStructure]:
+#     def get(self, indices: Sequence[int]) -> Iterable[ReplayStructure]:
 #         """Retrieves transitions by indices."""
-#         return [self._storage[i] for i in indices]
+#         return [self._decoder(self._storage[i]) for i in indices]
 
-#     def sample(
-#         self,
-#         batch_size: int,
-#     ) -> Tuple[ReplayStructure, np.ndarray, np.ndarray]:
+#     def sample(self, size: int) -> Tuple[ReplayStructure, np.ndarray, np.ndarray]:
 #         """Samples a batch of transitions."""
-#         if self.size < batch_size:
-#             raise RuntimeError(f'Replay only have {self.size} samples, got sample batch size {batch_size}')
+#         if self.size < size:
+#             raise RuntimeError(f'Replay only have {self.size} samples, got sample size {size}')
 
 #         if self._priority_exponent == 0:
-#             indices = np.random.uniform(0, self.size, size=batch_size).astype(np.int64)
+#             indices = self._random_state.uniform(0, self.size, size=size).astype(np.int64)
 #             weights = np.ones_like(indices, dtype=np.float32)
 #         else:
 #             # code copied from seed_rl
 #             priorities = self._priorities[: self.size] ** self._priority_exponent
-#             # priorities = np.nan_to_num(priorities, nan=1e-4)  # Avoid NaN
-#             # priorities = priorities**self._priority_exponent
+
 #             probs = priorities / np.sum(priorities)
-#             indices = np.random.choice(np.arange(probs.shape[0]), size=batch_size, replace=True, p=probs)
+#             indices = self._random_state.choice(np.arange(probs.shape[0]), size=size, replace=True, p=probs)
 
 #             # Importance weights.
-#             weights = ((1.0 / self.size) / probs[indices]) ** self.importance_sampling_exponent
-#             weights /= np.max(weights)  # Normalize.
+#             weights = ((1.0 / self.size) / np.take(probs, indices)) ** self.importance_sampling_exponent
+
+#             if self._normalize_weights:
+#                 weights /= np.max(weights)  # Normalize.
 
 #         samples = self.get(indices)
-#         return np_stack_list_of_transitions(samples, self.structure, self.stack_dim), indices, weights
+#         return np_stack_list_of_transitions(samples, self.structure, 0), indices, weights
 
 #     def update_priorities(self, indices: Sequence[int], priorities: Sequence[float]) -> None:
 #         """Updates indices with given priorities."""
@@ -631,26 +619,15 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 #         if not np.isfinite(priorities).all() or (priorities < 0.0).any():
 #             raise ValueError('priorities must be finite and positive.')
 #         for index, priority in zip(indices, priorities):
-#             # if priority <= 0:
-#             #     # raise RuntimeError(f'Expect priority to be greater than 0, got {p}')
-#             #     priority = 1e-4  # Avoid NaNs
 #             self._priorities[index] = priority
 
 #     @property
-#     def stack_dim(self) -> int:
-#         """Stack dimension, for RNN we may need to make the tensor time major by stacking on second dimension."""
-#         if self._time_major:
-#             return 1
-#         else:
-#             return 0
-
-#     @property
-#     def size(self) -> int:
+#     def size(self) -> None:
 #         """Number of elements currently contained in replay."""
 #         return min(self._num_added, self._capacity)
 
 #     @property
-#     def capacity(self) -> int:
+#     def capacity(self) -> None:
 #         """Total capacity of replay (maximum number of items that can be stored)."""
 #         return self._capacity
 
@@ -846,98 +823,6 @@ class NStepTransitionAccumulator:
         self._a_tm1 = None
 
 
-def _build_pg_n_step_transition(transitions: Iterable[OffPolicyTransition], discount: float) -> Transition:
-    """Builds a single n-step transition from n 1-step transitions for policy gradient method."""
-    r_t = 0.0
-    discount_t = 1.0
-    for transition in transitions:
-        r_t += discount_t * transition.r_t
-        discount_t *= discount
-
-    return OffPolicyTransition(
-        s_tm1=transitions[0].s_tm1,
-        a_tm1=transitions[0].a_tm1,
-        logits_tm1=transitions[0].logits_tm1,
-        r_t=r_t,
-        s_t=transitions[-1].s_t,
-        done=transitions[-1].done,
-    )
-
-
-class PgNStepTransitionAccumulator:
-    """Accumulates timesteps to form n-step transitions for policy gradient method.
-
-    Let `t` be the index of a timestep within an episode and `T` be the index of
-    the final timestep within an episode. Then given the step type of the timestep
-    passed into `step()` the accumulator will:
-    *   `FIRST`: yield nothing.
-    *   `MID`: if `t < n`, yield nothing, else yield one n-step transition
-        `s_{t - n} -> s_t`.
-    *   `LAST`: yield all transitions that end at `s_t = s_T` from up to n steps
-        away, specifically `s_{T - min(n, T)} -> s_T, ..., s_{T - 1} -> s_T`.
-        These are `min(n, T)`-step, ..., `1`-step transitions.
-    """
-
-    def __init__(self, n, discount):
-        self._discount = discount
-        self._transitions = collections.deque(maxlen=n)  # Store 1-step transitions.
-        self._s_tm1 = None
-        self._a_tm1 = None
-        self._logits_tm1 = None
-
-    def step(self, timestep_t: types_lib.TimeStep, a_t: int, logits_t: np.ndarray) -> Iterable[OffPolicyTransition]:
-        """Accumulates timestep and resulting action, yields transitions."""
-        if timestep_t.first:
-            self.reset()
-
-        # There are no transitions on the first timestep.
-        if self._s_tm1 is None:
-            assert self._a_tm1 is None
-            if not timestep_t.first:
-                raise ValueError(f'Expected first timestep, got {str(timestep_t)}')
-            self._s_tm1 = timestep_t.observation
-            self._a_tm1 = a_t
-            self._logits_tm1 = logits_t
-            return  # Empty iterable.
-
-        self._transitions.append(
-            OffPolicyTransition(
-                s_tm1=self._s_tm1,
-                a_tm1=self._a_tm1,
-                logits_tm1=self._logits_tm1,
-                r_t=timestep_t.reward,
-                s_t=timestep_t.observation,
-                done=timestep_t.done,
-            )
-        )
-
-        self._s_tm1 = timestep_t.observation
-        self._a_tm1 = a_t
-        self._logits_tm1 = logits_t
-
-        if timestep_t.done:
-            # Yield any remaining n, n-1, ..., 1-step transitions at episode end.
-            while self._transitions:
-                yield _build_pg_n_step_transition(self._transitions, self._discount)
-                self._transitions.popleft()
-        else:
-            # Wait for n transitions before yielding anything.
-            if len(self._transitions) < self._transitions.maxlen:
-                return  # Empty iterable.
-
-            assert len(self._transitions) == self._transitions.maxlen
-
-            # This is the typical case, yield a single n-step transition.
-            yield _build_pg_n_step_transition(self._transitions, self._discount)
-
-    def reset(self) -> None:
-        """Resets the accumulator. Following timestep is expected to be FIRST."""
-        self._transitions.clear()
-        self._s_tm1 = None
-        self._a_tm1 = None
-        self._logits_tm1 = None
-
-
 class Unroll:
     """Unroll transitions to a specific timestep, used for RNN networks like R2D2, IMPALA,
     support cross episodes and do not cross episodes."""
@@ -1074,24 +959,6 @@ def split_structure(input_, structure, prefix_length: int, axis: int = 0) -> Tup
         _suffix = [pair[1] for pair in split]
 
         return (type(structure)(*_prefix), type(structure)(*_suffix))
-
-
-def split_indices_into_bins(bin_size: int, max_indices: int, min_indices: int = 0) -> List[int]:
-    """Split indices to small bins."""
-    if max_indices < bin_size:
-        raise ValueError(f'Expect max_indices to be greater than bin_size, got {max_indices} and {bin_size}')
-
-    # Split indices into 'bins' with bin_size.
-    _indices = range(min_indices, max_indices)
-    results = []
-    for i in range(0, len(_indices), bin_size):
-        results.append(_indices[i : i + bin_size])  # noqa: E203
-
-    # Make sure the last one has the same 'bin_size'.
-    if len(results[-1]) != bin_size:
-        results[-1] = _indices[-bin_size:]
-
-    return results
 
 
 def compress_array(array: np.ndarray) -> CompressedArray:

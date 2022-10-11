@@ -86,7 +86,7 @@ class Actor(types_lib.Agent):
 
         a_t = self.act(timestep)
 
-        # Try build transition and put into global queue
+        # Try build transition and add to global queue
         for transition in self._transition_accumulator.step(timestep, a_t):
             self._queue.put(transition)
 
@@ -158,7 +158,7 @@ class Learner(types_lib.Learner):
             num_actions: number of actions for the environment.
             min_replay_size: minimum replay size before do learning.
             learn_frequency: how often should the agent learn.
-            q_target_tau: the coefficient of target Q network weights.
+            q_target_tau: the coefficient of target Q network parameters.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
@@ -354,7 +354,7 @@ class Learner(types_lib.Learner):
         q1_loss = value_learning.qlearning(q1_tm1, a_tm1, r_t, discount_t, target_q_t).loss
         q2_loss = value_learning.qlearning(q2_tm1, a_tm1, r_t, discount_t, target_q_t).loss
 
-        # Average over batch dimension.
+        # Averaging over batch dimension.
         q1_loss = q1_loss.mean()
         q2_loss = q2_loss.mean()
 
@@ -391,7 +391,7 @@ class Learner(types_lib.Learner):
         # alternative, we can calculate it according to original paper eq 12
         # policy_losses = prob_tm1 * (self.ent_coef * logprob_tm1 - q_tm1)  # eq 12, (batch_size, num_actions)
 
-        # Sum over all actions, average over batch dimension.
+        # Sum over all actions, averaging over batch dimension.
         # Negative sign to indicate we want to maximize the policy gradient objective function
         ent_coef_loss = -torch.mean(torch.sum(ent_coef_losses, dim=-1), dim=0)
         policy_loss = -torch.mean(torch.sum(policy_losses, dim=-1), dim=0)

@@ -124,12 +124,12 @@ def main(argv):
 
     eval_env = environment_builder()
 
-    logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', eval_env.action_space.n)
-    logging.info('Observation spec: %s', eval_env.observation_space.shape)
-
-    input_shape = eval_env.observation_space.shape
+    state_dim = eval_env.observation_space.shape
     num_actions = eval_env.action_space.n
+
+    logging.info('Environment: %s', FLAGS.environment_name)
+    logging.info('Action spec: %s', num_actions)
+    logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape.
     obs = eval_env.reset()
@@ -137,7 +137,7 @@ def main(argv):
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create network for learner to optimize, actor will use the same network with share memory.
-    network = R2d2DqnConvNet(input_shape=input_shape, num_actions=num_actions)
+    network = R2d2DqnConvNet(input_shape=state_dim, num_actions=num_actions)
     network.share_memory()
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate, eps=FLAGS.adam_eps)
 
@@ -149,11 +149,8 @@ def main(argv):
         hidden_s=network.get_initial_hidden_state(1),
     )
     network_output = network(x)
-    q_values = network_output.q_values
-    q_hidden_s = network_output.hidden_s
-
-    assert q_values.shape == (1, 1, num_actions)
-    assert len(q_hidden_s) == 2
+    assert network_output.q_values.shape == (1, 1, num_actions)
+    assert len(network_output.hidden_s) == 2
 
     # Create prioritized transition replay, no importance_sampling_exponent decay
     importance_sampling_exponent = FLAGS.importance_sampling_exponent
@@ -204,7 +201,7 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            network=R2d2DqnConvNet(input_shape=input_shape, num_actions=num_actions),
+            network=R2d2DqnConvNet(input_shape=state_dim, num_actions=num_actions),
             learner_network=network,
             random_state=np.random.RandomState(FLAGS.seed + int(i)),  # pylint: disable=no-member
             num_actors=FLAGS.num_actors,

@@ -51,7 +51,7 @@ flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients 
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for policy network.')
 flags.DEFINE_float('q_learning_rate', 0.001, 'Learning rate for Q networks.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('q_target_tau', 0.995, 'Target Q network weights update ratio.')
+flags.DEFINE_float('q_target_tau', 0.995, 'Target Q network parameters update ratio.')
 flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('learn_frequency', 1, 'The frequency (measured in agent steps) to update parameters.')
@@ -93,23 +93,23 @@ def main(argv):
 
     eval_env = environment_builder()
 
-    logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', eval_env.action_space.n)
-    logging.info('Observation spec: %s', eval_env.observation_space.shape)
-
-    input_shape = eval_env.observation_space.shape[0]
+    state_dim = eval_env.observation_space.shape[0]
     num_actions = eval_env.action_space.n
 
+    logging.info('Environment: %s', FLAGS.environment_name)
+    logging.info('Action spec: %s', num_actions)
+    logging.info('Observation spec: %s', state_dim)
+
     # Create policy network which is shared between actors and learner.
-    policy_network = ActorMlpNet(input_shape=input_shape, num_actions=num_actions)
+    policy_network = ActorMlpNet(input_shape=state_dim, num_actions=num_actions)
     policy_network.share_memory()
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Create Q networks, only used by learner process to do policy evaluation
-    q1_network = DqnMlpNet(input_shape=input_shape, num_actions=num_actions)
+    q1_network = DqnMlpNet(input_shape=state_dim, num_actions=num_actions)
     q1_optimizer = torch.optim.Adam(q1_network.parameters(), lr=FLAGS.q_learning_rate)
 
-    q2_network = DqnMlpNet(input_shape=input_shape, num_actions=num_actions)
+    q2_network = DqnMlpNet(input_shape=state_dim, num_actions=num_actions)
     q2_optimizer = torch.optim.Adam(q2_network.parameters(), lr=FLAGS.q_learning_rate)
 
     # Test network output.

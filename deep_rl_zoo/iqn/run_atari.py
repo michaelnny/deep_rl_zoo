@@ -136,8 +136,10 @@ def main(argv):
     network_output = network(s, num_taus=1)  # only one sample
     q_dist = network_output.q_dist
     q_values = network_output.q_values
+    taus = network_output.taus
     assert q_dist.shape == (1, 1, num_actions)
     assert q_values.shape == (1, num_actions)
+    assert taus.shape == (1, 1)
 
     # Create e-greedy exploration epsilon schdule
     exploration_epsilon_schedule = LinearSchedule(

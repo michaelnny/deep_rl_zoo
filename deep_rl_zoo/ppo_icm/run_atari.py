@@ -35,7 +35,6 @@ from deep_rl_zoo.schedule import LinearSchedule
 from deep_rl_zoo import main_loop
 from deep_rl_zoo import gym_env
 from deep_rl_zoo import greedy_actors
-from deep_rl_zoo import replay as replay_lib
 
 
 FLAGS = flags.FLAGS
@@ -51,7 +50,8 @@ flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('icm_learning_rate', 0.001, 'Learning rate for ICM module.')
 
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('entropy_coef', 0.01, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
+flags.DEFINE_float('entropy_coef', 0.0025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
@@ -62,7 +62,7 @@ flags.DEFINE_float('policy_loss_coef', 1.0, 'Weights policy loss against the the
 
 flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
-flags.DEFINE_integer('unroll_length', 128, 'Actor unroll length.')
+flags.DEFINE_integer('unroll_length', 128, 'Collect N transitions (cross episodes) before send to learner, per actor.')
 flags.DEFINE_integer('update_k', 3, 'Run update k times when do learning.')
 flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
 flags.DEFINE_integer(
@@ -112,12 +112,12 @@ def main(argv):
 
     eval_env = environment_builder()
 
-    logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', eval_env.action_space.n)
-    logging.info('Observation spec: %s', eval_env.observation_space.shape)
-
-    input_shape = eval_env.observation_space.shape
+    state_dim = eval_env.observation_space.shape
     num_actions = eval_env.action_space.n
+
+    logging.info('Environment: %s', FLAGS.environment_name)
+    logging.info('Action spec: %s', num_actions)
+    logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape.
     obs = eval_env.reset()
@@ -125,31 +125,31 @@ def main(argv):
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network, master will optimize this network
-    policy_network = ActorCriticConvNet(input_shape=input_shape, num_actions=num_actions)
+    policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # The 'old' policy for actors to act
-    old_policy_network = ActorCriticConvNet(input_shape=input_shape, num_actions=num_actions)
+    old_policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
     old_policy_network.share_memory()
 
     # ICM module
-    icm_network = IcmNatureConvNet(input_shape=input_shape, num_actions=num_actions)
+    icm_network = IcmNatureConvNet(input_shape=state_dim, num_actions=num_actions)
     icm_optimizer = torch.optim.Adam(icm_network.parameters(), lr=FLAGS.icm_learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    pi_logits = network_output.pi_logits
-    baseline = network_output.baseline
-    assert pi_logits.shape == (1, num_actions)
-    assert baseline.shape == (1, 1)
+    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
 
     clip_epsilon_scheduler = LinearSchedule(
         begin_t=0,
-        end_t=(FLAGS.num_iterations * int(FLAGS.num_train_frames * FLAGS.num_actors)),  # Learner step_t is fater than worker
+        end_t=int(
+            (FLAGS.num_iterations * int(FLAGS.num_train_frames * FLAGS.num_actors)) / FLAGS.unroll_length
+        ),  # Learner step_t is often faster than worker
         begin_value=FLAGS.clip_epsilon_begin_value,
         end_value=FLAGS.clip_epsilon_end_value,
     )
@@ -163,10 +163,10 @@ def main(argv):
         icm_optimizer=icm_optimizer,
         clip_epsilon=clip_epsilon_scheduler,
         discount=FLAGS.discount,
-        n_step=FLAGS.n_step,
+        gae_lambda=FLAGS.gae_lambda,
+        total_unroll_length=int(FLAGS.unroll_length * FLAGS.num_actors),
         batch_size=FLAGS.batch_size,
         update_k=FLAGS.update_k,
-        unroll_length=FLAGS.unroll_length,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,
         intrinsic_lambda=FLAGS.intrinsic_lambda,
@@ -188,7 +188,6 @@ def main(argv):
             rank=i,
             data_queue=data_queue,
             policy_network=old_policy_network,
-            transition_accumulator=replay_lib.PgNStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

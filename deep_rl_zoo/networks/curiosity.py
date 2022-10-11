@@ -55,9 +55,9 @@ class IcmMlpNet(nn.Module):
 
         # Feature representations
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(64, 128),
             nn.ReLU(),
             nn.Linear(128, feature_vector_size),
             nn.ReLU(),
@@ -197,11 +197,9 @@ class RndMlpNet(nn.Module):
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.LeakyReLU(),
-            # nn.Linear(128, 128),
-            # nn.LeakyReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(64, 128),
             nn.LeakyReLU(),
         )
 
@@ -298,10 +296,10 @@ class NguEmbeddingMlpNet(nn.Module):
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.ReLU(),
-            # nn.Linear(128, 128),
-            # nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.ReLU(),
             nn.Linear(128, latent_dim),
             nn.ReLU(),
         )

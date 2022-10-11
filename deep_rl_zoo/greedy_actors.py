@@ -25,6 +25,7 @@ import torch.nn.functional as F
 
 # pylint: disable=import-error
 import deep_rl_zoo.types as types_lib
+from deep_rl_zoo import distributions
 from deep_rl_zoo.networks.policy import ImpalaActorCriticNetworkInputs
 from deep_rl_zoo.networks.dqn import RnnDqnNetworkInputs, NguDqnNetworkInputs
 from deep_rl_zoo.curiosity import EpisodicBonusModule, RndLifeLongBonusModule
@@ -470,10 +471,15 @@ class PolicyGreedyActor(types_lib.Agent):
     def _select_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Samples action from policy at given state."""
         s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        pi_logits = self._network(s_t).pi_logits
-        # Don't sample when testing.
-        prob_t = F.softmax(pi_logits, dim=1)
-        a_t = torch.argmax(prob_t, dim=1)
+        pi_logits_t = self._network(s_t).pi_logits
+
+        # Sample an action
+        a_t = distributions.categorical_distribution(pi_logits_t).sample()
+
+        # # Can also try to act greedy
+        # prob_t = F.softmax(pi_logits, dim=1)
+        # a_t = torch.argmax(prob_t, dim=1)
+
         return a_t.cpu().item()
 
     @property
@@ -539,9 +545,15 @@ class ImpalaGreedyActor(PolicyGreedyActor):
                 hidden_s=hidden_s,
             )
         )
-        pi_logits = network_output.pi_logits.squeeze(0)  # Remove T dimension
-        prob_t = F.softmax(pi_logits, dim=-1)
-        a_t = torch.argmax(prob_t, dim=-1)
+        pi_logits_t = network_output.pi_logits.squeeze(0)  # Remove T dimension
+
+        # Sample an action
+        a_t = distributions.categorical_distribution(pi_logits_t).sample()
+
+        # # Can also try to act greedy
+        # prob_t = F.softmax(pi_logits, dim=-1)
+        # a_t = torch.argmax(prob_t, dim=-1)
+
         self._hidden_s = network_output.hidden_s  # Save last hidden state for next pass
         return a_t.cpu().item()
 
@@ -549,3 +561,16 @@ class ImpalaGreedyActor(PolicyGreedyActor):
     def statistics(self) -> Mapping[Text, float]:
         """Returns current actor's statistics as a dictionary."""
         return {}
+
+
+class GuassianPolicyGreedyActor(PolicyGreedyActor):
+    """Guassian Agent that acts with a given set of policy network parameters."""
+
+    @torch.no_grad()
+    def _select_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
+        """Samples action from policy at given state."""
+        s_t = torch.tensor(timestep.observation).to(device=self._device, dtype=torch.float32)
+        pi_mu, pi_sigma = self._network(s_t)
+        # Sample an action
+        a_t = distributions.normal_distribution(pi_mu, pi_sigma).sample()
+        return a_t.cpu().numpy()

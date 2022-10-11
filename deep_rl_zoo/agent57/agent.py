@@ -350,7 +350,7 @@ class Actor(types_lib.Agent):
         self._episodic_module.reset()
         self._episode_returns = 0.0
 
-        # Update embedding and RND predictor network weights at beginning of every episode.
+        # Update embedding and RND predictor network parameters at beginning of every episode.
         self._update_embedding_and_rnd_networks()
 
         # Agent57 actor samples a policy using the Sliding Window UCB algorithm, then play a single episode.
@@ -495,7 +495,7 @@ class Learner(types_lib.Learner):
             rnd_predictor_network: RND predictor network.
             intrinsic_optimizer: the optimizer for action prediction and RND predictor networks.
             replay: prioritized recurrent experience replay.
-            target_network_update_frequency: how often to copy online network weights to target.
+            target_network_update_frequency: how often to copy online network parameters to target.
             min_replay_size: wait till experience replay buffer this number before start to learn.
             batch_size: sample batch_size of transitions.
             burn_in: burn n transitions to generate initial hidden state before learning.
@@ -605,7 +605,7 @@ class Learner(types_lib.Learner):
         priorities = np.abs(priorities)
         self._replay.update_priorities(indices, priorities)
 
-        # Copy online Q network weights to target Q network, every m updates
+        # Copy online Q network parameters to target Q network, every m updates
         if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
             self._update_target_network()
 
@@ -649,7 +649,7 @@ class Learner(types_lib.Learner):
         # Update extrinsic online Q network.
         self._ext_q_optimizer.zero_grad()
         ext_q_loss, ext_priorities = self._calc_retrace_loss(learn_transitions, ext_q_t, target_ext_q_t)
-        # Multiply loss by sampling weights, averages over batch dimension
+        # Multiply loss by sampling weights, averaging over batch dimension
         ext_q_loss = torch.mean(ext_q_loss * weights.detach())
         ext_q_loss.backward()
         if self._clip_grad:
@@ -659,7 +659,7 @@ class Learner(types_lib.Learner):
         # Update intrinsic online Q network.
         self._int_q_optimizer.zero_grad()
         int_q_loss, int_priorities = self._calc_retrace_loss(learn_transitions, int_q_t, target_int_q_t)
-        # Multiply loss by sampling weights, averages over batch dimension
+        # Multiply loss by sampling weights, averaging over batch dimension
         int_q_loss = torch.mean(int_q_loss * weights.detach())
         int_q_loss.backward()
 
@@ -790,7 +790,7 @@ class Learner(types_lib.Learner):
         rnd_pred_loss = self._calc_rnd_predictor_loss(transitions)
         act_pred_loss = self._calc_action_prediction_loss(transitions)
         loss = rnd_pred_loss + act_pred_loss
-        # Multiply loss by sampling weights, averages over batch dimension
+        # Multiply loss by sampling weights, averaging over batch dimension
         loss = torch.mean(loss * weights.detach())
 
         loss.backward()

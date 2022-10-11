@@ -211,7 +211,7 @@ def _slice_with_actions(embeddings: torch.Tensor, actions: torch.Tensor) -> torc
     # Combine this into coordinates with the action indices
     indices = torch.concat([act_range, act_indx], 1)
 
-    # Needs transpose indices before input into torch.sparse_coo_tensor.
+    # Needs transpose indices before inadd to torch.sparse_coo_tensor.
     actions_mask = torch.sparse_coo_tensor(indices.t(), values, [batch_size, num_actions])
     with torch.no_grad():
         actions_mask = actions_mask.to_dense().bool()
@@ -485,7 +485,7 @@ def _quantile_regression_loss(
         loss = torch.abs(delta)
     loss *= weight
 
-    # Average over target-samples dimension, sum over src-samples dimension.
+    # Averaging over target-samples dimension, sum over src-samples dimension.
     return torch.sum(torch.mean(loss, dim=-1), dim=1)
 
 

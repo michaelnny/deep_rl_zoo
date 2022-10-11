@@ -15,7 +15,7 @@
 """Functions for working with probability distributions."""
 
 import torch
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
 from deep_rl_zoo import base
 
@@ -23,6 +23,11 @@ from deep_rl_zoo import base
 def categorical_distribution(logits: torch.Tensor) -> torch.distributions.Categorical:
     """Returns categorical distribution that support sample(), entropy(), and log_prob()."""
     return Categorical(logits=logits)
+
+
+def normal_distribution(mu: torch.Tensor, sigma: torch.Tensor) -> torch.distributions.Normal:
+    """Returns normal distribution that support sample(), entropy(), and log_prob()."""
+    return Normal(mu, sigma)
 
 
 def categorical_importance_sampling_ratios(

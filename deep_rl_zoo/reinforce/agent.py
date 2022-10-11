@@ -167,7 +167,7 @@ class Reinforce(types_lib.Agent):
         # Compute policy gradient a.k.a. log-likelihood loss.
         loss = rl.policy_gradient_loss(logits_tm1, a_tm1, returns).loss
 
-        # Average over batch dimension.
+        # Averaging over batch dimension.
         # Negative sign to indicate we want to maximize the policy gradient objective function
         loss = -torch.mean(loss, dim=0)
 

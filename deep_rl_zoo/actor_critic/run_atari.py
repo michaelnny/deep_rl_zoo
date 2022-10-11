@@ -108,10 +108,8 @@ def main(argv):
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    pi_logits = network_output.pi_logits
-    baseline = network_output.baseline
-    assert pi_logits.shape == (1, num_actions)
-    assert baseline.shape == (1, 1)
+    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.baseline.shape == (1, 1)
 
     # Create Actor-Critic agent instance
     train_agent = agent.ActorCritic(

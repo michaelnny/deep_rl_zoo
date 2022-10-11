@@ -97,5 +97,56 @@ class NStepBellmanTargetTest(parameterized.TestCase):
         )
 
 
+class TruncatedGeneralizedAdvantageEstimationTest(parameterized.TestCase):
+    def setUp(self):
+        super().setUp()
+
+        self.r_t = torch.tensor([0.0, 0.0, 1.0, 0.0, -0.5], dtype=torch.float32)
+        self.v_t = torch.tensor([1.0, 4.0, -3.0, -2.0, -1.0], dtype=torch.float32)
+        self.v_tp1 = torch.tensor([4.0, -3.0, -2.0, -1.0, -1.0], dtype=torch.float32)
+        self.discount_tp1 = torch.tensor([0.99, 0.99, 0.99, 0.99, 0.99], dtype=torch.float32)
+
+        # Different expected results for different values of lambda.
+        self.expected = {}
+        self.expected[1.0] = np.array([-1.45118, -4.4557, 2.5396, 0.5249, -0.49], dtype=np.float32)
+
+        self.expected[0.7] = np.array([-0.676979, -5.248167, 2.4846, 0.6704, -0.49], dtype=np.float32)
+
+        self.expected[0.4] = np.array([0.56731, -6.042, 2.3431, 0.815, -0.49], dtype=np.float32)
+
+    @parameterized.named_parameters(('lambda1', 1.0), ('lambda0.7', 0.7), ('lambda0.4', 0.4))
+    def test_truncated_gae(self, lambda_):
+        """Tests truncated GAE for a full batch."""
+        actual = multistep.truncated_generalized_advantage_estimation(
+            self.r_t, self.v_t, self.v_tp1, self.discount_tp1, lambda_
+        )
+        np.testing.assert_allclose(self.expected[lambda_], actual, atol=1e-3)
+
+    def test_truncated_gae_cross_episode_case1(self):
+        r_t = torch.tensor([1.0, 1.0, 1.0, 1.0], dtype=torch.float32)
+        v_t = torch.tensor([0.5, 0.5, 0.5, 0.5], dtype=torch.float32)
+        v_tp1 = torch.tensor([0.5, 0.5, 0.5, 0.5], dtype=torch.float32)
+        discount_tp1 = torch.tensor([0.9, 0.0, 0.9, 0.9], dtype=torch.float32)
+
+        expected = np.array([1.3775, 0.5, 1.76225, 0.95], dtype=np.float32)
+        actual = multistep.truncated_generalized_advantage_estimation(r_t, v_t, v_tp1, discount_tp1, 0.95)
+
+        np.testing.assert_allclose(expected, actual, atol=1e-3)
+
+    @parameterized.named_parameters(('lambda1', 1.0), ('lambda0.7', 0.7), ('lambda0.4', 0.4))
+    def test_truncated_gae_cross_episode_case2(self, lambda_):
+        r_t = torch.cat((self.r_t, torch.zeros(1), self.r_t), dim=0)
+        v_t = torch.cat((self.v_t, torch.zeros(1), self.v_t), dim=0)
+        v_tp1 = torch.cat((self.v_tp1, torch.zeros(1), self.v_tp1), dim=0)
+        discount_tp1 = torch.cat((self.discount_tp1, torch.zeros(1), self.discount_tp1), dim=0)
+
+        expected = torch.cat(
+            (torch.tensor(self.expected[lambda_]), torch.zeros(1), torch.tensor(self.expected[lambda_])), dim=0
+        )
+        actual = multistep.truncated_generalized_advantage_estimation(r_t, v_t, v_tp1, discount_tp1, lambda_)
+
+        np.testing.assert_allclose(expected, actual, atol=1e-3)
+
+
 if __name__ == '__main__':
     absltest.main()
