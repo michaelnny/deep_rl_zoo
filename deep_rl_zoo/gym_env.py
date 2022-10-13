@@ -316,7 +316,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
 
 class ObscureObservation(gym.ObservationWrapper):
     """Make the environment POMDP by obscure the state with probability epsilon.
-    this should be used as the very first"""
+    this should be used before frame stack."""
 
     def __init__(self, env, epsilon: float = 0.0):
         super().__init__(env)
@@ -536,12 +536,12 @@ def create_continuous_environment(
     env = gym.wrappers.NormalizeObservation(env)
     env = gym.wrappers.NormalizeReward(env)
 
-    # Using lambda function does not work with python multiprocessing
+    # Optinally clipping the observation and rewards.
+    # Notice using lambda function does not work with python multiprocessing
     # env = gym.wrappers.TransformObservation(env, lambda reward: np.clip(obs, -max_abs_obs, max_abs_obs))
     # env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -max_abs_reward, max_abs_reward))
-
-    # env = ClipObservationWithBound(env, max_abs_obs)
-    # env = ClipRewardWithBound(env, max_abs_reward)
+    env = ClipObservationWithBound(env, max_abs_obs)
+    env = ClipRewardWithBound(env, max_abs_reward)
 
     env.seed(seed)
     env.action_space.seed(seed)
