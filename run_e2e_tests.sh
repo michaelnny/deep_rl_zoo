@@ -56,6 +56,7 @@ python3 -m tests.a2c.run_classic_grad_test
 python3 -m tests.a2c.run_atari_grad_test
 python3 -m tests.ppo.run_classic_test
 python3 -m tests.ppo.run_atari_test
+python3 -m tests.ppo.run_continuous_test
 python3 -m tests.ppo.eval_agent_test
 python3 -m tests.ppo_icm.run_classic_test
 python3 -m tests.ppo_icm.run_atari_test

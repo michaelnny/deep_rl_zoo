@@ -49,14 +49,15 @@ class EpisodeTracker:
         """Accumulates statistics from timestep."""
         del (env, agent, a_t)
 
+        # First reward is invalid, all other rewards are appended.
         if timestep_t.first:
             if self._current_episode_rewards:
                 raise ValueError('Current episode reward list should be empty.')
             if self._current_episode_step != 0:
                 raise ValueError('Current episode step should be zero.')
         else:
-            # First reward is invalid, all other rewards are appended.
-            self._current_episode_rewards.append(timestep_t.reward)
+            # Notice we only use the unclipped/unscaled raw reward when collecting statistics
+            self._current_episode_rewards.append(timestep_t.raw_reward)
 
         self._num_steps_since_reset += 1
         self._current_episode_step += 1

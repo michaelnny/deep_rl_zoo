@@ -68,22 +68,32 @@ def run_env_loop(
         # Think reset is a special 'aciton' the agent take, thus given us a reward 'zero', and a new state s_t.
         observation = env.reset()
         reward = 0.0
+        raw_reward = 0.0
         done = False
         first_step = True
 
         while True:  # For each step in the current episode.
-            timestep_t = types_lib.TimeStep(observation=observation, reward=reward, done=done, first=first_step)
+            timestep_t = types_lib.TimeStep(
+                observation=observation, reward=reward, raw_reward=raw_reward, done=done, first=first_step
+            )
             a_t = agent.step(timestep_t)
             yield env, timestep_t, agent, a_t
 
             a_tm1 = a_t
-            observation, reward, done, _ = env.step(a_tm1)
+            observation, reward, done, info = env.step(a_tm1)
+
+            if 'raw_reward' in info:  # we only keep track of unclipped/unscaled raw reward when collecting statistics
+                raw_reward = info['raw_reward']
+            else:
+                raw_reward = reward
             first_step = False
 
             if done:
                 # if we don't add additonal step to agent, with our way of construct the run loop,
                 # the done state and reward will never be added to replay
-                timestep_t = types_lib.TimeStep(observation=observation, reward=reward, done=done, first=first_step)
+                timestep_t = types_lib.TimeStep(
+                    observation=observation, reward=reward, raw_reward=raw_reward, done=done, first=first_step
+                )
                 unused_a = agent.step(timestep_t)  # noqa: F841
                 yield env, timestep_t, agent, None
                 break

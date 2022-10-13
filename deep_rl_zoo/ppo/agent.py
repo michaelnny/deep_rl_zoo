@@ -406,16 +406,14 @@ class GaussianActor(Actor):
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[np.ndarray]:
         """Given timestep, choose action a_t"""
-        s_t = torch.from_numpy(timestep.observation).to(device=self._device, dtype=torch.float32)
+        s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
         pi_mu, pi_sigma = self._policy_network(s_t)
 
         pi_dist_t = distributions.normal_distribution(pi_mu, pi_sigma)
         a_t = pi_dist_t.sample()
         logprob_a_t = pi_dist_t.log_prob(a_t).sum(axis=-1)
 
-        # # Sample an action
-        # a_t = distributions.normal_distribution(pi_mu, pi_sigma).sample()
-        return a_t.cpu().numpy(), logprob_a_t.cpu().numpy()
+        return a_t.squeeze(0).cpu().numpy(), logprob_a_t.squeeze(0).cpu().numpy()
 
 
 class GaussianLearner(types_lib.Learner):

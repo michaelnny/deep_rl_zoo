@@ -374,6 +374,29 @@ class ObservationToNumpy(gym.ObservationWrapper):
         return np.asarray(observation, dtype=self.observation_space.dtype)
 
 
+class ClipObservationWithBound(gym.ObservationWrapper):
+    """Make the observation into [-max_abs_value, max_abs_value]."""
+
+    def __init__(self, env, max_abs_value):
+        super().__init__(env)
+        self._max_abs_value = max_abs_value
+
+    def observation(self, observation):
+        return np.clip(observation, -self._max_abs_value, self._max_abs_value)
+
+
+class RecordRawReward(gym.Wrapper):
+    """This wrapper will add unclipped/unscaled raw reward to the info dict."""
+
+    def step(self, action):
+        """Take action and add unclipped/unscaled raw reward to the info dict."""
+
+        obs, reward, done, info = self.env.step(action)
+        info['raw_reward'] = reward
+
+        return obs, reward, done, info
+
+
 def create_atari_environment(
     env_name: str,
     seed: int = 1,
@@ -424,6 +447,8 @@ def create_atari_environment(
     # litterature instead of OpenAI Gym's default of 100,000 steps.
     env = gym.wrappers.TimeLimit(env.env, max_episode_steps=None if max_episode_steps <= 0 else max_episode_steps)
 
+    env = RecordRawReward(env)
+
     env = NoopReset(env, noop_max=noop_max)
     env = MaxAndSkip(env, skip=frame_skip)
 
@@ -472,6 +497,8 @@ def create_classic_environment(
     env.seed(seed)
     # env.reset(seed=seed)
 
+    env = RecordRawReward(env)
+
     # Clip reward to max absolute reward bound
     if max_abs_reward is not None:
         env = ClipRewardWithBound(env, abs(max_abs_reward))
@@ -480,6 +507,45 @@ def create_classic_environment(
     if obscure_epsilon > 0.0:
         env = ObscureObservation(env, obscure_epsilon)
 
+    return env
+
+
+def create_continuous_environment(
+    env_name: str,
+    seed: int = 1,
+    max_abs_obs: int = 10,
+    max_abs_reward: int = 10,
+) -> gym.Env:
+    """
+    Process gym env for classic control tasks like CartPole, LunarLander, MountainCar
+
+    Args:
+        env_name: the environment name with version attached.
+        seed: seed the runtime.
+        max_abs_obs: clip observation in the range of [-max_abs_obs, max_abs_obs], default 10.
+        max_abs_reward: clip reward in the range of [-max_abs_reward, max_abs_reward], default 10.
+
+    Returns:
+        gym.Env for classic control tasks
+    """
+
+    env = gym.make(env_name)
+    env = RecordRawReward(env)
+
+    env = gym.wrappers.ClipAction(env)
+    env = gym.wrappers.NormalizeObservation(env)
+    env = gym.wrappers.NormalizeReward(env)
+
+    # Using lambda function does not work with python multiprocessing
+    # env = gym.wrappers.TransformObservation(env, lambda reward: np.clip(obs, -max_abs_obs, max_abs_obs))
+    # env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -max_abs_reward, max_abs_reward))
+
+    # env = ClipObservationWithBound(env, max_abs_obs)
+    # env = ClipRewardWithBound(env, max_abs_reward)
+
+    env.seed(seed)
+    env.action_space.seed(seed)
+    env.observation_space.seed(seed)
     return env
 
 

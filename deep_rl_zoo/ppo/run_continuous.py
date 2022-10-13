@@ -41,14 +41,14 @@ flags.DEFINE_string(
     'Classic continuous control task name, like Hopper-v4, HalfCheetah-v4, Humanoid-v4, Swimmer-v4, Walker2d-v4.',
 )
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default on.')
+flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('learning_rate', 0.0003, 'Learning rate.')
-flags.DEFINE_float('critric_learning_rate', 0.0005, 'Learning rate for critic.')
+flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate.')
+flags.DEFINE_float('baseline_learning_rate', 0.0001, 'Learning rate for critic.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
-flags.DEFINE_float('entropy_coef', 0.0, 'Coefficient for the entropy loss.')
-flags.DEFINE_float('clip_epsilon_begin_value', 0.1, 'PPO clip epsilon begin value.')
+flags.DEFINE_float('entropy_coef', 0.01, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
 flags.DEFINE_integer('hidden_size', 64, 'Number of units in the hidden layer.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
@@ -82,7 +82,7 @@ def main(argv):
 
     # Create environment.
     def environment_builder():
-        return gym_env.create_classic_environment(
+        return gym_env.create_continuous_environment(
             env_name=FLAGS.environment_name,
             seed=random_state.randint(1, 2**32),
         )
@@ -101,7 +101,7 @@ def main(argv):
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     critic_network = GaussianCriticMlpNet(input_shape=state_dim, hidden_size=FLAGS.hidden_size)
-    critic_optimizer = torch.optim.Adam(critic_network.parameters(), lr=FLAGS.critric_learning_rate)
+    critic_optimizer = torch.optim.Adam(critic_network.parameters(), lr=FLAGS.baseline_learning_rate)
 
     # The 'old' policy for actors to act
     old_policy_network = GaussianActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)

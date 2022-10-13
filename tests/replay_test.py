@@ -82,6 +82,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
             timestep = types_lib.TimeStep(
                 observation=self.states[i],
                 reward=self.rewards[i],
+                raw_reward=0,
                 done=True if i == self.num_timesteps else False,
                 first=True if i == 0 else False,
             )
@@ -100,16 +101,6 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
 
         np.testing.assert_array_equal(expected_s_tm1, actual_s_tm1)
         np.testing.assert_array_equal(expected_s_t, actual_s_t)
-
-    # def test_discount_accumulation(self):
-    #     expected = []
-    #     for i in range(len(self.discounts) - self.n):
-    #         # Offset by 1 since first discount is unused.
-    #         expected.append(np.prod(self.discounts[i + 1 : i + 1 + self.n]))
-
-    #     actual = [tr.discount_t for tr in itertools.chain(*self.accumulator_output)]
-
-    #     np.testing.assert_allclose(expected, actual)
 
     def test_reward_accumulation(self):
         expected = []
@@ -132,7 +123,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
     def test_reset(self):
         self.accumulator.reset()
         transitions = self.accumulator.step(
-            timestep_t=types_lib.TimeStep(first=True, observation=-1, reward=3, done=False), a_t=1
+            timestep_t=types_lib.TimeStep(first=True, observation=-1, reward=3, raw_reward=0, done=False), a_t=1
         )
         self.assertEqual([], list(transitions))
 
@@ -145,6 +136,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
             timestep = types_lib.TimeStep(
                 observation=self.states[i],
                 reward=self.rewards[i],
+                raw_reward=0,
                 done=True if i == self.num_timesteps else False,
                 first=True if i == 0 else False,
             )
@@ -170,6 +162,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
             timestep = types_lib.TimeStep(
                 observation=states[i],
                 reward=rewards[i],
+                raw_reward=0,
                 first=step_types[i] == f,
                 done=step_types[i] == l,
             )
@@ -212,6 +205,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
             timestep = types_lib.TimeStep(
                 observation=states[i],
                 reward=rewards[i],
+                raw_reward=0,
                 first=step_types[i] == f,
                 done=step_types[i] == l,
             )

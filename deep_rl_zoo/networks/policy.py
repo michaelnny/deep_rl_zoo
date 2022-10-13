@@ -141,8 +141,10 @@ class GaussianActorMlpNet(nn.Module):
             # nn.Tanh(),
         )
 
-        self.sigma_head = nn.Linear(hidden_size, num_actions)
         self.mu_head = nn.Linear(hidden_size, num_actions)
+        # self.sigma_head = nn.Linear(hidden_size, num_actions)
+
+        self.logstd = nn.Parameter(torch.zeros(1, num_actions))
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor]:
         """Given raw state x, predict the action probability distribution
@@ -151,7 +153,10 @@ class GaussianActorMlpNet(nn.Module):
 
         # Predict action distributions wrt policy
         pi_mu = self.mu_head(features)
-        pi_sigma = torch.exp(self.sigma_head(features))
+        # pi_sigma = torch.exp(self.sigma_head(features))
+
+        logstd = self.logstd.expand_as(pi_mu)
+        pi_sigma = torch.exp(logstd)
 
         return pi_mu, pi_sigma
 

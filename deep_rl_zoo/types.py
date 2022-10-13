@@ -30,7 +30,8 @@ class TimeStep(NamedTuple):
     """Environment timestep"""
 
     observation: Optional[np.ndarray]
-    reward: Optional[float]
+    reward: Optional[float]  # reward couble be clipped or scaled
+    raw_reward: Optional[float]  # unclipped/unscaled reward, only used by the trackers
     done: Optional[bool]
     first: Optional[bool]  # first step of an episode
 

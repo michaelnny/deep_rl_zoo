@@ -99,7 +99,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 
 # Author's Notes
-* Only support episodic environment with discrete action space.
+* Only support episodic environment with discrete action space (except PPO which also supports continuous action space).
 * Focus on study and implementation for each algorithms, rather than create a standard library.
 * Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup.
@@ -222,7 +222,7 @@ The classes for write logs to Tensorboard is implemented in `trackers.py` module
 ## Measurements available on Tensorboard
 `performance(env_steps)`:
 * the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
-* `episode_return` the non-discounted sum of rewards of last episode (counted after apply reward clipping)
+* `episode_return` the non-discounted sum of raw rewards of last episode
 * `episode_steps` the last episode steps
 * `num_episodes` how many episodes have been conducted
 * `step_rate(second)` step per seconds, per actors

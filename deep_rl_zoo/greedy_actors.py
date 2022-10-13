@@ -569,8 +569,8 @@ class GaussianPolicyGreedyActor(PolicyGreedyActor):
     @torch.no_grad()
     def _select_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Samples action from policy at given state."""
-        s_t = torch.tensor(timestep.observation).to(device=self._device, dtype=torch.float32)
+        s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
         pi_mu, pi_sigma = self._network(s_t)
         # Sample an action
         a_t = distributions.normal_distribution(pi_mu, pi_sigma).sample()
-        return a_t.cpu().numpy()
+        return a_t.squeeze(0).cpu().numpy()
