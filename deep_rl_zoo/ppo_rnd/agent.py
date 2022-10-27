@@ -75,7 +75,7 @@ class Actor(types_lib.Agent):
             device: PyTorch runtime device.
         """
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
 
         self.rank = rank
         self.agent_name = f'PPO-RND-actor{rank}'
@@ -188,8 +188,8 @@ class Learner(types_lib.Learner):
             batch_size: sample batch_size of transitions.
             update_k: update k times when it's time to do learning.
             unroll_length: worker rollout horizon.
-            rnd_experience_proportion: proportion of experience used for traning RND predictor.
-            entropy_coef: the coefficient of entryopy loss.
+            rnd_experience_proportion: proportion of experience used for training RND predictor.
+            entropy_coef: the coefficient of entropy loss.
             baseline_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
@@ -200,10 +200,10 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not batch_size <= total_unroll_length:
             raise ValueError(
-                f'Expect total_unroll_length to be integer geater than or equal to {batch_size}, got {total_unroll_length}'
+                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
             )
         if not 1 <= update_k:
-            raise ValueError(f'Expect update_k to be integer geater than or equal to 1, got {update_k}')
+            raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
         if not 0.0 <= rnd_experience_proportion <= 10.0:
             raise ValueError(f'Expect rnd_experience_proportion to in the range [0.0, 10.0], got {rnd_experience_proportion}')
         if not 0.0 <= entropy_coef <= 1.0:
@@ -224,11 +224,11 @@ class Learner(types_lib.Learner):
 
         self._observation_normalizer = observation_normalizer
 
-        # Original paper uses 25% of experience for traning RND predictor
+        # Original paper uses 25% of experience for training RND predictor
         rnd_loss_mask = torch.rand(batch_size).to(device=self._device)
         self._rnd_loss_mask = (rnd_loss_mask < rnd_experience_proportion).to(device=self._device, dtype=torch.float32)
 
-        # Acummulate running statistics to calcualte mean and std online,
+        # Accumulate running statistics to calculate mean and std online,
         # this will also clip intrinsic reward values in the range [-10, 10]
         self._intrinsic_reward_normalizer = normalizer.Normalizer(eps=0.0001, clip_range=(-10, 10), device=self._device)
 
@@ -269,13 +269,13 @@ class Learner(types_lib.Learner):
         return self._learn()
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._storage = []
 
     def received_item_from_queue(self, unroll_sequences: Iterable[Tuple]) -> None:
         """Received item send by actors through multiprocessing queue."""
 
-        # Unpack list of tuples into seperate lists.
+        # Unpack list of tuples into separate lists.
         s_t, a_t, logprob_a_t, r_t, s_tp1, done_tp1 = map(list, zip(*unroll_sequences))
 
         ext_returns_t, int_returns_t, advantage_t = self._compute_returns_and_advantages(s_t, r_t, s_tp1, done_tp1)
@@ -351,8 +351,8 @@ class Learner(types_lib.Learner):
         # Run update for K times
         for _ in range(self._update_k):
             # For each update epoch, split indices into 'bins' with batch_size.
-            bined_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
-            for indices in bined_indices:
+            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
+            for indices in binned_indices:
                 transitions = [self._storage[i] for i in indices]
 
                 # Stack list of transitions, follow our code convention.
@@ -394,7 +394,7 @@ class Learner(types_lib.Learner):
         abs_error = torch.sum(torch.abs(pred_s_t - target_s_t), dim=-1)  # Sums over latent features [batch_size,]
         assert abs_error.shape == self._rnd_loss_mask.shape
 
-        # Apply porpotion mask, averaging over batch dimension
+        # Apply proportion mask, averaging over batch dimension
         rnd_loss = torch.mean(0.5 * torch.square(abs_error * self._rnd_loss_mask.detach()), dim=0)
 
         # Update intrinsic reward normalization statistics

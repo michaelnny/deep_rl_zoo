@@ -56,7 +56,7 @@ class EpisodeTracker:
             if self._current_episode_step != 0:
                 raise ValueError('Current episode step should be zero.')
         else:
-            # Notice we only use the unclipped/unscaled raw reward when collecting statistics
+            # Notice we only use the non-clipped/unscaled raw reward when collecting statistics
             self._current_episode_rewards.append(timestep_t.raw_reward)
 
         self._num_steps_since_reset += 1
@@ -142,7 +142,7 @@ class StepRateTracker:
         }
 
 
-class TensorboardEpisodTracker(EpisodeTracker):
+class TensorboardEpisodeTracker(EpisodeTracker):
     """Extend EpisodeTracker to write to tensorboard"""
 
     def __init__(self, writer: SummaryWriter):
@@ -328,7 +328,7 @@ def make_default_trackers(log_dir=None, debug_screenshots_frequency=0):
         writer = SummaryWriter(log_dir)
 
         trackers = [
-            TensorboardEpisodTracker(writer),
+            TensorboardEpisodeTracker(writer),
             TensorboardStepRateTracker(writer),
             TensorboardAgentStatisticsTracker(writer),
         ]

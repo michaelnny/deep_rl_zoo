@@ -274,7 +274,7 @@ class RndConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state x, returns the feature embedding."""
-        # RND normalizes state using a running mean and std instead of devide by 255.
+        # RND normalizes state using a running mean and std instead of divide by 255.
         x = self.body(x)
         return self.head(x)
 
@@ -315,7 +315,7 @@ class NguEmbeddingMlpNet(nn.Module):
         return self.body(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
-        """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
+        """Given combinned embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
         pi_logits = self.inverse_head(x)  # [batch_size, num_actions]
         return pi_logits
 
@@ -350,6 +350,6 @@ class NguEmbeddingConvNet(nn.Module):
         return self.net(x)
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
-        """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
+        """Given combinned embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
         pi_logits = self.inverse_head(x)  # [batch_size, num_actions]
         return pi_logits

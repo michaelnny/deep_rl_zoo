@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 # The file has been modified by The Deep RL Zoo Authors
-# to support PyTorch opeartion.
+# to support PyTorch operation.
 #
 # ============================================================================
 """Common ops for discrete-action Policy Gradient functions."""
@@ -66,7 +66,7 @@ def entropy_loss(logits_t: torch.Tensor) -> base.LossOutput:
     (https://www.tandfonline.com/doi/abs/10.1080/09540099108946587)
 
     Args:
-      logits_t: a sequence of unnormalized action preferences, shape [B, num_actions] or [T, B, num_actions].
+      logits_t: a sequence of raw action preferences, shape [B, num_actions] or [T, B, num_actions].
 
     Returns:
 
@@ -100,7 +100,7 @@ def policy_gradient_loss(
     (http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf)
 
     Args:
-      logits_t: a sequence of unnormalized action preferences, shape [B, num_actions] or [T, B, num_actions].
+      logits_t: a sequence of raw action preferences, shape [B, num_actions] or [T, B, num_actions].
       a_t: a sequence of actions sampled from the preferences `logits_t`, shape [B] or [T, B].
       adv_t: the observed or estimated advantages from executing actions `a_t`, shape [B] or [T, B].
 

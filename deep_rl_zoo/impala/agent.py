@@ -94,7 +94,7 @@ class Actor(types_lib.Agent):
             device: PyTorch runtime device.
         """
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
 
         self.rank = rank
         self.agent_name = f'IMPALA-actor{rank}'
@@ -106,7 +106,7 @@ class Actor(types_lib.Agent):
         self._queue = data_queue
 
         # Store unroll trajectory, unroll_length + 1
-        # because we reuse last step transition of current unroll at the begining of next unroll
+        # because we reuse last step transition of current unroll at the beginning of next unroll
         self._unroll = replay_lib.Unroll(
             unroll_length=unroll_length,
             overlap=1,
@@ -141,7 +141,7 @@ class Actor(types_lib.Agent):
         self._last_action, self._lstm_state = a_t, hidden_s
 
         if unrolled_transition is not None:
-            # To save memory, only use hidden states for first step tansition in the unroll,
+            # To save memory, only use hidden states for first step transition in the unroll,
             # we also remove the time dimension, we only do it if network is using LSTM.
             if self._lstm_state:
                 unrolled_transition = unrolled_transition._replace(
@@ -224,7 +224,7 @@ class Learner(types_lib.Learner):
             discount: the gamma discount for future rewards.
             unroll_length: actor unroll time step.
             batch_size: sample batch_size of transitions.
-            entropy_coef: the coefficient of entryopy loss.
+            entropy_coef: the coefficient of entropy loss.
             baseline_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
@@ -233,7 +233,7 @@ class Learner(types_lib.Learner):
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 0.0 <= entropy_coef <= 1.0:
@@ -282,7 +282,7 @@ class Learner(types_lib.Learner):
         yield self.statistics
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._replay.reset()
 
     def received_item_from_queue(self, item) -> None:

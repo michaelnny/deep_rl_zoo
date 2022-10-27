@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 # The functions 'knn_query' and '_cdist' has been modified
-# by The Deep RL Zoo Authors to support PyTorch opeartion.
+# by The Deep RL Zoo Authors to support PyTorch operation.
 #
 # ==============================================================================
-"""Implementing functions and classs for curiosity driven exploration."""
+"""Implementing functions and class for curiosity driven exploration."""
 
 import collections
 from typing import NamedTuple, Dict
@@ -122,7 +122,7 @@ class EpisodicBonusModule:
         # Update the running mean dₘ².
         self._cdist_normalizer.update(nn_distances_sq[..., None])
 
-        # Normalize disntances with running mean dₘ².
+        # Normalize distances with running mean dₘ².
         distance_rate = nn_distances_sq / self._cdist_normalizer.mean
 
         # The distance rate becomes 0 if already small: r <- max(r-ξ, 0).
@@ -171,7 +171,7 @@ class RndLifeLongBonusModule:
         """Compute lifelong bonus for a given state."""
         base.assert_rank_and_dtype(s_t, (2, 4), torch.float32)
 
-        # Update observation normalizer statistics and normalize obsevation
+        # Update observation normalizer statistics and normalize observation
         if len(s_t.shape) > 3:
             # Make channel last, we normalize images by channel.
             s_t = s_t.swapaxes(1, -1)

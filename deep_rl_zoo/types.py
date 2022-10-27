@@ -31,7 +31,7 @@ class TimeStep(NamedTuple):
 
     observation: Optional[np.ndarray]
     reward: Optional[float]  # reward couble be clipped or scaled
-    raw_reward: Optional[float]  # unclipped/unscaled reward, only used by the trackers
+    raw_reward: Optional[float]  # non-clipped/unscaled reward, only used by the trackers
     done: Optional[bool]
     first: Optional[bool]  # first step of an episode
 
@@ -75,7 +75,7 @@ class Learner(abc.ABC):
 
     @abc.abstractmethod
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
 
     @abc.abstractmethod
     def received_item_from_queue(self, item: Any) -> None:

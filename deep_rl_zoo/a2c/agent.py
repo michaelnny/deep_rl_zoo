@@ -143,7 +143,7 @@ class Learner(types_lib.Learner):
             discount: the gamma discount for future rewards.
             n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
-            entropy_coef: the coefficient of entryopy loss.
+            entropy_coef: the coefficient of entropy loss.
             baseline_coef: the coefficient of state-value baseline loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
@@ -153,7 +153,7 @@ class Learner(types_lib.Learner):
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to be [0.0, 1.0], got {discount}')
         if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be integer geater than 1, got {n_step}')
+            raise ValueError(f'Expect n_step to be integer greater than 1, got {n_step}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to be [1, 512], got {batch_size}')
         if not 0.0 <= entropy_coef <= 1.0:
@@ -205,7 +205,7 @@ class Learner(types_lib.Learner):
         yield self.statistics
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._replay.reset()
 
     def received_item_from_queue(self, item) -> None:

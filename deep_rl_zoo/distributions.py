@@ -36,9 +36,9 @@ def categorical_importance_sampling_ratios(
     """Compute importance sampling ratios from logits.
 
     Args:
-      pi_logits_t: unnormalized logits at time t for the target policy,
+      pi_logits_t: raw logits at time t for the target policy,
         shape [B, num_actions] or [T, B, num_actions].
-      mu_logits_t: unnormalized logits at time t for the behavior policy,
+      mu_logits_t: raw logits at time t for the behavior policy,
         shape [B, num_actions] or [T, B, num_actions].
       a_t: actions at time t, shape [B] or [T, B].
 

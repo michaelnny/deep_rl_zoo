@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 # The file has been modified by The Deep RL Zoo Authors
-# to support policy gradient agents, and some PyTorch opeartion.
+# to support policy gradient agents, and some PyTorch operation.
 #
 # ==============================================================================
 """Replay components for training agents."""
@@ -112,7 +112,7 @@ class UniformReplay(Generic[ReplayStructure]):
         return self._num_added
 
     def reset(self) -> None:
-        """Reset the state of replay, should be called at the begining of every episode"""
+        """Reset the state of replay, should be called at the beginning of every episode"""
         self._num_added = 0
 
 
@@ -134,7 +134,7 @@ def importance_sampling_weights(
 
     Args:
       probabilities: Array of sampling probabilities for a subset of items. Since
-        this is a subset the probabilites will typically not sum to `1`.
+        this is a subset the probabilities will typically not sum to `1`.
       uniform_probability: Probability of sampling an item if uniformly sampling.
       exponent: Scalar that controls the amount of importance sampling correction
         in the weights. Where `1` corrects fully and `0` is no correction
@@ -514,7 +514,7 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 
     @property
     def num_added(self) -> int:
-        """Total number of sample sadded to the replay."""
+        """Total number of sample added to the replay."""
         return self._num_added
 
     @property
@@ -542,7 +542,7 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 #     This is the proportional variant as described in
 #     http://arxiv.org/abs/1511.05952.
 
-#     Code for propotional prioritization adapted from seed-rl
+#     Code for proportional prioritization adapted from seed-rl
 #     https://github.com/google-research/seed_rl/blob/66e8890261f09d0355e8bf5f1c5e41968ca9f02b/common/utils.py#L345
 #     """
 
@@ -638,7 +638,7 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 
 
 class GradientReplay(Generic[ReplayStructure]):
-    """Store and retrive aggregated network gradients for training A2C agent with gradients parallelism method."""
+    """Store and retrieve aggregated network gradients for training A2C agent with gradients parallelism method."""
 
     def __init__(self, capacity: int, network: torch.nn.Module, compress: bool) -> None:
         if capacity <= 0:
@@ -655,7 +655,7 @@ class GradientReplay(Generic[ReplayStructure]):
         del params
 
         # Create a list of lists (for each layer) to store gradients
-        # with outer list size num_layers, innder list size maxsize
+        # with outer list size num_layers, inner list size maxsize
         self._gradients = [[None] * self._capacity for _ in range(self._num_layers)]
 
     def add(self, gradients: List[np.ndarray]) -> None:
@@ -707,7 +707,7 @@ class TransitionAccumulator:
         We only need the s_t, r_t, and done flag for a given timestep_t
         the first timestep yield nothing since we don't have a full transition
 
-        if the given timestep_t transition is ternimal state, we need to reset the state of the accumulator,
+        if the given timestep_t transition is terminal state, we need to reset the state of the accumulator,
         so the next timestep which is the start of a new episode yields nothing
         """
         if timestep_t.first:
@@ -832,7 +832,7 @@ class Unroll:
         Args:
             unroll_length: the unroll length.
             overlap: adjacent unrolls overlap.
-            structure: transition stracture, used to stack sequence of unrolls into a single transition.
+            structure: transition structure, used to stack sequence of unrolls into a single transition.
             cross_episode: should unroll cross episode, default on.
         """
 
@@ -845,7 +845,7 @@ class Unroll:
 
         self._storage = collections.deque(maxlen=self._full_unroll_length)
 
-        # Presist last unrolled transitions incase not cross episode.
+        # Persist last unrolled transitions incase not cross episode.
         # Sometimes the episode ends without reaching a full 'unroll length',
         # we will reuse some transitions from last unroll to try to make a 'full length unroll'.
         self._last_unroll = None
@@ -870,7 +870,7 @@ class Unroll:
         self._last_unroll = copy.deepcopy(_sequence)
         self._storage.clear()
 
-        # Handling ajacent unroll sequences overlapping
+        # Handling adjacent unroll sequences overlapping
         if self._overlap > 0:
             for transition in _sequence[-self._overlap :]:  # noqa: E203
                 self._storage.append(transition)

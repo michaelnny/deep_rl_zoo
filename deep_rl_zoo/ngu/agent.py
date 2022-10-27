@@ -144,7 +144,7 @@ class Actor(types_lib.Agent):
             cluster_distance: K-NN neighbors cluster distance for compute episodic bonus.
             kernel_epsilon: K-NN kernel epsilon for compute episodic bonus.
             max_similarity: maximum similarity for compute episodic bonus.
-            actor_update_frequency: the frequence to update actor's Q network.
+            actor_update_frequency: the frequency to update actor's Q network.
             device: PyTorch runtime device.
         """
         if not 0.0 <= ext_discount <= 1.0:
@@ -156,26 +156,26 @@ class Actor(types_lib.Agent):
         if not 0 < num_actions:
             raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
         if not 0 <= burn_in < unroll_length:
-            raise ValueError(f'Expect unroll_burn_inlength to be [0, {unroll_length}), got {burn_in}')
+            raise ValueError(f'Expect burn_in length to be [0, {unroll_length}), got {burn_in}')
         if not 1 <= num_policies:
-            raise ValueError(f'Expect num_policies to be integer geater than or equal to 1, got {num_policies}')
+            raise ValueError(f'Expect num_policies to be integer greater than or equal to 1, got {num_policies}')
         if not 0.0 <= policy_beta <= 1.0:
             raise ValueError(f'Expect policy_beta to be [0.0, 1.0], got {policy_beta}')
         if not 1 <= episodic_memory_capacity:
             raise ValueError(
-                f'Expect episodic_memory_capacity to be integer geater than or equal to 1, got {episodic_memory_capacity}'
+                f'Expect episodic_memory_capacity to be integer greater than or equal to 1, got {episodic_memory_capacity}'
             )
         if not 1 <= num_neighbors:
-            raise ValueError(f'Expect num_neighbors to be integer geater than or equal to 1, got {num_neighbors}')
+            raise ValueError(f'Expect num_neighbors to be integer greater than or equal to 1, got {num_neighbors}')
         if not 0.0 <= cluster_distance <= 1.0:
             raise ValueError(f'Expect cluster_distance to be [0.0, 1.0], got {cluster_distance}')
         if not 0.0 <= kernel_epsilon <= 1.0:
             raise ValueError(f'Expect kernel_epsilon to be [0.0, 1.0], got {kernel_epsilon}')
         if not 1 <= actor_update_frequency:
             raise ValueError(
-                f'Expect actor_update_frequency to be integer geater than or equal to 1, got {actor_update_frequency}'
+                f'Expect actor_update_frequency to be integer greater than or equal to 1, got {actor_update_frequency}'
             )
 
         self.rank = rank  # Needs to make sure rank always start from 0
@@ -222,7 +222,7 @@ class Actor(types_lib.Agent):
         self._policy_discount = None
         self._sample_policy()
 
-        # E-greedy policy epsilon, rank 0 has the lowest noise, while rank N-1 has the highes noise.
+        # E-greedy policy epsilon, rank 0 has the lowest noise, while rank N-1 has the highest noise.
         epsilons = distributed.get_actor_exploration_epsilon(num_actors)
         self._exploration_epsilon = epsilons[self.rank]
 
@@ -331,7 +331,7 @@ class Actor(types_lib.Agent):
 
         # To make sure every actors generates the same amount of samples, we apply e-greedy after the network pass,
         # otherwise the actor with higher epsilons will generate more samples,
-        # while the actor with lower epsilon will geneate less samples.
+        # while the actor with lower epsilon will generate less samples.
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
             a_t = self._random_state.randint(0, self._num_actions)
@@ -443,13 +443,13 @@ class Learner(types_lib.Learner):
                 f'Expect target_network_update_frequency to be positive integer, got {target_network_update_frequency}'
             )
         if not 1 <= min_replay_size:
-            raise ValueError(f'Expect min_replay_size to be integer geater than or equal to 1, got {min_replay_size}')
+            raise ValueError(f'Expect min_replay_size to be integer greater than or equal to 1, got {min_replay_size}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be greater than or equal to 1, got {unroll_length}')
         if not 0 <= burn_in < unroll_length:
-            raise ValueError(f'Expect unroll_burn_inlength to be [0, {unroll_length}), got {burn_in}')
+            raise ValueError(f'Expect burn_in length to be [0, {unroll_length}), got {burn_in}')
         if not 0.0 <= retrace_lambda <= 1.0:
             raise ValueError(f'Expect retrace_lambda to in the range [0.0, 1.0], got {retrace_lambda}')
         if not 0.0 <= priority_eta <= 1.0:
@@ -512,7 +512,7 @@ class Learner(types_lib.Learner):
         yield self.statistics
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
 
     def received_item_from_queue(self, item) -> None:
         """Received item send by actors through multiprocessing queue."""
@@ -865,8 +865,8 @@ class Learner(types_lib.Learner):
             tx_pair=transform_tx_pair,
         )
 
-        prioritiy = distributed.calculate_dist_priorities_from_td_error(retrace_out.extra.td_error, self._priority_eta)
-        return prioritiy.item()
+        priority = distributed.calculate_dist_priorities_from_td_error(retrace_out.extra.td_error, self._priority_eta)
+        return priority.item()
 
     def _update_target_network(self):
         self._target_network.load_state_dict(self._online_network.state_dict())

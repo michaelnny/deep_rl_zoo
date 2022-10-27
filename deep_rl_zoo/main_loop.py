@@ -65,7 +65,7 @@ def run_env_loop(
 
     while True:  # For each episode.
         agent.reset()
-        # Think reset is a special 'aciton' the agent take, thus given us a reward 'zero', and a new state s_t.
+        # Think reset is a special 'action' the agent take, thus given us a reward 'zero', and a new state s_t.
         observation = env.reset()
         reward = 0.0
         raw_reward = 0.0
@@ -82,14 +82,14 @@ def run_env_loop(
             a_tm1 = a_t
             observation, reward, done, info = env.step(a_tm1)
 
-            if 'raw_reward' in info:  # we only keep track of unclipped/unscaled raw reward when collecting statistics
+            if 'raw_reward' in info:  # we only keep track of non-clipped/unscaled raw reward when collecting statistics
                 raw_reward = info['raw_reward']
             else:
                 raw_reward = reward
             first_step = False
 
             if done:
-                # if we don't add additonal step to agent, with our way of construct the run loop,
+                # if we don't add additional step to agent, with our way of construct the run loop,
                 # the done state and reward will never be added to replay
                 timestep_t = types_lib.TimeStep(
                     observation=observation, reward=reward, raw_reward=raw_reward, done=done, first=first_step
@@ -140,7 +140,7 @@ def run_single_thread_training_iterations(
     For every iteration:
         1. Start to run agent for num_train_frames training environment steps/frames.
         2. Create checkpoint file.
-        3. (Optinal) Run some evaluation steps with a separate evaluation actor and environment.
+        3. (Optional) Run some evaluation steps with a separate evaluation actor and environment.
 
     Args:
         num_iterations: number of iterations to run.
@@ -181,7 +181,7 @@ def run_single_thread_training_iterations(
 
     # Start training
     for iteration in range(num_iterations):
-        # Set netwrok in train mode.
+        # Set network in train mode.
         for net in networks:
             net.train()
 
@@ -208,7 +208,7 @@ def run_single_thread_training_iterations(
 
         # Run evaluation steps.
         if should_run_evaluator is True:
-            # Set netwrok in eval mode.
+            # Set network in eval mode.
             for net in networks:
                 net.eval()
 
@@ -249,8 +249,8 @@ def run_parallel_training_iterations(
     tag: str = None,
     debug_screenshots_frequency: int = 0,
 ) -> None:
-    """This is the place to kick start parallel traning with multiple actors processes and a single learner process.
-    The actual flow is controld by `run_learner`.
+    """This is the place to kick start parallel training with multiple actors processes and a single learner process.
+    The actual flow is controlled by `run_learner`.
 
     Args:
         num_iterations: number of iterations to run.
@@ -314,13 +314,13 @@ def run_parallel_training_iterations(
 
     # Create and start actor processes once, this will preserve actor's internal state like steps etc.
     # Tensorboard log dir prefix. Only log to tensorboard for first and last actors.
-    actor_tb_log_prefixs = [None for _ in range(len(actors))]
+    actor_tb_log_prefixes = [None for _ in range(len(actors))]
     if tensorboard:
-        actor_tb_log_prefixs[0] = get_tb_log_prefix(actor_envs[0].spec.id, actors[0].agent_name, tag, 'train')
-        actor_tb_log_prefixs[-1] = get_tb_log_prefix(actor_envs[-1].spec.id, actors[-1].agent_name, tag, 'train')
+        actor_tb_log_prefixes[0] = get_tb_log_prefix(actor_envs[0].spec.id, actors[0].agent_name, tag, 'train')
+        actor_tb_log_prefixes[-1] = get_tb_log_prefix(actor_envs[-1].spec.id, actors[-1].agent_name, tag, 'train')
 
     processes = []
-    for actor, actor_env, tb_log_prefix in zip(actors, actor_envs, actor_tb_log_prefixs):
+    for actor, actor_env, tb_log_prefix in zip(actors, actor_envs, actor_tb_log_prefixes):
         p = multiprocessing.Process(
             target=run_actor,
             args=(
@@ -375,13 +375,13 @@ def run_actor(
     Args:
         actor: the actor to run.
         actor_env: environment for the actor instance.
-        data_queue: multiprocessing.Queue used for transfering data from actor to learner.
-        log_queue: multiprocessing.SimpleQueue used for transfering training statistics from actor,
+        data_queue: multiprocessing.Queue used for transferring data from actor to learner.
+        log_queue: multiprocessing.SimpleQueue used for transferring training statistics from actor,
             this is only for write to csv file, not for tensorboard.
         num_train_frames: number of frames (or env steps) to run for one iteration.
         iteration: a counter which is updated by the main process.
         start_iteration_event: start training signal, set by the main process, clear by actor.
-        stop_event: end traning signal.
+        stop_event: end training signal.
         tb_log_prefix: tensorboard run log dir prefix.
         debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
@@ -414,7 +414,7 @@ def run_actor(
         # also possible multiprocessing.Queue deadlock.
         data_queue.put('PROCESS_DONE')
 
-        # Whoever finished one iteration first will clear the start traning event.
+        # Whoever finished one iteration first will clear the start training event.
         if start_iteration_event.is_set():
             start_iteration_event.clear()
 
@@ -429,7 +429,7 @@ def run_actor(
             ('duration', train_stats['duration'], '%.2f'),
         ]
 
-        # Add traning statistics to log queue, so the logger process can write to csv file.
+        # Add training statistics to log queue, so the logger process can write to csv file.
         log_queue.put(log_output)
 
 
@@ -456,9 +456,9 @@ def run_learner(
         1. Signal actors to start a new iteration.
         2. Start to run the learner loop until all actors are finished their work.
         3. Create checkpoint file.
-        4. (Optinal) Run evaluation steps with a separate evaluation actor and environment.
+        4. (Optional) Run evaluation steps with a separate evaluation actor and environment.
 
-    At the begining of every iteration, learner will set the `start_iteration_event` to True, to signal actors to start training.
+    At the beginning of every iteration, learner will set the `start_iteration_event` to True, to signal actors to start training.
     The actor whoever finished the iteration first will reset `start_iteration_event` to False.
     Then on the next iteration, the learner will set the `start_iteration_event` to True.
 
@@ -504,7 +504,7 @@ def run_learner(
 
     # Start training
     for iteration in range(num_iterations):
-        # Set netwrok in train mode.
+        # Set network in train mode.
         for net in networks:
             net.train()
 
@@ -529,7 +529,7 @@ def run_learner(
 
         # Run evaluation steps.
         if should_run_evaluator is True:
-            # Set netwrok in eval mode.
+            # Set network in eval mode.
             for net in networks:
                 net.eval()
 
@@ -599,7 +599,7 @@ def run_learner_loop(
 
 
 def run_logger(log_queue: multiprocessing.SimpleQueue, csv_file: str):
-    """Run logger and csv file writer on a seperate thread,
+    """Run logger and csv file writer on a separate thread,
     this is only for training/evaluation statistics."""
 
     # Create log file writer.

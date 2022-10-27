@@ -58,7 +58,7 @@ flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.'
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
 
-flags.DEFINE_float('intrinsic_lambda', 0.1, 'Scaling facotr for intrinsic reward when calculate using equaltion 6.')
+flags.DEFINE_float('intrinsic_lambda', 0.1, 'Scaling factor for intrinsic reward when calculate using equation 6.')
 flags.DEFINE_float('icm_beta', 0.2, 'Weights inverse model loss against the forward model loss in ICM module.')
 flags.DEFINE_float('policy_loss_coef', 1.0, 'Weights policy loss against the the ICM module loss.')
 
@@ -195,7 +195,7 @@ def main(argv):
     checkpoint.register_pair(('policy_network', policy_network))
     checkpoint.register_pair(('icm_network', icm_network))
 
-    # Run parallel traning N iterations.
+    # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

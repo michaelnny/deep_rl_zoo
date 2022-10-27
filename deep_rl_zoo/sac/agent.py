@@ -166,12 +166,12 @@ class Learner(types_lib.Learner):
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
         if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be integer geater than 1, got {n_step}')
+            raise ValueError(f'Expect n_step to be integer greater than 1, got {n_step}')
 
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 1 <= num_actions:
-            raise ValueError(f'Expect num_actions to be integer geater than or equal to 1, got {num_actions}')
+            raise ValueError(f'Expect num_actions to be integer greater than or equal to 1, got {num_actions}')
         if not 1 <= learn_frequency:
             raise ValueError(f'Expect learn_frequency to be positive integer, got {learn_frequency}')
         if not 1 <= min_replay_size:
@@ -241,7 +241,7 @@ class Learner(types_lib.Learner):
         yield self.statistics
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._replay.reset()
 
     def received_item_from_queue(self, item) -> None:
@@ -361,7 +361,7 @@ class Learner(types_lib.Learner):
         return q1_loss, q2_loss
 
     def _calc_policy_loss(self, transitions: replay_lib.Transition) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Calculate policy network loss and entrypo temperature loss"""
+        """Calculate policy network loss and entropy temperature loss"""
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
 
         # Rank and dtype checks, note states may be images, which is rank 4.
@@ -372,7 +372,7 @@ class Learner(types_lib.Learner):
         logprob_tm1 = F.log_softmax(logits_tm1, dim=1)
         prob_tm1 = F.softmax(logits_tm1, dim=1)
 
-        # Compute the minimun q values for s_tm1 from the two Q networks.
+        # Compute the minimum q values for s_tm1 from the two Q networks.
         with torch.no_grad():
             q1_tm1 = self._q1_network(s_tm1).q_values
             q2_tm1 = self._q2_network(s_tm1).q_values

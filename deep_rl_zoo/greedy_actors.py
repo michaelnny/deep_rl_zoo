@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# The classs 'EpsilonGreedyActor' has been modified
-# by The Deep RL Zoo Authors to support PyTorch opeartion.
+# The class 'EpsilonGreedyActor' has been modified
+# by The Deep RL Zoo Authors to support PyTorch operation.
 #
 # ==============================================================================
 """Greedy actors for testing and evaluation."""

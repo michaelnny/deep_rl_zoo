@@ -82,7 +82,7 @@ class Actor(types_lib.Agent):
             discount: the gamma discount for future rewards.
             n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
-            entropy_coef: the coefficient of entryopy loss.
+            entropy_coef: the coefficient of entropy loss.
             baseline_coef: the coefficient of state-value loss.
             compress_gradient, if True, compress numpy arrays before put on to multiprocessing.Queue.
             clip_grad: if True, clip gradients norm.
@@ -93,7 +93,7 @@ class Actor(types_lib.Agent):
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to be [0.0, 1.0], got {discount}')
         if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be integer geater than 1, got {n_step}')
+            raise ValueError(f'Expect n_step to be integer greater than 1, got {n_step}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to be [1, 512], got {batch_size}')
         if not 0.0 <= entropy_coef <= 1.0:
@@ -128,7 +128,7 @@ class Actor(types_lib.Agent):
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
-        and record episode tranjectory, start to learn
+        and record episode trajectory, start to learn
         when the replay is ready and put local gradients into global queue"""
 
         # Wait for learner process update to finished before make any move
@@ -273,7 +273,7 @@ class Learner(types_lib.Learner):
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             gradient_replay: simple storage to store gradients.
-            batch_size: sample batch_size of number of accmulated gradients.
+            batch_size: sample batch_size of number of accumulated gradients.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
@@ -312,7 +312,7 @@ class Learner(types_lib.Learner):
         yield self.statistics
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._replay.reset()
 
     def received_item_from_queue(self, item) -> None:

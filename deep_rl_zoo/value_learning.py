@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 # The functions has been modified by The Deep RL Zoo Authors
-# to support PyTorch opeartion.
+# to support PyTorch operation.
 #
 # ============================================================================
 
@@ -202,16 +202,16 @@ def _slice_with_actions(embeddings: torch.Tensor, actions: torch.Tensor) -> torc
     batch_size, num_actions = embeddings.shape[:2]
 
     # Values are the 'values' in a sparse tensor we will be setting
-    act_indx = actions[:, None]
+    act_idx = actions[:, None]
 
     values = torch.reshape(torch.ones(actions.shape, dtype=torch.int8, device=actions.device), [-1])
 
     # Create a range for each index into the batch
     act_range = torch.arange(0, batch_size, dtype=torch.int64)[:, None].to(device=actions.device)
     # Combine this into coordinates with the action indices
-    indices = torch.concat([act_range, act_indx], 1)
+    indices = torch.concat([act_range, act_idx], 1)
 
-    # Needs transpose indices before inadd to torch.sparse_coo_tensor.
+    # Needs transpose indices before adding to torch.sparse_coo_tensor.
     actions_mask = torch.sparse_coo_tensor(indices.t(), values, [batch_size, num_actions])
     with torch.no_grad():
         actions_mask = actions_mask.to_dense().bool()

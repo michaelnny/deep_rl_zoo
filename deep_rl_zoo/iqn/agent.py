@@ -24,7 +24,7 @@ This agent combines:
 *   Prioritized experience replay
 
 IQN network takes two input:
-    s_t: the state of the environemnt at time t
+    s_t: the state of the environment at time t
     tau: the uniform random probability
 
     the network first take the s_t and turn it into an state embedding (for example the conv2d layers)
@@ -81,7 +81,7 @@ class Iqn(types_lib.Agent):
             random_state: used to sample random actions for e-greedy policy.
             replay: prioritized experience replay.
             transition_accumulator: external helper class to build n-step transition.
-            exploration_epsilon: external schedul of e in e-greedy exploration rate.
+            exploration_epsilon: external schedule of e in e-greedy exploration rate.
             learn_frequency: the frequency (measured in agent steps) to do learning.
             target_network_update_frequency: the frequency (measured in number of online Q network parameter updates)
                  to Update target network parameters.
@@ -89,7 +89,7 @@ class Iqn(types_lib.Agent):
             batch_size: sample batch size.
             num_actions: number of valid actions in the environment.
             n_step: TD n-step bootstrap.
-            huber_param: paramter k for huber loss.
+            huber_param: parameter k for huber loss.
             tau_samples_policy: number of samples to 'pull' from the network for e-greedy policy.
             discount: gamma discount for future rewards.
             clip_grad: if True, clip gradients norm.

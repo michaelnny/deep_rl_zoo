@@ -238,7 +238,7 @@ def main(argv):
     checkpoint.register_pair(('rnd_target_network', rnd_target_network))
     checkpoint.register_pair(('rnd_predictor_network', rnd_predictor_network))
 
-    # Run parallel traning N iterations.
+    # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

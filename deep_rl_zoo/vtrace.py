@@ -13,7 +13,7 @@
 # limitations under the License.
 #
 # The functions has been modified by The Deep RL Zoo Authors
-# to support PyTorch opeartion.
+# to support PyTorch operation.
 #
 # ==============================================================================
 """Functions to compute V-trace off-policy actor critic targets.

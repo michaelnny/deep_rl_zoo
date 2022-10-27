@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 # The functions has been modified by The Deep RL Zoo Authors
-# to support PyTorch opeartion.
+# to support PyTorch operation.
 #
 # ============================================================================
 """Unit tests for `transforms.py`."""

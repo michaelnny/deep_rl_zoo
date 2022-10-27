@@ -77,11 +77,11 @@ flags.DEFINE_float('max_similarity', 8.0, 'K-nearest neighbors custer distance.'
 flags.DEFINE_float('retrace_lambda', 0.95, 'Lambda coefficient for retrace.')
 flags.DEFINE_bool('transformed_retrace', True, 'Transformed retrace loss, default on.')
 
-flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
+flags.DEFINE_float('priority_exponent', 0.9, 'Priority exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.0, 'Importance sampling exponent value.')
 flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
 flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
-flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
+flags.DEFINE_float('priority_eta', 0.9, 'Priority eta to mix the max and mean absolute TD errors.')
 
 flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
 flags.DEFINE_integer(
@@ -233,7 +233,7 @@ def main(argv):
 
     # Each actor has it's own embedding and RND predictor networks,
     # because we don't want to update these network parameters in the middle of an episode,
-    # it will only update these networks at the begining of an episode.
+    # it will only update these networks at the beginning of an episode.
     actors = [
         agent.Actor(
             rank=i,
@@ -288,7 +288,7 @@ def main(argv):
     checkpoint.register_pair(('rnd_predictor_network', rnd_predictor_network))
     checkpoint.register_pair(('embedding_network', embedding_network))
 
-    # Run parallel traning N iterations.
+    # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

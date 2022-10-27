@@ -71,7 +71,7 @@ class SimplifiedSlidingWindowUCB:
             rewards_sum = np.sum(self._rewards[:i], axis=0)
             count = np.sum(self._count[:i], axis=0)
 
-            # Expected reward. Add some constant to avoid devide by zero.
+            # Expected reward. Add some constant to avoid divide by zero.
             mean = rewards_sum / (count + 1e-8)
             c = self._beta * np.sqrt(1 / count)
             ucb_result = mean + c

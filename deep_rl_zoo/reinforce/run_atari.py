@@ -132,7 +132,7 @@ def main(argv):
     )
     checkpoint.register_pair(('policy_network', policy_network))
 
-    # Run the traning and evaluation for N iterations.
+    # Run the training and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

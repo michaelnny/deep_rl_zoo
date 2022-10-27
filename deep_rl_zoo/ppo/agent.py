@@ -67,7 +67,7 @@ class Actor(types_lib.Agent):
             device: PyTorch runtime device.
         """
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
 
         self.rank = rank
         self.agent_name = f'PPO-actor{rank}'
@@ -171,7 +171,7 @@ class Learner(types_lib.Learner):
             total_unroll_length: wait until collected this many transitions before update parameters.
             update_k: update k times when it's time to do learning.
             batch_size: batch size for learning.
-            entropy_coef: the coefficient of entryopy loss.
+            entropy_coef: the coefficient of entropy loss.
             baseline_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
@@ -181,12 +181,12 @@ class Learner(types_lib.Learner):
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
         if not 1 <= update_k:
-            raise ValueError(f'Expect update_k to be integer geater than or equal to 1, got {update_k}')
+            raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not batch_size <= total_unroll_length:
             raise ValueError(
-                f'Expect total_unroll_length to be integer geater than or equal to {batch_size}, got {total_unroll_length}'
+                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
             )
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
@@ -237,13 +237,13 @@ class Learner(types_lib.Learner):
         return self._learn()
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._storage = []
 
     def received_item_from_queue(self, unroll_sequences: Iterable[Tuple]) -> None:
         """Received item send by actors through multiprocessing queue."""
 
-        # Unpack list of tuples into seperate lists.
+        # Unpack list of tuples into separate lists.
         s_t, a_t, logprob_a_t, r_t, s_tp1, done_tp1 = map(list, zip(*unroll_sequences))
 
         returns_t, advantage_t = self._compute_returns_and_advantages(s_t, r_t, s_tp1, done_tp1)
@@ -289,9 +289,9 @@ class Learner(types_lib.Learner):
     def _learn(self) -> Iterable[Mapping[Text, float]]:
         for _ in range(self._update_k):
             # For each update epoch, split indices into 'bins' with batch_size.
-            bined_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
+            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
             # Update on a batch of transitions.
-            for indices in bined_indices:
+            for indices in binned_indices:
                 transitions = [self._storage[i] for i in indices]
 
                 # Stack list of transitions, follow our code convention.
@@ -448,19 +448,19 @@ class GaussianLearner(types_lib.Learner):
             total_unroll_length: wait until collected this many transitions before update parameters.
             update_k: update k times when it's time to do learning.
             batch_size: batch size for learning.
-            entropy_coef: the coefficient of entryopy loss.
+            entropy_coef: the coefficient of entropy loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
         """
 
         if not 1 <= update_k:
-            raise ValueError(f'Expect update_k to be integer geater than or equal to 1, got {update_k}')
+            raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not batch_size <= total_unroll_length:
             raise ValueError(
-                f'Expect total_unroll_length to be integer geater than or equal to {batch_size}, got {total_unroll_length}'
+                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
             )
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
@@ -511,13 +511,13 @@ class GaussianLearner(types_lib.Learner):
         return self._learn()
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
         self._storage = []
 
     def received_item_from_queue(self, unroll_sequences: Iterable[Tuple]) -> None:
         """Received item send by actors through multiprocessing queue."""
 
-        # Unpack list of tuples into seperate lists.
+        # Unpack list of tuples into separate lists.
         s_t, a_t, logprob_a_t, r_t, s_tp1, done_tp1 = map(list, zip(*unroll_sequences))
 
         returns_t, advantage_t = self._compute_returns_and_advantages(s_t, r_t, s_tp1, done_tp1)
@@ -561,9 +561,9 @@ class GaussianLearner(types_lib.Learner):
     def _learn(self) -> Iterable[Mapping[Text, float]]:
         for _ in range(self._update_k):
             # For each update epoch, split indices into 'bins' with batch_size.
-            bined_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
+            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
             # Update on a batch of transitions.
-            for indices in bined_indices:
+            for indices in binned_indices:
                 transitions = [self._storage[i] for i in indices]
                 self._update_policy(transitions)
                 self._update_baseline(transitions)
@@ -603,7 +603,7 @@ class GaussianLearner(types_lib.Learner):
 
     def _calc_policy_loss(self, transitions: Iterable[Tuple]) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
-        # Unpack list of tuples into seperate lists
+        # Unpack list of tuples into separate lists
         s_t, a_t, logprob_a_t, _, advantage_t = map(list, zip(*transitions))
 
         s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
@@ -652,7 +652,7 @@ class GaussianLearner(types_lib.Learner):
 
     def _calc_baseline_loss(self, transitions: Iterable[Tuple]) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
-        # Unpack list of tuples into seperate lists
+        # Unpack list of tuples into separate lists
         s_t, _, _, returns_t, _ = map(list, zip(*transitions))
 
         s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]

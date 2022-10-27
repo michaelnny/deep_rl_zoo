@@ -189,12 +189,12 @@ class Actor(types_lib.Agent):
         if not 0 < num_actions:
             raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
         if not 1 <= unroll_length:
-            raise ValueError(f'Expect unroll_length to be integer geater than or equal to 1, got {unroll_length}')
+            raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
         if not 0 <= burn_in < unroll_length:
             raise ValueError(f'Expect burn_in to be integer between [0, {unroll_length}), got {burn_in}')
         if not 1 <= actor_update_frequency:
             raise ValueError(
-                f'Expect actor_update_frequency to be integer geater than or equal to 1, got {actor_update_frequency}'
+                f'Expect actor_update_frequency to be integer greater than or equal to 1, got {actor_update_frequency}'
             )
 
         self.rank = rank
@@ -280,7 +280,7 @@ class Actor(types_lib.Agent):
 
         # To make sure every actors generates the same amount of samples, we apply e-greedy after the network pass,
         # otherwise the actor with higher epsilons will generate more samples,
-        # while the actor with lower epsilon will geneate less samples.
+        # while the actor with lower epsilon will generate less samples.
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
             a_t = self._random_state.randint(0, self._num_actions)
@@ -357,11 +357,11 @@ class Learner(types_lib.Learner):
                 f'Expect target_network_update_frequency to be positive integer, got {target_network_update_frequency}'
             )
         if not 1 <= min_replay_size:
-            raise ValueError(f'Expect min_replay_size to be integer geater than or equal to 1, got {min_replay_size}')
+            raise ValueError(f'Expect min_replay_size to be integer greater than or equal to 1, got {min_replay_size}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be integer geater than or equal to 1, got {n_step}')
+            raise ValueError(f'Expect n_step to be integer greater than or equal to 1, got {n_step}')
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
         if not 0.0 <= priority_eta <= 1.0:
@@ -413,7 +413,7 @@ class Learner(types_lib.Learner):
         yield self.statistics
 
     def reset(self) -> None:
-        """Should be called at the begining of every iteration."""
+        """Should be called at the beginning of every iteration."""
 
     def received_item_from_queue(self, item) -> None:
         """Received item send by actors through multiprocessing queue."""

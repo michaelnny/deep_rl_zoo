@@ -194,7 +194,7 @@ def main(argv):
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='SAC', save_dir=FLAGS.checkpoint_dir)
     checkpoint.register_pair(('policy_network', policy_network))
 
-    # Run parallel traning N iterations.
+    # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

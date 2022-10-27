@@ -48,7 +48,7 @@ flags.DEFINE_float('exploration_epsilon_end_value', 0.05, 'End (decayed) value o
 flags.DEFINE_float('exploration_epsilon_decay_step', 100000, 'Total steps to decay value of the exploration rate.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
-flags.DEFINE_float('priority_exponent', 0.6, 'Priotiry exponent used in prioritized replay.')
+flags.DEFINE_float('priority_exponent', 0.6, 'Priority exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent_begin_value', 0.4, 'Importance sampling exponent begin value.')
 flags.DEFINE_float('importance_sampling_exponent_end_value', 1.0, 'Importance sampling exponent end value after decay.')
 flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
@@ -114,7 +114,7 @@ def main(argv):
     q = network(torch.from_numpy(obs[None, ...]).float()).q_values
     assert q.shape == (1, num_actions)
 
-    # Create e-greedy exploration epsilon schdule
+    # Create e-greedy exploration epsilon schedule
     exploration_epsilon_schedule = LinearSchedule(
         begin_t=int(FLAGS.min_replay_size),
         decay_steps=int(FLAGS.exploration_epsilon_decay_step),
@@ -175,7 +175,7 @@ def main(argv):
     )
     checkpoint.register_pair(('network', network))
 
-    # Run the traning and evaluation for N iterations.
+    # Run the training and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

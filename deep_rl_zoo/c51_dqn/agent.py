@@ -70,7 +70,7 @@ class C51Dqn(types_lib.Agent):
             random_state: used to sample random actions for e-greedy policy.
             replay: prioritized experience replay.
             transition_accumulator: external helper class to build n-step transition.
-            exploration_epsilon: external schedul of e in e-greedy exploration rate.
+            exploration_epsilon: external schedule of e in e-greedy exploration rate.
             learn_frequency: the frequency (measured in agent steps) to do learning.
             target_network_update_frequency: the frequency (measured in number of online Q network parameter updates)
                  to Update target network parameters.
@@ -181,7 +181,7 @@ class C51Dqn(types_lib.Agent):
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep, epsilon: float) -> types_lib.Action:
         """
-        Dhoose action by following the e-greedy policy with respect to Q values
+        Choose action by following the e-greedy policy with respect to Q values
         Args:
             timestep: the current timestep from env
             epsilon: the e in e-greedy exploration

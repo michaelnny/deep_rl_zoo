@@ -124,7 +124,7 @@ def main(argv):
     q = network(torch.from_numpy(obs[None, ...])).q_values
     assert q.shape == (1, num_actions)
 
-    # Create e-greedy exploration epsilon schdule
+    # Create e-greedy exploration epsilon schedule
     exploration_epsilon_schedule = LinearSchedule(
         begin_t=int(FLAGS.min_replay_size),
         decay_steps=int(FLAGS.exploration_epsilon_decay_step),
@@ -170,7 +170,7 @@ def main(argv):
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='DQN', save_dir=FLAGS.checkpoint_dir)
     checkpoint.register_pair(('network', network))
 
-    # Run the traning and evaluation for N iterations.
+    # Run the training and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

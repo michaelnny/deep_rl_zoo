@@ -59,12 +59,12 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer('batch_size', 4, 'Batch size for learning, use larger batch size if possible.')
 
-flags.DEFINE_float('priority_exponent', 0.9, 'Priotiry exponent used in prioritized replay.')
+flags.DEFINE_float('priority_exponent', 0.9, 'Priority exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent', 0.6, 'Importance sampling exponent value.')
 flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when sampling from the prioritized replay.')
 flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 
-flags.DEFINE_float('priority_eta', 0.9, 'Priotiry eta to mix the max and mean absolute TD errors.')
+flags.DEFINE_float('priority_eta', 0.9, 'Priority eta to mix the max and mean absolute TD errors.')
 flags.DEFINE_float('rescale_epsilon', 0.001, 'Epsilon used in the invertible value rescaling for n-step targets.')
 flags.DEFINE_integer('n_step', 5, 'TD n-step bootstrap.')
 
@@ -226,7 +226,7 @@ def main(argv):
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='R2D2', save_dir=FLAGS.checkpoint_dir)
     checkpoint.register_pair(('network', network))
 
-    # Run parallel traning N iterations.
+    # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
         num_train_frames=FLAGS.num_train_frames,

@@ -22,7 +22,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 * Python        3.9.12
 * pip           22.0.3
 * PyTorch       1.11.0
-* openAI Gym    0.24.1
+* openAI Gym    0.25.2
 * tensorboard   2.8.0
 * numpy         1.22.2
 
@@ -130,6 +130,11 @@ brew install snappy
 CPPFLAGS="-I/opt/homebrew/include -L/opt/homebrew/lib" pip3 install python-snappy
 
 pip3 install -r requirements.txt
+
+# optional, pre-commit and hooks
+pip3 install pre-commit
+
+pre-commit install
 ```
 
 ## Install required packages on Ubuntu Linux
@@ -144,6 +149,12 @@ sudo apt-get install ffmpeg
 python3 -m pip install --upgrade pip setuptools
 
 pip3 install -r requirements.txt
+
+
+# optional, pre-commit and hooks
+pip3 install pre-commit
+
+pre-commit install
 ```
 
 

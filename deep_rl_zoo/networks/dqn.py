@@ -435,7 +435,7 @@ class DrqnMlpNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the begining of new episode, or every training batch"""
+        shoul call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -534,7 +534,7 @@ class R2d2DqnMlpNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the begining of new episode, or every training batch"""
+        shoul call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -640,7 +640,7 @@ class NguDqnMlpNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the begining of new episode, or every training batch"""
+        shoul call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -1010,7 +1010,7 @@ class DrqnConvNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the begining of new episode, or every training batch"""
+        shoul call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -1107,7 +1107,7 @@ class R2d2DqnConvNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the begining of new episode, or every training batch"""
+        shoul call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -1213,6 +1213,6 @@ class NguDqnConvNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the begining of new episode, or every training batch"""
+        shoul call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))

@@ -66,7 +66,7 @@ class PrioritizedDqn(types_lib.Agent):
             random_state: used to sample random actions for e-greedy policy.
             replay: prioritized experience replay.
             transition_accumulator: external helper class to build n-step transition.
-            exploration_epsilon: external schedul of e in e-greedy exploration rate.
+            exploration_epsilon: external schedule of e in e-greedy exploration rate.
             learn_frequency: the frequency (measured in agent steps) to do learning.
             target_network_update_frequency: the frequency (measured in number of online Q network parameter updates)
                  to Update target network parameters.

@@ -69,7 +69,7 @@ class QRDqn(types_lib.Agent):
             random_state: used to sample random actions for e-greedy policy.
             replay: prioritized experience replay.
             transition_accumulator: external helper class to build n-step transition.
-            exploration_epsilon: external schedul of e in e-greedy exploration rate.
+            exploration_epsilon: external schedule of e in e-greedy exploration rate.
             learn_frequency: the frequency (measured in agent steps) to do learning.
             target_network_update_frequency: the frequency (measured in number of online Q network parameter updates)
                  to Update target network parameters.
@@ -78,7 +78,7 @@ class QRDqn(types_lib.Agent):
             num_actions: number of valid actions in the environment.
             n_step: TD n-step bootstrap.
             quantiles: support for q value distribution.
-            huber_param: paramter k for huber loss.
+            huber_param: parameter k for huber loss.
             discount: gamma discount for future rewards.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: maximum gradient norm for clip grad, only works if clip_grad is True.

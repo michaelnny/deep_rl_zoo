@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 # The file has been modified by The Deep RL Zoo Authors
-# to support PyTorch opeartion.
+# to support PyTorch operation.
 #
 # ==============================================================================
 """Common ops for multistep return evaluation."""
@@ -79,7 +79,7 @@ def n_step_bellman_target(
     base.assert_batch_dimension(r_t, q_t.shape[1], 1)
 
     # We append n_steps - 1 times the last q_target. They are divided by gamma **
-    # k to correct for the fact that they are at a 'fake' indice, and will
+    # k to correct for the fact that they are at a 'fake' indices, and will
     # therefore end up being multiplied back by gamma ** k in the loop below.
     # We prepend 0s that will be discarded at the first iteration below.
     bellman_target = torch.concat(

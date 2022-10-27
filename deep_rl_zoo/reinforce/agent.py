@@ -80,7 +80,7 @@ class Reinforce(types_lib.Agent):
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
-        and record episode tranjectory, learn after the enpisode terminated"""
+        and record episode trajectory, learn after the episode terminated"""
         self._step_t += 1
 
         a_t = self.act(timestep)
@@ -115,7 +115,7 @@ class Reinforce(types_lib.Agent):
         return a_t.cpu().item()
 
     def _learn(self) -> None:
-        # Turn entire episode tranjectory into one Transition object
+        # Turn entire episode trajectory into one Transition object
         transitions = replay_lib.np_stack_list_of_transitions(list(self._trajectory), replay_lib.TransitionStructure)
         self._update(transitions)
 
@@ -137,7 +137,7 @@ class Reinforce(types_lib.Agent):
         self._loss_t = loss.detach().cpu().item()
 
     def _calc_loss(self, transitions: replay_lib.Transition) -> torch.Tensor:
-        """Calculate loss sumed over the trajectories of a single episode"""
+        """Calculate loss summed over the trajectories of a single episode"""
         s_tm1 = torch.from_numpy(transitions.s_tm1).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
         a_tm1 = torch.from_numpy(transitions.a_tm1).to(device=self._device, dtype=torch.int64)  # [batch_size]
         r_t = torch.from_numpy(transitions.r_t).to(device=self._device, dtype=torch.float32)  # [batch_size]

@@ -302,7 +302,7 @@ class LazyFrames(object):
 
 
 class ScaledFloatFrame(gym.ObservationWrapper):
-    """Scale frame by devide 255."""
+    """Scale frame by divide 255."""
 
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
@@ -386,10 +386,10 @@ class ClipObservationWithBound(gym.ObservationWrapper):
 
 
 class RecordRawReward(gym.Wrapper):
-    """This wrapper will add unclipped/unscaled raw reward to the info dict."""
+    """This wrapper will add non-clipped/unscaled raw reward to the info dict."""
 
     def step(self, action):
-        """Take action and add unclipped/unscaled raw reward to the info dict."""
+        """Take action and add non-clipped/unscaled raw reward to the info dict."""
 
         obs, reward, done, info = self.env.step(action)
         info['raw_reward'] = reward
@@ -430,7 +430,7 @@ def create_atari_environment(
         obscure_epsilon: with epsilon probability [0.0, 1.0), obscure the state to make it POMDP.
         terminal_on_life_loss: if True, mark end of game when loss a life, default off.
         clip_reward: clip reward in the range of [-1, 1], default on.
-        scale_obs: scale the frame by devide 255, turn this on may require 4-5x more RAM when using experience replay, default off.
+        scale_obs: scale the frame by divide 255, turn this on may require 4-5x more RAM when using experience replay, default off.
         channel_first: if True, change observation image from shape [H, W, C] to in the range [C, H, W], this is for PyTorch only, default on.
 
     Returns:
@@ -444,7 +444,7 @@ def create_atari_environment(
     # env.reset(seed=seed)
 
     # Change TimeLimit wrapper to 108,000 steps (30 min) as default in the
-    # litterature instead of OpenAI Gym's default of 100,000 steps.
+    # literature instead of OpenAI Gym's default of 100,000 steps.
     env = gym.wrappers.TimeLimit(env.env, max_episode_steps=None if max_episode_steps <= 0 else max_episode_steps)
 
     env = RecordRawReward(env)
@@ -536,7 +536,7 @@ def create_continuous_environment(
     env = gym.wrappers.NormalizeObservation(env)
     env = gym.wrappers.NormalizeReward(env)
 
-    # Optinally clipping the observation and rewards.
+    # Optionally clipping the observation and rewards.
     # Notice using lambda function does not work with python multiprocessing
     # env = gym.wrappers.TransformObservation(env, lambda reward: np.clip(obs, -max_abs_obs, max_abs_obs))
     # env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -max_abs_reward, max_abs_reward))
