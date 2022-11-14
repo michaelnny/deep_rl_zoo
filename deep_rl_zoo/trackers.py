@@ -62,7 +62,7 @@ class EpisodeTracker:
         self._num_steps_since_reset += 1
         self._current_episode_step += 1
 
-        if timestep_t.done:
+        if timestep_t.real_terminated:
             self._episode_returns.append(sum(self._current_episode_rewards))
             self._episode_steps.append(self._current_episode_step)
             self._current_episode_rewards = []
@@ -157,7 +157,7 @@ class TensorboardEpisodeTracker(EpisodeTracker):
         self._total_steps += 1
 
         # To improve performance, only logging at end of an episode.
-        if timestep_t.done:
+        if timestep_t.real_terminated:
             self._total_episodes += 1
             tb_steps = self._total_steps
 
@@ -187,7 +187,7 @@ class TensorboardStepRateTracker(StepRateTracker):
         self._total_steps += 1
 
         # To improve performance, only logging at end of an episode.
-        if timestep_t.done:
+        if timestep_t.real_terminated:
             time_stats = self.get()
             self._writer.add_scalar('performance(env_steps)/step_rate', time_stats['step_rate'], self._total_steps)
 
@@ -206,7 +206,7 @@ class TensorboardAgentStatisticsTracker:
 
         # To improve performance, only logging at end of an episode.
         # This should not block the training loop if there's any exception.
-        if timestep_t.done:
+        if timestep_t.real_terminated:
             try:
                 stats = agent.statistics
                 if stats:
@@ -237,7 +237,7 @@ class TensorboardScreenshotTracker:
         """Accumulates statistics from timestep."""
         del (agent, a_t)
 
-        if timestep_t.done:
+        if timestep_t.real_terminated:
             self._total_episodes += 1
 
             if self._total_episodes % self._log_interval == 0:

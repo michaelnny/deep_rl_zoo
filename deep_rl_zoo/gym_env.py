@@ -111,11 +111,11 @@ class DoneOnLifeLoss(gym.Wrapper):
 
         gym.Wrapper.__init__(self, env)
         self.lives = 0
-        self.was_real_done = True
+        self.was_real_terminated = True
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
-        self.was_real_done = done
+        self.was_real_terminated = done
         # check current lives, make loss of life terminal,
         # then update lives to handle bonus lives
         lives = self.env.unwrapped.ale.lives()
@@ -124,6 +124,7 @@ class DoneOnLifeLoss(gym.Wrapper):
             # so it's important to keep lives > 0, so that we only reset once
             # the environment advertises done.
             done = True
+        info['was_real_terminated'] = self.was_real_terminated
         self.lives = lives
         return obs, reward, done, info
 
@@ -132,7 +133,7 @@ class DoneOnLifeLoss(gym.Wrapper):
         This way all states are still reachable even though lives are episodic,
         and the learner need not know about any of this behind-the-scenes.
         """
-        if self.was_real_done:
+        if self.was_real_terminated:
             obs = self.env.reset(**kwargs)
         else:
             # no-op step to advance from terminal/lost life state
@@ -243,21 +244,21 @@ class FrameStack(gym.Wrapper):
         gym.Wrapper.__init__(self, env)
         self.k = k
         self.frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
-        self.observation_space = Box(low=0, high=255, shape=(shp[:-1] + (shp[-1] * k,)), dtype=env.observation_space.dtype)
+        shape = env.observation_space.shape
+        self.observation_space = Box(low=0, high=255, shape=(shape[:-1] + (shape[-1] * k,)), dtype=env.observation_space.dtype)
 
     def reset(self, **kwargs):
-        ob = self.env.reset(**kwargs)
+        obs = self.env.reset(**kwargs)
         for _ in range(self.k):
-            self.frames.append(ob)
-        return self._get_ob()
+            self.frames.append(obs)
+        return self._get_obs()
 
     def step(self, action):
-        ob, reward, done, info = self.env.step(action)
-        self.frames.append(ob)
-        return self._get_ob(), reward, done, info
+        obs, reward, done, info = self.env.step(action)
+        self.frames.append(obs)
+        return self._get_obs(), reward, done, info
 
-    def _get_ob(self):
+    def _get_obs(self):
         assert len(self.frames) == self.k
         return LazyFrames(list(self.frames))
 

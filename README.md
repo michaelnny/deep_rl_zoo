@@ -111,6 +111,28 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 # Quick Start
 
+## Install required packages on openSUSE 15 Tumbleweed Linux
+```
+# install required dev packages
+sudo zypper install gcc gcc-c++ python3-devel
+
+# install swig which is required for box-2d
+sudo zypper install swig
+
+# install ffmpeg for recording agent self-play
+sudo zypper install ffmpeg
+
+# upgrade pip
+python3 -m pip install --upgrade pip setuptools
+
+pip3 install -r requirements.txt
+
+# optional, install pre-commit and hooks
+pip3 install pre-commit
+
+pre-commit install
+```
+
 ## Install required packages on Mac
 ```
 # install homebrew, skip this step if already installed
@@ -131,7 +153,7 @@ CPPFLAGS="-I/opt/homebrew/include -L/opt/homebrew/lib" pip3 install python-snapp
 
 pip3 install -r requirements.txt
 
-# optional, pre-commit and hooks
+# optional, install pre-commit and hooks
 pip3 install pre-commit
 
 pre-commit install
@@ -150,8 +172,7 @@ python3 -m pip install --upgrade pip setuptools
 
 pip3 install -r requirements.txt
 
-
-# optional, pre-commit and hooks
+# optional, install pre-commit and hooks
 pip3 install pre-commit
 
 pre-commit install
