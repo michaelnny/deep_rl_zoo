@@ -43,6 +43,7 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
+flags.DEFINE_bool('compress_state', True, 'Compress state images when store in experience replay.')
 flags.DEFINE_integer('num_actors', 8, 'Number of actor processes to use, consider using larger number like 32, 64, 128.')
 flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size (in number of unrolls stored).')  # watch for out of RAM
 flags.DEFINE_integer('min_replay_size', 200, 'Minimum replay size before learning starts (in number of unrolls stored).')
@@ -86,7 +87,7 @@ flags.DEFINE_float('uniform_sample_probability', 1e-3, 'Add some noise when samp
 flags.DEFINE_bool('normalize_weights', True, 'Normalize sampling weights in prioritized replay.')
 flags.DEFINE_float('priority_eta', 0.9, 'Priority eta to mix the max and mean absolute TD errors.')
 
-flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer(
     'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
 )
@@ -98,7 +99,7 @@ flags.DEFINE_integer(
     'Number of learner online Q network updates before update target Q networks.',
 )  # 1500
 flags.DEFINE_integer('actor_update_frequency', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_integer(
@@ -108,7 +109,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/agent57_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -198,6 +199,23 @@ def main(argv):
     def importance_sampling_exponent_schedule(x):
         return importance_sampling_exponent
 
+    # Create transition replay
+    if FLAGS.compress_state:
+
+        def encoder(transition):
+            return transition._replace(
+                s_t=replay_lib.compress_array(transition.s_t),
+            )
+
+        def decoder(transition):
+            return transition._replace(
+                s_t=replay_lib.uncompress_array(transition.s_t),
+            )
+
+    else:
+        encoder = None
+        decoder = None
+
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
         structure=agent.TransitionStructure,
@@ -207,6 +225,8 @@ def main(argv):
         normalize_weights=FLAGS.normalize_weights,
         random_state=random_state,
         time_major=True,
+        encoder=encoder,
+        decoder=decoder,
     )
 
     # Create queue shared between actors and learner

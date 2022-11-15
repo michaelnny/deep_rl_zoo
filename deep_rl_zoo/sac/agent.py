@@ -47,7 +47,7 @@ class Actor(types_lib.Agent):
         rank: int,
         data_queue: multiprocessing.Queue,
         policy_network: torch.nn.Module,
-        transition_accumulator: replay_lib.NStepTransitionAccumulator,
+        transition_accumulator: replay_lib.TransitionAccumulator,
         min_replay_size: int,
         num_actions: int,
         device: torch.device,
@@ -133,7 +133,6 @@ class Learner(types_lib.Learner):
         q2_network: nn.Module,
         q2_optimizer: torch.optim.Optimizer,
         discount: float,
-        n_step: int,
         batch_size: int,
         num_actions: int,
         min_replay_size: int,
@@ -153,7 +152,6 @@ class Learner(types_lib.Learner):
             q2_network: the second Q network.
             q2_optimizer: the optimizer for the second Q network.
             discount: the gamma discount for future rewards.
-            n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
             num_actions: number of actions for the environment.
             min_replay_size: minimum replay size before do learning.
@@ -165,9 +163,6 @@ class Learner(types_lib.Learner):
         """
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
-        if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be integer greater than 1, got {n_step}')
-
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 1 <= num_actions:
@@ -210,7 +205,6 @@ class Learner(types_lib.Learner):
 
         self._replay = replay
         self._discount = discount
-        self._n_step = n_step
         self._batch_size = batch_size
         self._min_replay_size = min_replay_size
         self._learn_frequency = learn_frequency
@@ -327,7 +321,7 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(r_t, 1, torch.float32)
         base.assert_rank_and_dtype(done, 1, torch.bool)
 
-        discount_t = (~done).float() * self._discount**self._n_step
+        discount_t = (~done).float() * self._discount
 
         # Calculate estimated q values for state-action pair (s_tm1, a_tm1) using two Q networks.
         q1_tm1 = self._q1_network(s_tm1).q_values

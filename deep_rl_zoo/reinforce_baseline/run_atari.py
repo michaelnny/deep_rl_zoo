@@ -44,7 +44,7 @@ flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients 
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate for policy network.')
 flags.DEFINE_float('value_learning_rate', 0.0005, 'Learning rate for value network.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
@@ -57,7 +57,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/reinforce_baseline_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):

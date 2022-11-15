@@ -362,10 +362,10 @@ class ObservationChannelFirst(gym.ObservationWrapper):
 
     def observation(self, observation):
         # permute [H, W, C] array to in the range [C, H, W]
-        return np.transpose(observation, axes=(2, 0, 1)).astype(self.observation_space.dtype)
-        # obs = np.asarray(observation, dtype=self.observation_space.dtype).transpose(2, 0, 1)
+        # return np.transpose(observation, axes=(2, 0, 1)).astype(self.observation_space.dtype)
+        obs = np.asarray(observation, dtype=self.observation_space.dtype).transpose(2, 0, 1)
         # make sure it's C-contiguous for compress state
-        # return np.ascontiguousarray(obs, dtype=self.observation_space.dtype)
+        return np.ascontiguousarray(obs, dtype=self.observation_space.dtype)
 
 
 class ObservationToNumpy(gym.ObservationWrapper):
@@ -448,8 +448,6 @@ def create_atari_environment(
     # literature instead of OpenAI Gym's default of 100,000 steps.
     env = gym.wrappers.TimeLimit(env.env, max_episode_steps=None if max_episode_steps <= 0 else max_episode_steps)
 
-    env = RecordRawReward(env)
-
     env = NoopReset(env, noop_max=noop_max)
     env = MaxAndSkip(env, skip=frame_skip)
 
@@ -464,6 +462,7 @@ def create_atari_environment(
     if scale_obs:
         env = ScaledFloatFrame(env)
     if clip_reward:
+        env = RecordRawReward(env)
         env = ClipRewardWithBound(env, 1.0)
     if frame_stack > 1:
         env = FrameStack(env, frame_stack)
@@ -498,10 +497,9 @@ def create_classic_environment(
     env.seed(seed)
     # env.reset(seed=seed)
 
-    env = RecordRawReward(env)
-
     # Clip reward to max absolute reward bound
     if max_abs_reward is not None:
+        env = RecordRawReward(env)
         env = ClipRewardWithBound(env, abs(max_abs_reward))
 
     # Obscure observation with obscure_epsilon probability
@@ -531,8 +529,6 @@ def create_continuous_environment(
     """
 
     env = gym.make(env_name)
-    env = RecordRawReward(env)
-
     env = gym.wrappers.ClipAction(env)
     env = gym.wrappers.NormalizeObservation(env)
     env = gym.wrappers.NormalizeReward(env)

@@ -39,7 +39,6 @@ class RunAtariTest(absltest.TestCase):
     def test_can_run_agent(self):
         FLAGS.environment_name = 'Pong'
         FLAGS.batch_size = 4
-        FLAGS.n_step = 2
         FLAGS.clip_grad = True
         run_atari.main(None)
 

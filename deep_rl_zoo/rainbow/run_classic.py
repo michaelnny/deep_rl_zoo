@@ -43,8 +43,8 @@ flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 10000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 64, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
+flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
 flags.DEFINE_float('priority_exponent', 0.6, 'Priority exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent_begin_value', 0.4, 'Importance sampling exponent begin value.')
@@ -77,7 +77,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/rainbow_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):

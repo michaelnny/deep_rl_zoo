@@ -44,12 +44,11 @@ flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learni
 flags.DEFINE_integer('batch_size', 8, 'Sample batch size when do learning.')
 flags.DEFINE_integer('unroll_length', 10, 'The number of agent steps to rollout.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
-flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('exploration_epsilon_begin_value', 1.0, 'Begin value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_end_value', 0.05, 'End (decayed) value of the exploration rate in e-greedy policy.')
 flags.DEFINE_float('exploration_epsilon_decay_step', 100000, 'Total steps to decay value of the exploration rate.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
-flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('obscure_epsilon', 0.5, 'Make the problem POMDP by obsecure environment state with probability epsilon.')
@@ -71,7 +70,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/drqn_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -130,14 +129,13 @@ def main(argv):
     train_agent = agent.Drqn(
         network=network,
         optimizer=optimizer,
-        transition_accumulator=replay_lib.NStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
+        transition_accumulator=replay_lib.TransitionAccumulator(),
         replay=replay,
         exploration_epsilon=exploration_epsilon_schedule,
         batch_size=FLAGS.batch_size,
         min_replay_size=FLAGS.min_replay_size,
         learn_frequency=FLAGS.learn_frequency,
         target_network_update_frequency=FLAGS.target_network_update_frequency,
-        n_step=FLAGS.n_step,
         discount=FLAGS.discount,
         unroll_length=FLAGS.unroll_length,
         clip_grad=FLAGS.clip_grad,

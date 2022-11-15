@@ -43,9 +43,8 @@ flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.05, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
-flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 32, 'Accumulate batch size transitions before do learning.')
-flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
@@ -58,7 +57,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/actor_critic_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -115,9 +114,8 @@ def main(argv):
     train_agent = agent.ActorCritic(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        transition_accumulator=replay_lib.NStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
+        transition_accumulator=replay_lib.TransitionAccumulator(),
         discount=FLAGS.discount,
-        n_step=FLAGS.n_step,
         batch_size=FLAGS.batch_size,
         entropy_coef=FLAGS.entropy_coef,
         baseline_coef=FLAGS.baseline_coef,

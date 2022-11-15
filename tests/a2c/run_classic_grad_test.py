@@ -40,7 +40,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.environment_name = 'CartPole-v1'
         FLAGS.num_actors = 2
         FLAGS.batch_size = 4
-        FLAGS.n_step = 2
         FLAGS.clip_grad = True
         run_classic.main(None)
 

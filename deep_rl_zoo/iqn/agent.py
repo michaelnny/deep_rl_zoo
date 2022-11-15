@@ -59,14 +59,13 @@ class Iqn(types_lib.Agent):
         optimizer: torch.optim.Optimizer,
         random_state: np.random.RandomState,  # pylint: disable=no-member
         replay: replay_lib.PrioritizedReplay,
-        transition_accumulator: replay_lib.NStepTransitionAccumulator,
+        transition_accumulator: replay_lib.TransitionAccumulator,
         exploration_epsilon: Callable[[int], float],
         learn_frequency: int,
         target_network_update_frequency: int,
         min_replay_size: int,
         batch_size: int,
         num_actions: int,
-        n_step: int,
         huber_param: float,
         tau_samples_policy: int,
         discount: float,
@@ -88,7 +87,6 @@ class Iqn(types_lib.Agent):
             min_replay_size: Minimum replay size before start to do learning.
             batch_size: sample batch size.
             num_actions: number of valid actions in the environment.
-            n_step: TD n-step bootstrap.
             huber_param: parameter k for huber loss.
             tau_samples_policy: number of samples to 'pull' from the network for e-greedy policy.
             discount: gamma discount for future rewards.
@@ -110,8 +108,6 @@ class Iqn(types_lib.Agent):
             raise ValueError(f'Expect min_replay_size >= {batch_size} and <= {replay.capacity} and, got {min_replay_size}')
         if not 0 < num_actions:
             raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
-        if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be positive integer, got {n_step}')
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount [0.0, 1.0], got {discount}')
         if not 0.0 <= huber_param:
@@ -142,7 +138,6 @@ class Iqn(types_lib.Agent):
 
         # Learning related parameters
         self._discount = discount
-        self._n_step = n_step
         self._exploration_epsilon = exploration_epsilon
         self._min_replay_size = min_replay_size
         self._learn_frequency = learn_frequency
@@ -259,7 +254,7 @@ class Iqn(types_lib.Agent):
         base.assert_rank_and_dtype(r_t, 1, torch.float32)
         base.assert_rank_and_dtype(done, 1, torch.bool)
 
-        discount_t = (~done).float() * self._discount**self._n_step
+        discount_t = (~done).float() * self._discount
 
         # Compute predicted q values distribution for s_tm1, using online Q network
         network_output = self._online_network(s_tm1, self._tau_policy)

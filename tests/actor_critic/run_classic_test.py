@@ -38,7 +38,6 @@ class RunClassicGameTest(absltest.TestCase):
     def test_can_run_agent(self):
         FLAGS.environment_name = 'CartPole-v1'
         FLAGS.batch_size = 4
-        FLAGS.n_step = 2
         FLAGS.clip_grad = True
         run_classic.main(None)
 

@@ -54,12 +54,11 @@ flags.DEFINE_string(
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_bool('compress_gradient', True, 'Actor process to compress the local gradients before put on queue, default on.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.0025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
-flags.DEFINE_integer('n_step', 2, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 32, 'Accumulate batch size transitions before do learning.')
 flags.DEFINE_integer('learner_batch_size', 16, 'Accumulate batch size of gradients before do back-propagation.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
@@ -74,7 +73,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/a2c_grad_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -149,9 +148,8 @@ def main(argv):
             lock=lock,
             gradient_queue=gradient_queue,
             policy_network=policy_network,
-            transition_accumulator=replay_lib.NStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
+            transition_accumulator=replay_lib.TransitionAccumulator(),
             discount=FLAGS.discount,
-            n_step=FLAGS.n_step,
             batch_size=FLAGS.batch_size,
             compress_gradient=FLAGS.compress_gradient,
             entropy_coef=FLAGS.entropy_coef,

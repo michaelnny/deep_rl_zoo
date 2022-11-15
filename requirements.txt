@@ -21,6 +21,8 @@ torchvision==0.13.1
 
 # Tensorboard
 tensorboard==2.11.0
+grpcio==1.50.0
+protobuf==3.20.3
 
 # Utilities
 numpy==1.23.4

@@ -39,12 +39,13 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
+flags.DEFINE_bool('compress_state', True, 'Compress state images when store in experience replay.')
 flags.DEFINE_integer('replay_capacity', int(1e6), 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 50000, 'Minimum replay size before learning starts.')
 flags.DEFINE_integer('batch_size', 32, 'Sample batch size when do learning.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
+flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
 flags.DEFINE_float('priority_exponent', 0.6, 'Priority exponent used in prioritized replay.')
 flags.DEFINE_float('importance_sampling_exponent_begin_value', 0.4, 'Importance sampling exponent begin value.')
@@ -56,10 +57,10 @@ flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the 
 flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
 flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
 
-flags.DEFINE_integer('n_step', 3, 'TD n-step bootstrap.')
+flags.DEFINE_integer('n_step', 5, 'TD n-step bootstrap.')
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
@@ -78,7 +79,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/rainbow_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -139,6 +140,25 @@ def main(argv):
         begin_value=FLAGS.importance_sampling_exponent_begin_value,
         end_value=FLAGS.importance_sampling_exponent_end_value,
     )
+
+    if FLAGS.compress_state:
+
+        def encoder(transition):
+            return transition._replace(
+                s_tm1=replay_lib.compress_array(transition.s_tm1),
+                s_t=replay_lib.compress_array(transition.s_t),
+            )
+
+        def decoder(transition):
+            return transition._replace(
+                s_tm1=replay_lib.uncompress_array(transition.s_tm1),
+                s_t=replay_lib.uncompress_array(transition.s_t),
+            )
+
+    else:
+        encoder = None
+        decoder = None
+
     replay = replay_lib.PrioritizedReplay(
         capacity=FLAGS.replay_capacity,
         structure=replay_lib.TransitionStructure,
@@ -147,6 +167,8 @@ def main(argv):
         uniform_sample_probability=FLAGS.uniform_sample_probability,
         normalize_weights=FLAGS.normalize_weights,
         random_state=random_state,
+        encoder=encoder,
+        decoder=decoder,
     )
 
     # Create RainbowDqn agent instance

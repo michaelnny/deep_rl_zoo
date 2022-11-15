@@ -44,7 +44,7 @@ flags.DEFINE_integer('num_actors', 16, 'Number of actor processes to use.')
 flags.DEFINE_integer('replay_capacity', 10000, 'Maximum replay size (in number of unrolls stored).')
 flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts (in number of unrolls stored).')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
-flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
 
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate for adam.')
 flags.DEFINE_float('adam_eps', 0.001, 'Epsilon for adam.')
@@ -77,7 +77,7 @@ flags.DEFINE_integer(
     'Number of learner online Q network updates before update target Q networks.',
 )
 flags.DEFINE_integer('actor_update_frequency', 100, 'The frequency (measured in actor steps) to update actor local Q network.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_integer(
@@ -87,7 +87,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/r2d2_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):

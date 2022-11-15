@@ -84,6 +84,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
                 reward=self.rewards[i],
                 raw_reward=0,
                 done=True if i == self.num_timesteps else False,
+                real_terminated=True if i == self.num_timesteps else False,
                 first=True if i == 0 else False,
             )
             self.accumulator_output.append(list(self.accumulator.step(timestep, self.actions[i])))
@@ -123,7 +124,10 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
     def test_reset(self):
         self.accumulator.reset()
         transitions = self.accumulator.step(
-            timestep_t=types_lib.TimeStep(first=True, observation=-1, reward=3, raw_reward=0, done=False), a_t=1
+            timestep_t=types_lib.TimeStep(
+                first=True, observation=-1, reward=3, raw_reward=0, done=False, real_terminated=False
+            ),
+            a_t=1,
         )
         self.assertEqual([], list(transitions))
 
@@ -138,6 +142,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
                 reward=self.rewards[i],
                 raw_reward=0,
                 done=True if i == self.num_timesteps else False,
+                real_terminated=True if i == self.num_timesteps else False,
                 first=True if i == 0 else False,
             )
             transitions = list(transition_accumulator.step(timestep, self.actions[i]))
@@ -165,6 +170,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
                 raw_reward=0,
                 first=step_types[i] == f,
                 done=step_types[i] == l,
+                real_terminated=step_types[i] == l,
             )
             accumulator_output.append(list(accumulator.step(timestep, actions[i])))
 
@@ -208,6 +214,7 @@ class NStepTransitionAccumulatorTest(absltest.TestCase):
                 raw_reward=0,
                 first=step_types[i] == f,
                 done=step_types[i] == l,
+                real_terminated=step_types[i] == l,
             )
             accumulator_output.append(list(accumulator.step(timestep, actions[i])))
         output_lengths = [len(output) for output in accumulator_output]

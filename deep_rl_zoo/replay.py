@@ -59,6 +59,8 @@ class UniformReplay(Generic[ReplayStructure]):
         structure: ReplayStructure,
         random_state: np.random.RandomState,  # pylint: disable=no-member
         time_major: bool = False,
+        encoder: Optional[Callable[[ReplayStructure], Any]] = None,
+        decoder: Optional[Callable[[Any], ReplayStructure]] = None,
     ):
         if capacity <= 0:
             raise ValueError(f'Expect capacity to be a positive integer, got {capacity}')
@@ -70,14 +72,17 @@ class UniformReplay(Generic[ReplayStructure]):
 
         self._time_major = time_major
 
+        self._encoder = encoder or (lambda s: s)
+        self._decoder = decoder or (lambda s: s)
+
     def add(self, item: ReplayStructure) -> None:
         """Adds single item to replay."""
-        self._storage[self._num_added % self._capacity] = item
+        self._storage[self._num_added % self._capacity] = self._encoder(item)
         self._num_added += 1
 
     def get(self, indices: Sequence[int]) -> List[ReplayStructure]:
         """Retrieves items by indices."""
-        return [self._storage[i] for i in indices]
+        return [self._decoder(self._storage[i]) for i in indices]
 
     def sample(self, batch_size: int) -> ReplayStructure:
         """Samples batch of items from replay uniformly, with replacement."""
@@ -445,6 +450,8 @@ class PrioritizedReplay(Generic[ReplayStructure]):
         normalize_weights: bool,
         random_state: np.random.RandomState,
         time_major: bool = False,
+        encoder: Optional[Callable[[ReplayStructure], Any]] = None,
+        decoder: Optional[Callable[[Any], ReplayStructure]] = None,
     ):
 
         self.structure = structure
@@ -463,16 +470,19 @@ class PrioritizedReplay(Generic[ReplayStructure]):
 
         self._time_major = time_major
 
+        self._encoder = encoder or (lambda s: s)
+        self._decoder = decoder or (lambda s: s)
+
     def add(self, item: ReplayStructure, priority: float) -> None:
         """Adds a single item with a given priority to the replay buffer."""
         index = self._num_added % self._capacity
         self._distribution.set_priorities([index], [priority])
-        self._storage[index] = item
+        self._storage[index] = self._encoder(item)
         self._num_added += 1
 
     def get(self, indices: Sequence[int]) -> List[ReplayStructure]:
         """Retrieves transitions by indices."""
-        return [self._storage[i] for i in indices]
+        return [self._decoder(self._storage[i]) for i in indices]
 
     def sample(
         self,

@@ -61,9 +61,8 @@ class Actor(types_lib.Agent):
         lock: multiprocessing.Lock,
         gradient_queue: multiprocessing.Queue,
         policy_network: nn.Module,
-        transition_accumulator: replay_lib.NStepTransitionAccumulator,
+        transition_accumulator: replay_lib.TransitionAccumulator,
         discount: float,
-        n_step: int,
         batch_size: int,
         entropy_coef: float,
         baseline_coef: float,
@@ -80,7 +79,6 @@ class Actor(types_lib.Agent):
             policy_network: the policy network we want to train.
             transition_accumulator: external helper class to build n-step transition.
             discount: the gamma discount for future rewards.
-            n_step: TD n-step returns.
             batch_size: sample batch_size of transitions.
             entropy_coef: the coefficient of entropy loss.
             baseline_coef: the coefficient of state-value loss.
@@ -92,8 +90,6 @@ class Actor(types_lib.Agent):
 
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to be [0.0, 1.0], got {discount}')
-        if not 1 <= n_step:
-            raise ValueError(f'Expect n_step to be integer greater than 1, got {n_step}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to be [1, 512], got {batch_size}')
         if not 0.0 <= entropy_coef <= 1.0:
@@ -110,7 +106,6 @@ class Actor(types_lib.Agent):
         self._policy_network = policy_network.to(device=device)
         self._compress_gradient = compress_gradient
         self._transition_accumulator = transition_accumulator
-        self._n_step = n_step
         self._discount = discount
         self._batch_size = batch_size
         self._trajectory = collections.deque(maxlen=batch_size)
@@ -205,7 +200,7 @@ class Actor(types_lib.Agent):
         base.assert_rank_and_dtype(r_t, 1, torch.float32)
         base.assert_rank_and_dtype(done, 1, torch.bool)
 
-        discount_t = (~done).float() * self._discount**self._n_step
+        discount_t = (~done).float() * self._discount
 
         # Get policy action logits and baseline for s_tm1.
         policy_output = self._policy_network(s_tm1)

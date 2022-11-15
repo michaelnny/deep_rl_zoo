@@ -39,7 +39,7 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width, f
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip, for atari only.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack, for atari only.')
 flags.DEFINE_float('obscure_epsilon', 0.5, 'Make the problem POMDP by obsecure environment state with probability epsilon.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
 flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
 flags.DEFINE_integer('max_episode_steps', 58000, 'Maximum steps (before frame skip) per episode, for atari only.')

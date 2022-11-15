@@ -52,10 +52,9 @@ flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate for policy network.'
 flags.DEFINE_float('q_learning_rate', 0.0005, 'Learning rate for Q networks.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('q_target_tau', 0.995, 'Target Q network parameters update ratio.')
-flags.DEFINE_integer('n_step', 4, 'TD n-step bootstrap.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to update parameters.')
-flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer(
     'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
 )
@@ -70,7 +69,7 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', 'logs/sac_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', 'checkpoints', 'Path for checkpoint directory.')
+flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -155,7 +154,6 @@ def main(argv):
         num_actions=num_actions,
         q_target_tau=FLAGS.q_target_tau,
         discount=FLAGS.discount,
-        n_step=FLAGS.n_step,
         batch_size=FLAGS.batch_size,
         min_replay_size=FLAGS.min_replay_size,
         learn_frequency=FLAGS.learn_frequency,
@@ -177,7 +175,7 @@ def main(argv):
             policy_network=policy_network,
             num_actions=num_actions,
             min_replay_size=FLAGS.min_replay_size,
-            transition_accumulator=replay_lib.NStepTransitionAccumulator(n=FLAGS.n_step, discount=FLAGS.discount),
+            transition_accumulator=replay_lib.TransitionAccumulator(),
             device=actor_devices[i],
         )
         for i in range(FLAGS.num_actors)

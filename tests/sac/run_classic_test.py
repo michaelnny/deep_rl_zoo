@@ -40,7 +40,6 @@ class RunClassicGameTest(absltest.TestCase):
         FLAGS.environment_name = 'CartPole-v1'
         FLAGS.num_actors = 2
         FLAGS.batch_size = 4
-        FLAGS.n_step = 2
         FLAGS.replay_capacity = 100
         FLAGS.min_replay_size = 4
         FLAGS.learn_frequency = 2

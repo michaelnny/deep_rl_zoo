@@ -1,7 +1,8 @@
 Deep RL Zoo
 =============================
 A collection of Deep RL algorithms implemented with PyTorch to solve Atari games and classic control tasks like CartPole, LunarLander, and MountainCar.
-This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to support PyTorch, and implemented some SOTA algorithms like PPO, IMPALA, R2D2, and Agent57.
+
+This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to run with PyTorch, and implemented some SOTA algorithms like PPO, IMPALA, R2D2, and Agent57.
 
 
 # Content
@@ -20,12 +21,11 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 # Environment and Requirements
 * Python        3.9.12
-* pip           22.0.3
-* PyTorch       1.11.0
+* pip           22.3.1
+* PyTorch       1.12.1
 * openAI Gym    0.25.2
-* tensorboard   2.8.0
-* numpy         1.22.2
-
+* tensorboard   2.11.0
+* numpy         1.23.4
 
 
 # Implemented Algorithms
@@ -100,7 +100,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 # Author's Notes
 * Only support episodic environment with discrete action space (except PPO which also supports continuous action space).
-* Focus on study and implementation for each algorithms, rather than create a standard library.
+* Focus on study and implementation of each algorithms, rather than creating a standard library.
 * Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup.
 * The hyper-parameters and network architectures are not fine-tuned.
@@ -111,27 +111,8 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 # Quick Start
 
-## Install required packages on openSUSE 15 Tumbleweed Linux
-```
-# install required dev packages
-sudo zypper install gcc gcc-c++ python3-devel
 
-# install swig which is required for box-2d
-sudo zypper install swig
 
-# install ffmpeg for recording agent self-play
-sudo zypper install ffmpeg
-
-# upgrade pip
-python3 -m pip install --upgrade pip setuptools
-
-pip3 install -r requirements.txt
-
-# optional, install pre-commit and hooks
-pip3 install pre-commit
-
-pre-commit install
-```
 
 ## Install required packages on Mac
 ```
@@ -150,6 +131,10 @@ brew install ffmpeg
 # install snappy for compress numpy.array on M1 mac
 brew install snappy
 CPPFLAGS="-I/opt/homebrew/include -L/opt/homebrew/lib" pip3 install python-snappy
+
+git clone https://github.com/michaelnny/deep_rl_zoo.git
+
+cd deep_rl_zoo
 
 pip3 install -r requirements.txt
 
@@ -170,6 +155,10 @@ sudo apt-get install ffmpeg
 # upgrade pip
 python3 -m pip install --upgrade pip setuptools
 
+git clone https://github.com/michaelnny/deep_rl_zoo.git
+
+cd deep_rl_zoo
+
 pip3 install -r requirements.txt
 
 # optional, install pre-commit and hooks
@@ -178,6 +167,31 @@ pip3 install pre-commit
 pre-commit install
 ```
 
+## Install required packages on openSUSE 15 Tumbleweed Linux
+```
+# install required dev packages
+sudo zypper install gcc gcc-c++ python3-devel
+
+# install swig which is required for box-2d
+sudo zypper install swig
+
+# install ffmpeg for recording agent self-play
+sudo zypper install ffmpeg
+
+# upgrade pip
+python3 -m pip install --upgrade pip setuptools
+
+git clone https://github.com/michaelnny/deep_rl_zoo.git
+
+cd deep_rl_zoo
+
+pip3 install -r requirements.txt
+
+# optional, install pre-commit and hooks
+pip3 install pre-commit
+
+pre-commit install
+```
 
 # Train Agents
 
@@ -197,7 +211,7 @@ python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
 
 ## Atari games
 * By default, we uses gym `NoFrameskip-v4` for Atari game, and we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
-* We don't scale the images before store into experience replay, as that will require 4-5x more RAM, we only scale them inside the model.forward() method.
+* We don't scale the images before store into experience replay, as that will require 2-3x more RAM, we only scale them inside the model.forward() method.
 
 To run a agent on Atari game, use the following command, replace the <agent_name> with the sub-directory name.
 ```
@@ -217,7 +231,7 @@ When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMOR
 python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
 ```
 
-Notice the code DOES NOT SUPPORT running on multiple GPUs out of the box, you can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs, but there's no guarantee it will work.
+**Notice the code DOES NOT SUPPORT running on multiple GPUs out of the box**, as we don't have access to such environment. You can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs, but **there's NO GUARANTEE it will work**.
 ```
 # Change here to map to dedicated device if have multiple GPUs
 actor_devices = [runtime_device] * FLAGS.num_actors
@@ -253,24 +267,24 @@ The classes for write logs to Tensorboard is implemented in `trackers.py` module
 
 ## Measurements available on Tensorboard
 `performance(env_steps)`:
-* the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
+* the statistics are measured over env steps (or frames for Atari), if use frame_skip, it's counted after frame skip
 * `episode_return` the non-discounted sum of raw rewards of last episode
-* `episode_steps` the last episode steps
+* `episode_steps` the last episode length or steps
 * `num_episodes` how many episodes have been conducted
 * `step_rate(second)` step per seconds, per actors
-![Tensorboard performance](/screenshots/Rainbow_Pong_performance.png)
 
 `agent_statistics(env_steps)`:
-* the statistics are measured over env steps, or frames, if use frame_skip, it does't count the skipped frames
+* the statistics are measured over env steps (or frames for Atari), if use frame_skip, it's counted after frame skip
 * it'll log whatever is exposed in the agent's `statistics` property such as train loss, learning rate, discount, updates etc.
 * for algorithm support parallel training (multiple actors), this is only the statistics for the actors.
-![Tensorboard agent_statistics](/screenshots/Rainbow_Pong_agent_statistics.png)
 
 `learner_statistics(learner_steps)`:
 * only available if the agent supports parallel training (multiple actors one learner)
 * it'll log whatever is exposed in the learner's `statistics` property such as train loss, learning rate, discount, updates etc.
 * to improve performance, it only logs every 100 learner steps
-![Tensorboard learner_statistics](/screenshots/R2D2_CartPole_learner_statistics.png)
+
+![DQN on Pong](/screenshots/DQN_on_Pong.png)
+![DQN on Breakout](/screenshots/DQN_on_Breakout.png)
 
 ## Add tags to Tensorboard
 This could be handy if we want to compare different hyper parameter's performances
@@ -284,13 +298,12 @@ This could be handy if we want to see what's happening during the training, we c
 ```
 python3 -m deep_rl_zoo.r2d2.run_classic --environment_name=MountainCar-v0 --debug_screenshots_frequency=100
 ```
-![Tensorboard debug screenshots](/screenshots/Tensorboard_debug_screenshots.png)
-
+![Tensorboard screenshot images](/screenshots/Tensorboard_debug_screenshots.png)
 
 # Acknowledgments
 
 ## This project is based on the work of DeepMind's projects.
-* [DeepMind DQN Zoo](http://github.com/deepmind/dqn_zoo) (for code strcture, replay, DQN agents, trackers, and more)
+* [DeepMind DQN Zoo](http://github.com/deepmind/dqn_zoo) (for code structure, replay, DQN agents, trackers, and more)
 * [DeepMind RLax](https://github.com/deepmind/rlax) (for modules to calculate losses for all different algorithms)
 * [DeepMind TRFL](https://github.com/deepmind/trfl) (for modules to calculate losses for all different algorithms)
 
@@ -302,13 +315,11 @@ python3 -m deep_rl_zoo.r2d2.run_classic --environment_name=MountainCar-v0 --debu
 
 
 # License
-
 This project is licensed under the Apache License, Version 2.0 (the "License")
 see the LICENSE file for details
 
 
 # Citing our work
-
 If you reference or use our project in your research, please cite:
 
 ```

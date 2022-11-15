@@ -38,7 +38,7 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height,
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width, for atari only.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip, for atari only.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack, for atari only.')
-flags.DEFINE_float('eval_exploration_epsilon', 0.001, 'Fixed exploration rate in e-greedy policy for evaluation.')
+flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('num_atoms', 51, 'Number of elements in the support of the categorical DQN.')
 flags.DEFINE_float('v_min', -10.0, 'Minimum elements value in the support of the categorical DQN.')
 flags.DEFINE_float('v_max', 10.0, 'Maximum elements value in the support of the categorical DQN.')
