@@ -23,18 +23,28 @@ from deep_rl_zoo.sac import eval_agent
 FLAGS = flags.FLAGS
 FLAGS.tensorboard = False
 FLAGS.num_iterations = 1
-FLAGS.load_checkpoint_file = '/tmp/not_found_checkpoint.ckpt'
+FLAGS.num_eval_frames = 200
 FLAGS.recording_video_dir = ''
-
+FLAGS.load_checkpoint_file = ''
 
 class RunEvaluationAgentTest(parameterized.TestCase):
     @flagsaver.flagsaver
-    def test_can_not_find_checkpoint(self):
+    def test_raise_error_when_checkpoint_file_not_found(self):
         FLAGS.environment_name = 'Pong'
-        FLAGS.num_eval_frames = 200
+        FLAGS.load_checkpoint_file = '/tmp/not_found_checkpoint.ckpt'
 
         with self.assertRaisesRegex(ValueError, 'is not a valid checkpoint file'):
             eval_agent.main(None)
+
+    @flagsaver.flagsaver
+    def test_run_classic(self):
+        FLAGS.environment_name = 'CartPole-v1'
+        eval_agent.main(None)
+
+    @flagsaver.flagsaver
+    def test_run_atari(self):
+        FLAGS.environment_name = 'Pong'
+        eval_agent.main(None)
 
 
 if __name__ == '__main__':

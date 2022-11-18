@@ -33,11 +33,11 @@ python3 -m tests.r2d2.run_classic_test
 python3 -m tests.r2d2.run_atari_test
 python3 -m tests.r2d2.eval_agent_test
 python3 -m tests.ngu.run_classic_test
-# python3 -m tests.ngu.run_atari_test
-# python3 -m tests.ngu.eval_agent_test
+python3 -m tests.ngu.run_atari_test
+python3 -m tests.ngu.eval_agent_test
 python3 -m tests.agent57.run_classic_test
-# python3 -m tests.agent57.run_atari_test
-# python3 -m tests.agent57.eval_agent_test
+python3 -m tests.agent57.run_atari_test
+python3 -m tests.agent57.eval_agent_test
 
 # Policy gradient agents
 python3 -m tests.reinforce.run_classic_test

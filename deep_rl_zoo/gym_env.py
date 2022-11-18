@@ -596,8 +596,8 @@ def play_and_record_video(
     observation = env.reset()
     agent.reset()
 
-    reward = 0.0
-    done = False
+    reward = raw_reward = 0.0
+    real_terminated = done = False
     first_step = True
 
     t = 0
@@ -606,18 +606,36 @@ def play_and_record_video(
         should_fire = False
 
     while True:
-        timestep_t = types_lib.TimeStep(observation=observation, reward=reward, done=done, first=first_step)
+        timestep_t = types_lib.TimeStep(observation=observation,
+                reward=reward,
+                raw_reward=raw_reward,
+                done=done,
+                real_terminated=real_terminated,
+                first=first_step,)
         a_t = agent.step(timestep_t)
         observation, reward, done, info = env.step(a_t)
         t += 1
+
         first_step = False
+
+        # Only keep track of non-clipped/unscaled raw reward when collecting statistics for Atari games
+        if 'raw_reward' in info and isinstance(info['raw_reward'], (float, int)):
+            raw_reward = info['raw_reward']
+        else:
+            raw_reward = reward
+
+        real_terminated = done
+
+        # For Atari games, the game may be done when loss a life, but it's not the real terminated.
+        if 'was_real_terminated' in info and isinstance(info['was_real_terminated'], bool):
+            real_terminated = info['was_real_terminated']
 
         # Take fire action after loss a life
         if should_fire and not done and lives != info['lives']:
             lives = info['lives']
             observation = take_fire_action(env)
 
-        if done:
+        if real_terminated:
             break
 
     env.close()
