@@ -655,13 +655,12 @@ def run_evaluation_iterations(
     """
 
     # Tensorboard log dir prefix.
-    test_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, None, 'test')
+    test_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, None, 'test') if tensorboard else None
     test_trackers = trackers_lib.make_default_trackers(test_tb_log_prefix)
 
     iteration = 0
     while iteration < num_iterations and num_eval_frames > 0:
         logging.info(f'Testing iteration {iteration}')
-        eval_tb_log_dir = f'{test_tb_log_prefix}-{iteration}' if tensorboard else None
 
         # Run some testing steps.
         eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, test_trackers)

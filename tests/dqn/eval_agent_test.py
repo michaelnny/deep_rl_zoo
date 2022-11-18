@@ -27,6 +27,7 @@ FLAGS.num_eval_frames = 200
 FLAGS.recording_video_dir = ''
 FLAGS.load_checkpoint_file = ''
 
+
 class RunEvaluationAgentTest(parameterized.TestCase):
     @flagsaver.flagsaver
     def test_raise_error_when_checkpoint_file_not_found(self):
@@ -45,6 +46,7 @@ class RunEvaluationAgentTest(parameterized.TestCase):
     def test_run_atari(self):
         FLAGS.environment_name = 'Pong'
         eval_agent.main(None)
+
 
 if __name__ == '__main__':
     absltest.main()
