@@ -13,6 +13,7 @@ __pycache__/
 
 
 # logs and big files
+runs/*
 logs/*
 recordings/*
 checkpoints/*

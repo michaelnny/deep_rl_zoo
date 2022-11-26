@@ -102,10 +102,8 @@ class FireOnReset(gym.Wrapper):
         return self.env.step(action)
 
 
-class DoneOnLifeLoss(gym.Wrapper):
-    """Make end-of-life == end-of-episode, but only reset on true game over.
-    Done by DeepMind for the DQN and co. since it helps value estimation.
-    """
+class LifeLossWrapper(gym.Wrapper):
+    """Adds boolean key 'loss_life' into the info dict, but only reset on true game over."""
 
     def __init__(self, env):
 
@@ -119,12 +117,14 @@ class DoneOnLifeLoss(gym.Wrapper):
         # check current lives, make loss of life terminal,
         # then update lives to handle bonus lives
         lives = self.env.unwrapped.ale.lives()
+
         if lives < self.lives and lives > 0:
             # for Qbert sometimes we stay in lives == 0 condition for a few frames
             # so it's important to keep lives > 0, so that we only reset once
             # the environment advertises done.
-            done = True
-        info['was_real_terminated'] = self.was_real_terminated
+            info['loss_life'] = True
+        else:
+            info['loss_life'] = False
         self.lives = lives
         return obs, reward, done, info
 
@@ -455,9 +455,7 @@ def create_atari_environment(
     if obscure_epsilon > 0.0:
         env = ObscureObservation(env, obscure_epsilon)
     if terminal_on_life_loss:
-        env = DoneOnLifeLoss(env)
-    if 'FIRE' in env.unwrapped.get_action_meanings():
-        env = FireOnReset(env)
+        env = LifeLossWrapper(env)
     env = ResizeAndGrayscaleFrame(env, width=screen_width, height=screen_height)
     if scale_obs:
         env = ScaledFloatFrame(env)
@@ -495,7 +493,8 @@ def create_classic_environment(
 
     env = gym.make(env_name)
     env.seed(seed)
-    # env.reset(seed=seed)
+    env.action_space.seed(seed)
+    env.observation_space.seed(seed)
 
     # Clip reward to max absolute reward bound
     if max_abs_reward is not None:
@@ -531,6 +530,8 @@ def create_continuous_environment(
     env = gym.make(env_name)
     env = gym.wrappers.ClipAction(env)
     env = gym.wrappers.NormalizeObservation(env)
+
+    env = RecordRawReward(env)
     env = gym.wrappers.NormalizeReward(env)
 
     # Optionally clipping the observation and rewards.
@@ -550,7 +551,6 @@ def play_and_record_video(
     agent: types_lib.Agent,
     env: gym.Env,
     save_dir: str = 'recordings',
-    auto_fire: bool = True,
 ) -> None:
     """Self-play and record a video for a single game.
 
@@ -558,7 +558,6 @@ def play_and_record_video(
         env: the gym environment to play.
         agent: the agent which should have step() method to return action for a given state.
         save_dir: the recording video file directory, default save to 'recordings/{agent_name}_{env.spec.id}_{timestamp}'.
-        auto_fire: if True, take 'FIRE' action after loss a life, default on.
 
     Raises:
         if agent is not an instance of types_lib.Agent.
@@ -572,70 +571,31 @@ def play_and_record_video(
     full_save_dir = f'{save_dir}/{agent.agent_name}_{env.spec.id}_{ts}'
     logging.info(f'Recording self-play video at "{full_save_dir}"')
 
-    def take_fire_action(env):
-        """Some games requires the agent to press 'FIRE' to start the game once loss a life."""
-        assert env.unwrapped.get_action_meanings()[1] == 'FIRE'
-        s_t, _, _, _ = env.step(1)
-        return s_t
-
-    def check_atari_env(env):
-        """Check if is atari env and has fire action."""
-        has_fire_action = False
-        lives = 0
-        try:
-            lives = env.ale.lives()
-            if env.unwrapped.get_action_meanings()[1] == 'FIRE':
-                has_fire_action = True
-        except AttributeError:
-            pass
-
-        return has_fire_action, lives
-
     env = gym.wrappers.RecordVideo(env, full_save_dir)
 
     observation = env.reset()
     agent.reset()
 
-    reward = raw_reward = 0.0
-    real_terminated = done = False
+    reward = 0.0
+    done = False
     first_step = True
 
     t = 0
-    should_fire, lives = check_atari_env(env)
-    if not auto_fire:
-        should_fire = False
 
     while True:
-        timestep_t = types_lib.TimeStep(observation=observation,
-                reward=reward,
-                raw_reward=raw_reward,
-                done=done,
-                real_terminated=real_terminated,
-                first=first_step,)
+        timestep_t = types_lib.TimeStep(
+            observation=observation,
+            reward=reward,
+            raw_reward=reward,  # no tracking here
+            done=done,
+            first=first_step,
+        )
         a_t = agent.step(timestep_t)
         observation, reward, done, info = env.step(a_t)
         t += 1
 
         first_step = False
-
-        # Only keep track of non-clipped/unscaled raw reward when collecting statistics for Atari games
-        if 'raw_reward' in info and isinstance(info['raw_reward'], (float, int)):
-            raw_reward = info['raw_reward']
-        else:
-            raw_reward = reward
-
-        real_terminated = done
-
-        # For Atari games, the game may be done when loss a life, but it's not the real terminated.
-        if 'was_real_terminated' in info and isinstance(info['was_real_terminated'], bool):
-            real_terminated = info['was_real_terminated']
-
-        # Take fire action after loss a life
-        if should_fire and not done and lives != info['lives']:
-            lives = info['lives']
-            observation = take_fire_action(env)
-
-        if real_terminated:
+        if done:
             break
 
     env.close()

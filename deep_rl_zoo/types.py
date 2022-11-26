@@ -33,7 +33,6 @@ class TimeStep(NamedTuple):
     reward: Optional[float]  # reward couble be clipped or scaled
     raw_reward: Optional[float]  # non-clipped/unscaled reward, only used by the trackers
     done: Optional[bool]  # This may not be the real episode termination, since Atari we often use done-on-loss-life
-    real_terminated: Optional[bool] # Episode real termination mark, only used by the trackers to collect traning statistics
     first: Optional[bool]  # first step of an episode
 
 

@@ -68,7 +68,8 @@ def run_env_loop(
         # Think reset is a special 'action' the agent take, thus given us a reward 'zero', and a new state s_t.
         observation = env.reset()
         reward = raw_reward = 0.0
-        real_terminated = done = False
+        loss_life = False
+        done = False
         first_step = True
 
         while True:  # For each step in the current episode.
@@ -76,8 +77,7 @@ def run_env_loop(
                 observation=observation,
                 reward=reward,
                 raw_reward=raw_reward,
-                done=done,
-                real_terminated=real_terminated,
+                done=done or loss_life,
                 first=first_step,
             )
             a_t = agent.step(timestep_t)
@@ -87,19 +87,17 @@ def run_env_loop(
             observation, reward, done, info = env.step(a_tm1)
             first_step = False
 
-            # Only keep track of non-clipped/unscaled raw reward when collecting statistics for Atari games
+            # Only keep track of non-clipped/unscaled raw reward when collecting statistics
+            raw_reward = reward
             if 'raw_reward' in info and isinstance(info['raw_reward'], (float, int)):
                 raw_reward = info['raw_reward']
-            else:
-                raw_reward = reward
 
-            real_terminated = done
+            # For Atari games, check if treat loss a life as a soft-terminal state
+            loss_life = False
+            if 'loss_life' in info and isinstance(info['loss_life'], bool):
+                loss_life = info['loss_life']
 
-            # For Atari games, the game may be done when loss a life, but it's not the real terminated.
-            if 'was_real_terminated' in info and isinstance(info['was_real_terminated'], bool):
-                real_terminated = info['was_real_terminated']
-
-            if real_terminated:
+            if done:  # Actual end of an episode
                 # Notice if we don't add additional step to agent, with our way of constructing the run loop,
                 # the done state and final reward will never be seen by the agent
                 timestep_t = types_lib.TimeStep(
@@ -107,7 +105,6 @@ def run_env_loop(
                     reward=reward,
                     raw_reward=raw_reward,
                     done=done,
-                    real_terminated=real_terminated,
                     first=first_step,
                 )
                 unused_a = agent.step(timestep_t)  # noqa: F841
