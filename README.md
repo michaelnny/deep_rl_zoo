@@ -111,9 +111,6 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 # Quick Start
 
-
-
-
 ## Install required packages on Mac
 ```
 # install homebrew, skip this step if already installed
@@ -230,6 +227,10 @@ When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMOR
 ```
 python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
 ```
+
+The following is a high level overview of the parallel training architect. Where each actor has an own copy of the neural network. For the learner, the parameters of neural network is shared between these actors by using the `network.share_memory()` option from PyTorch. So that the actors can copy the latest parameters from learner's neural network instance without using additional queue.
+
+![parallel training architecture](/ideas/parallel_training_architecture.png)
 
 **Notice the code DOES NOT SUPPORT running on multiple GPUs out of the box**, as we don't have access to such environment. You can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs, but **there's NO GUARANTEE it will work**.
 ```

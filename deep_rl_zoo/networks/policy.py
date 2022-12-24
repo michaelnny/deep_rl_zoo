@@ -346,7 +346,12 @@ class ActorConvNet(nn.Module):
         super().__init__()
 
         self.body = common.NatureCnnBackboneNet(input_shape)
-        self.policy_head = nn.Linear(self.body.out_features, num_actions)
+
+        self.policy_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
 
         # Initialize weights
         common.initialize_weights(self)
@@ -369,7 +374,12 @@ class CriticConvNet(nn.Module):
         super().__init__()
 
         self.body = common.NatureCnnBackboneNet(input_shape)
-        self.baseline_head = nn.Linear(self.body.out_features, 1)
+
+        self.baseline_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
 
         # Initialize weights
         common.initialize_weights(self)
@@ -393,8 +403,17 @@ class ActorCriticConvNet(nn.Module):
 
         self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.policy_head = nn.Linear(self.body.out_features, num_actions)
-        self.baseline_head = nn.Linear(self.body.out_features, 1)
+        self.policy_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
+
+        self.baseline_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
 
         # Initialize weights
         common.initialize_weights(self)
@@ -485,8 +504,17 @@ class ImpalaActorCriticConvNet(nn.Module):
             self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=256, num_layers=1)
             core_output_size = 256
 
-        self.policy_head = nn.Linear(core_output_size, num_actions)
-        self.baseline_head = nn.Linear(core_output_size, 1)
+        self.policy_head = nn.Sequential(
+            nn.Linear(core_output_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
+
+        self.baseline_head = nn.Sequential(
+            nn.Linear(core_output_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
 
         # Initialize weights
         common.initialize_weights(self)
@@ -620,10 +648,23 @@ class RndActorCriticConvNet(nn.Module):
 
         self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.policy_head = nn.Linear(self.body.out_features, num_actions)
+        self.policy_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
 
-        self.ext_baseline_head = nn.Linear(self.body.out_features, 1)
-        self.int_baseline_head = nn.Linear(self.body.out_features, 1)
+        self.ext_baseline_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
+
+        self.int_baseline_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
 
         # Initialize weights
         common.initialize_weights(self)

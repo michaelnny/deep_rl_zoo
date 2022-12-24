@@ -67,7 +67,7 @@ flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame s
 flags.DEFINE_integer('learn_frequency', 4, 'The frequency (measured in agent steps) to update parameters.')
 flags.DEFINE_integer(
     'target_network_update_frequency',
-    2000,
+    2500 * 2,
     'The frequency (measured in number of Q network parameter updates) to update target networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')

@@ -37,11 +37,9 @@ def initialize_weights(net: nn.Module) -> None:
 
     for module in net.modules():
         if isinstance(module, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+            nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
+            # nn.init.kaiming_uniform_(module.weight, mode='fan_out', nonlinearity='relu')
 
-            # nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-
-            # nn.init.xavier_normal_(module.weight)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
 
@@ -49,17 +47,16 @@ def initialize_weights(net: nn.Module) -> None:
 class NatureCnnBackboneNet(nn.Module):
     """DQN Nature paper conv2d layers backbone, returns feature representation vector."""
 
-    def __init__(self, input_shape: tuple, out_features: int = 512) -> None:
+    def __init__(self, input_shape: tuple) -> None:
         super().__init__()
-
-        self.out_features = out_features
 
         # Compute the output shape of final conv2d layer
         c, h, w = input_shape
         h, w = calc_conv2d_output((h, w), 8, 4)
         h, w = calc_conv2d_output((h, w), 4, 2)
         h, w = calc_conv2d_output((h, w), 3, 1)
-        conv2d_out_size = 64 * h * w
+
+        self.out_features = 64 * h * w
 
         self.net = nn.Sequential(
             nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4),
@@ -69,8 +66,6 @@ class NatureCnnBackboneNet(nn.Module):
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(conv2d_out_size, self.out_features),
-            nn.ReLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

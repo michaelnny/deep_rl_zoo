@@ -26,7 +26,7 @@ import torch
 
 # pylint: disable=import-error
 from deep_rl_zoo.networks.dqn import NguDqnConvNet, NguDqnNetworkInputs
-from deep_rl_zoo.networks.curiosity import RndConvNet, NguEmbeddingConvNet
+from deep_rl_zoo.networks.curiosity import NGURndConvNet, NguEmbeddingConvNet
 from deep_rl_zoo.agent57 import agent
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo import main_loop
@@ -165,9 +165,9 @@ def main(argv):
     int_q_optimizer = torch.optim.Adam(int_q_network.parameters(), lr=FLAGS.learning_rate)
 
     # Create RND target and predictor networks.
-    rnd_target_network = RndConvNet(input_shape=state_dim)
+    rnd_target_network = NGURndConvNet(input_shape=state_dim)
     rnd_target_network.share_memory()
-    rnd_predictor_network = RndConvNet(input_shape=state_dim)
+    rnd_predictor_network = NGURndConvNet(input_shape=state_dim)
     rnd_predictor_network.share_memory()
 
     # Create embedding networks.
@@ -273,7 +273,7 @@ def main(argv):
             learner_ext_q_network=ext_q_network,
             learner_int_q_network=int_q_network,
             rnd_target_network=rnd_target_network,
-            rnd_predictor_network=RndConvNet(input_shape=state_dim),
+            rnd_predictor_network=NGURndConvNet(input_shape=state_dim),
             embedding_network=NguEmbeddingConvNet(input_shape=state_dim, num_actions=num_actions),
             learner_rnd_predictor_network=rnd_predictor_network,
             learner_embedding_network=embedding_network,

@@ -435,7 +435,7 @@ class DrqnMlpNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the beginning of new episode, or every training batch"""
+        should call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -534,7 +534,7 @@ class R2d2DqnMlpNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the beginning of new episode, or every training batch"""
+        should call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -640,7 +640,7 @@ class NguDqnMlpNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the beginning of new episode, or every training batch"""
+        should call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -663,7 +663,11 @@ class DqnConvNet(nn.Module):
         self.num_actions = num_actions
         self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.value_head = nn.Linear(self.body.out_features, num_actions)
+        self.value_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -744,7 +748,11 @@ class C51DqnConvNet(nn.Module):
         self.num_atoms = atoms.size(0)
         self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.value_head = nn.Linear(self.body.out_features, num_actions * self.num_atoms)
+        self.value_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions * self.num_atoms),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -792,6 +800,7 @@ class RainbowDqnConvNet(nn.Module):
             nn.ReLU(),
             common.NoisyLinear(512, num_actions * self.num_atoms),
         )
+
         self.value_head = nn.Sequential(
             common.NoisyLinear(self.body.out_features, 512),
             nn.ReLU(),
@@ -854,7 +863,11 @@ class QRDqnConvNet(nn.Module):
 
         self.body = common.NatureCnnBackboneNet(input_shape)
 
-        self.value_head = nn.Linear(self.body.out_features, num_actions * self.num_taus)
+        self.value_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions * self.num_taus),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -898,7 +911,11 @@ class IqnConvNet(nn.Module):
         self.body = common.NatureCnnBackboneNet(input_shape)
         self.embedding_layer = nn.Linear(latent_dim, self.body.out_features)
 
-        self.value_head = nn.Linear(self.body.out_features, num_actions)
+        self.value_head = nn.Sequential(
+            nn.Linear(self.body.out_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -973,7 +990,11 @@ class DrqnConvNet(nn.Module):
 
         self.lstm = nn.LSTM(input_size=self.body.out_features, hidden_size=256, num_layers=1, batch_first=True)
 
-        self.value_head = nn.Linear(self.lstm.hidden_size, num_actions)
+        self.value_head = nn.Sequential(
+            nn.Linear(self.lstm.hidden_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions),
+        )
 
         # Initialize weights.
         common.initialize_weights(self)
@@ -1010,7 +1031,7 @@ class DrqnConvNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the beginning of new episode, or every training batch"""
+        should call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -1044,6 +1065,7 @@ class R2d2DqnConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, num_actions),
         )
+
         self.value_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 512),
             nn.ReLU(),
@@ -1107,7 +1129,7 @@ class R2d2DqnConvNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the beginning of new episode, or every training batch"""
+        should call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
 
@@ -1143,6 +1165,7 @@ class NguDqnConvNet(nn.Module):
             nn.ReLU(),
             nn.Linear(512, num_actions),
         )
+
         self.value_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 512),
             nn.ReLU(),
@@ -1213,6 +1236,6 @@ class NguDqnConvNet(nn.Module):
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
-        shoul call at the beginning of new episode, or every training batch"""
+        should call at the beginning of new episode, or every training batch"""
         # Shape should be num_layers, batch_size, hidden_size, note lstm expects two hidden states.
         return tuple(torch.zeros(self.lstm.num_layers, batch_size, self.lstm.hidden_size) for _ in range(2))
