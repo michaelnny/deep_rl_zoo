@@ -37,8 +37,8 @@ class BumpUpReward(gym.RewardWrapper):
 class AtariEnvironmentTest(parameterized.TestCase):
     def setUp(self):
         super().setUp()
-        self.screen_height = 96
-        self.screen_width = 84
+        self.frame_height = 96
+        self.frame_width = 84
 
     @parameterized.named_parameters(('environment_pong', 'Pong'), ('environment_breakout', 'Breakout'))
     def test_run_step(self, environment_name):
@@ -67,8 +67,8 @@ class AtariEnvironmentTest(parameterized.TestCase):
         env = gym_env.create_atari_environment(
             env_name='Pong',
             seed=seed,
-            screen_height=sizes[0],
-            screen_width=sizes[1],
+            frame_height=sizes[0],
+            frame_width=sizes[1],
             frame_stack=sizes[2],
             channel_first=False,
             scale_obs=False,
@@ -101,8 +101,8 @@ class AtariEnvironmentTest(parameterized.TestCase):
         env = gym_env.create_atari_environment(
             env_name='Pong',
             seed=seed,
-            screen_height=sizes[1],
-            screen_width=sizes[2],
+            frame_height=sizes[1],
+            frame_width=sizes[2],
             frame_stack=sizes[0],
             channel_first=True,
             scale_obs=False,
@@ -155,8 +155,8 @@ class AtariEnvironmentTest(parameterized.TestCase):
         env = gym_env.create_atari_environment(
             env_name=environment_name,
             seed=seed,
-            screen_height=self.screen_height,
-            screen_width=self.screen_width,
+            frame_height=self.frame_height,
+            frame_width=self.frame_width,
             frame_skip=4,
             frame_stack=4,
             scale_obs=True,

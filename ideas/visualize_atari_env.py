@@ -20,8 +20,8 @@ def main(argv):
     def environment_builder():
         return gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
-            screen_height=FLAGS.environment_height,
-            screen_width=FLAGS.environment_width,
+            frame_height=FLAGS.environment_height,
+            frame_width=FLAGS.environment_width,
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             seed=1,

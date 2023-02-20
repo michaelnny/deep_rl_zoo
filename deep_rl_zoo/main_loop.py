@@ -19,6 +19,10 @@
 #
 # ==============================================================================
 """Training loops for Deep RL Zoo."""
+import os
+
+os.environ['OMP_NUM_THREADS'] = '1'
+
 from typing import Iterable, List, Tuple, Text, Mapping, Union, Any
 import itertools
 import collections

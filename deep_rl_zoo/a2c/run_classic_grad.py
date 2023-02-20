@@ -31,6 +31,10 @@ https://openai.com/blog/baselines-acktr-a2c/.
 from absl import app
 from absl import flags
 from absl import logging
+import os
+
+os.environ['OMP_NUM_THREADS'] = '1'
+
 import multiprocessing
 import numpy as np
 import torch

@@ -403,8 +403,8 @@ def create_atari_environment(
     seed: int = 1,
     frame_skip: int = 4,
     frame_stack: int = 4,
-    screen_height: int = 84,
-    screen_width: int = 84,
+    frame_height: int = 84,
+    frame_width: int = 84,
     noop_max: int = 30,
     max_episode_steps: int = 108000,
     obscure_epsilon: float = 0.0,
@@ -422,8 +422,8 @@ def create_atari_environment(
         frame_skip: the frequency at which the agent experiences the game,
                 the environment will also repeat action.
         frame_stack: stack n last frames.
-        screen_height: height of the resized frame.
-        screen_width: width of the resized frame.
+        frame_height: height of the resized frame.
+        frame_width: width of the resized frame.
         noop_max: maximum number of no-ops to apply at the beginning
                 of each episode to reduce determinism. These no-ops are applied at a
                 low-level, before frame skipping.
@@ -456,7 +456,7 @@ def create_atari_environment(
         env = ObscureObservation(env, obscure_epsilon)
     if terminal_on_life_loss:
         env = LifeLossWrapper(env)
-    env = ResizeAndGrayscaleFrame(env, width=screen_width, height=screen_height)
+    env = ResizeAndGrayscaleFrame(env, width=frame_width, height=frame_height)
     if scale_obs:
         env = ScaledFloatFrame(env)
     if clip_reward:
