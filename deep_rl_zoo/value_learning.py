@@ -68,12 +68,12 @@ def qlearning(
 
     Args:
       q_tm1: Tensor holding Q-values for first timestep in a batch of
-        transitions, shape `[B x num_actions]`.
+        transitions, shape `[B x action_dim]`.
       a_tm1: Tensor holding action indices, shape `[B]`.
       r_t: Tensor holding rewards, shape `[B]`.
       discount_t: Tensor holding discount values, shape `[B]`.
       q_t: Tensor holding Q-values for second timestep in a batch of
-        transitions, shape `[B x num_actions]`.
+        transitions, shape `[B x action_dim]`.
 
     Returns:
       A namedtuple with fields:
@@ -129,14 +129,14 @@ def double_qlearning(
 
     Args:
       q_tm1: Tensor holding Q-values for first timestep in a batch of
-        transitions, shape `[B x num_actions]`.
+        transitions, shape `[B x action_dim]`.
       a_tm1: Tensor holding action indices, shape `[B]`.
       r_t: Tensor holding rewards, shape `[B]`.
       discount_t: Tensor holding discount values, shape `[B]`.
       q_t_value: Tensor of Q-values for second timestep in a batch of transitions,
-        used to estimate the value of the best action, shape `[B x num_actions]`.
+        used to estimate the value of the best action, shape `[B x action_dim]`.
       q_t_selector: Tensor of Q-values for second timestep in a batch of
-        transitions used to estimate the best action, shape `[B x num_actions]`.
+        transitions used to estimate the best action, shape `[B x action_dim]`.
 
     Returns:
       A namedtuple with fields:
@@ -187,7 +187,7 @@ def double_qlearning(
 def _slice_with_actions(embeddings: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
     """Slice a Tensor.
 
-    Take embeddings of the form [batch_size, num_actions, embed_dim]
+    Take embeddings of the form [batch_size, action_dim, embed_dim]
     and actions of the form [batch_size, 1], and return the sliced embeddings
     like embeddings[:, actions, :].
 
@@ -199,7 +199,7 @@ def _slice_with_actions(embeddings: torch.Tensor, actions: torch.Tensor) -> torc
       Tensor of embeddings indexed by actions
     """
 
-    batch_size, num_actions = embeddings.shape[:2]
+    batch_size, action_dim = embeddings.shape[:2]
 
     # Values are the 'values' in a sparse tensor we will be setting
     act_idx = actions[:, None]
@@ -212,7 +212,7 @@ def _slice_with_actions(embeddings: torch.Tensor, actions: torch.Tensor) -> torc
     indices = torch.concat([act_range, act_idx], 1)
 
     # Needs transpose indices before adding to torch.sparse_coo_tensor.
-    actions_mask = torch.sparse_coo_tensor(indices.t(), values, [batch_size, num_actions])
+    actions_mask = torch.sparse_coo_tensor(indices.t(), values, [batch_size, action_dim])
     with torch.no_grad():
         actions_mask = actions_mask.to_dense().bool()
 
@@ -293,14 +293,14 @@ def categorical_dist_qlearning(
       atoms_tm1: 1-D tensor containing atom values for first timestep,
         shape `[num_atoms]`.
       logits_q_tm1: Tensor holding logits for first timestep in a batch of
-        transitions, shape `[B, num_actions, num_atoms]`.
+        transitions, shape `[B, action_dim, num_atoms]`.
       a_tm1: Tensor holding action indices, shape `[B]`.
       r_t: Tensor holding rewards, shape `[B]`.
       discount_t: Tensor holding discount values, shape `[B]`.
       atoms_t: 1-D tensor containing atom values for second timestep,
         shape `[num_atoms]`.
       logits_q_t: Tensor holding logits for second timestep in a batch of
-        transitions, shape `[B, num_actions, num_atoms]`.
+        transitions, shape `[B, action_dim, num_atoms]`.
 
     Returns:
       A namedtuple with fields:
@@ -375,16 +375,16 @@ def categorical_dist_double_qlearning(
       atoms_tm1: 1-D tensor containing atom values for first timestep,
         shape `[num_atoms]`.
       logits_q_tm1: Tensor holding logits for first timestep in a batch of
-        transitions, shape `[B, num_actions, num_atoms]`.
+        transitions, shape `[B, action_dim, num_atoms]`.
       a_tm1: Tensor holding action indices, shape `[B]`.
       r_t: Tensor holding rewards, shape `[B]`.
       discount_t: Tensor holding discount values, shape `[B]`.
       atoms_t: 1-D tensor containing atom values for second timestep,
         shape `[num_atoms]`.
       logits_q_t: Tensor holding logits for second timestep in a batch of
-        transitions, shape `[B, num_actions, num_atoms]`.
+        transitions, shape `[B, action_dim, num_atoms]`.
       q_t_selector: Tensor holding another set of Q-values for second timestep
-        in a batch of transitions, shape `[B, num_actions]`.
+        in a batch of transitions, shape `[B, action_dim]`.
         These values are used for estimating the best action. In Double DQN they
         come from the online network.
 
@@ -504,12 +504,12 @@ def quantile_q_learning(
     Dabney et al. (https://arxiv.org/abs/1710.10044).
 
     Args:
-      dist_q_tm1: Tensor holding Q distribution at time t-1, shape `[B, num_taus, num_actions]`.
+      dist_q_tm1: Tensor holding Q distribution at time t-1, shape `[B, num_taus, action_dim]`.
       tau_q_tm1: Q distribution probability thresholds, , shape `[B, num_taus]`.
       a_tm1: Tensor holding action indices, shape `[B]`.
       r_t: Tensor holding rewards, shape `[B]`.
       discount_t: Tensor holding discount values, shape `[B]`.
-      dist_q_t: Tensor holding target Q distribution at time t, shape `[B, num_taus, num_actions]`.
+      dist_q_t: Tensor holding target Q distribution at time t, shape `[B, num_taus, action_dim]`.
       huber_param: Huber loss parameter, defaults to 0 (no Huber loss).
 
     Returns:
@@ -570,16 +570,16 @@ def quantile_double_q_learning(
     Dabney et al. (https://arxiv.org/abs/1710.10044).
 
     Args:
-      dist_q_tm1: Tensor holding Q distribution at time t-1, shape `[B, num_taus, num_actions]`.
+      dist_q_tm1: Tensor holding Q distribution at time t-1, shape `[B, num_taus, action_dim]`.
       tau_q_tm1: Q distribution probability thresholds, , shape `[B, num_taus]`.
       a_tm1: Tensor holding action indices, shape `[B]`.
       r_t: Tensor holding rewards, shape `[B]`.
       discount_t: Tensor holding discount values, shape `[B]`.
-      dist_q_t: Tensor holding target Q distribution at time t, shape `[B, num_taus, num_actions]`.
+      dist_q_t: Tensor holding target Q distribution at time t, shape `[B, num_taus, action_dim]`.
       q_t_selector: Tensor holding Q distribution at time t for selecting greedy action in
         target policy. This is separate from dist_q_t as in Double Q-Learning, but
         can be computed with the target network and a separate set of samples,
-        shape `[B, num_taus, num_actions]`.
+        shape `[B, num_taus, action_dim]`.
       huber_param: Huber loss parameter, defaults to 0 (no Huber loss).
 
     Returns:
@@ -644,14 +644,14 @@ def retrace(
     (https://arxiv.org/abs/1606.02647).
 
     Args:
-      q_tm1: Q-values at time t-1, this is from the online Q network, shape [T, B, num_actions].
-      q_t: Q-values at time t, this is often from the target Q network, shape [T, B, num_actions].
+      q_tm1: Q-values at time t-1, this is from the online Q network, shape [T, B, action_dim].
+      q_t: Q-values at time t, this is often from the target Q network, shape [T, B, action_dim].
       a_tm1: action index at time t-1, the action the agent took in state s_tm1, shape [T, B].
       a_t: action index at time t, the action the agent took in state s_t, shape [T, B].
       r_t: reward at time t, for state-action pair (s_tm1, a_tm1), shape [T, B].
       discount_t: discount at time t, shape [T, B].
-      pi_t: target policy probs at time t, shape [T, B, num_actions].
-      mu_t: behavior policy probs at time t, shape [T, B, num_actions].
+      pi_t: target policy probs at time t, shape [T, B, action_dim].
+      mu_t: behavior policy probs at time t, shape [T, B, action_dim].
       lambda_: scalar mixing parameter lambda.
       eps: small value to add to mu_t for numerical stability.
 

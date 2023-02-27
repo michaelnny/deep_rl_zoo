@@ -96,18 +96,18 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape[0]
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Create policy network for actors, learner will copy new weights to this network after batch learning
-    actor_policy_network = ImpalaActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions, use_lstm=FLAGS.use_lstm)
+    actor_policy_network = ImpalaActorCriticMlpNet(state_dim=state_dim, action_dim=action_dim, use_lstm=FLAGS.use_lstm)
     actor_policy_network.share_memory()
 
     # Create policy network for leaner to optimize
-    policy_network = ImpalaActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions, use_lstm=FLAGS.use_lstm)
+    policy_network = ImpalaActorCriticMlpNet(state_dim=state_dim, action_dim=action_dim, use_lstm=FLAGS.use_lstm)
     policy_optimizer = torch.optim.RMSprop(
         policy_network.parameters(),
         lr=FLAGS.learning_rate,
@@ -127,7 +127,7 @@ def main(argv):
     )
 
     network_output = policy_network(pi_input)
-    assert network_output.pi_logits.shape == (1, 1, num_actions)
+    assert network_output.pi_logits.shape == (1, 1, action_dim)
     assert network_output.baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner

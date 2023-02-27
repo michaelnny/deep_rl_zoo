@@ -111,10 +111,10 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape.
@@ -123,14 +123,14 @@ def main(argv):
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network and optimizer
-    policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
+    policy_network = ActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
     policy_network.share_memory()
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.pi_logits.shape == (1, action_dim)
     assert network_output.baseline.shape == (1, 1)
 
     replay = replay_lib.UniformReplay(FLAGS.batch_size, replay_lib.TransitionStructure, random_state)

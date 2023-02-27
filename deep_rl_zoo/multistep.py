@@ -172,12 +172,12 @@ def general_off_policy_returns_from_action_values(
     (https://arxiv.org/abs/1606.02647).
 
     Args:
-      q_t: Q-values at times [1, ..., K - 1], shape [T, B, num_actions].
+      q_t: Q-values at times [1, ..., K - 1], shape [T, B, action_dim].
       a_t: action index at times [1, ..., K - 1], shape [T, B].
       r_t: reward at times [1, ..., K - 1], shape [T, B].
       discount_t: discount at times [1, ..., K - 1], shape [T, B].
       c_t: importance weights at times [1, ..., K - 1], shape [T, B].
-      pi_t: target policy probs at times [1, ..., K - 1], shape [T, B, num_actions].
+      pi_t: target policy probs at times [1, ..., K - 1], shape [T, B, action_dim].
 
     Returns:
       Off-policy estimates of the generalized returns from states visited at times

@@ -126,7 +126,8 @@ class Actor(types_lib.Agent):
     def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action]:
         """Given timestep, choose action a_t"""
         s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        pi_logits_t = self._policy_network(s_t).pi_logits
+        pi_output = self._policy_network(s_t)
+        pi_logits_t = pi_output.pi_logits
         # Sample an action
         pi_dist_t = distributions.categorical_distribution(pi_logits_t)
 
@@ -147,7 +148,6 @@ class Learner(types_lib.Learner):
         self,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
-        old_policy_network: nn.Module,
         clip_epsilon: LinearSchedule,
         discount: float,
         gae_lambda: float,
@@ -164,7 +164,6 @@ class Learner(types_lib.Learner):
         Args:
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
-            old_policy_network: the old policy network used for workers.
             clip_epsilon: external scheduler to decay clip epsilon.
             discount: the gamma discount for future rewards.
             gae_lambda: lambda for the GAE general advantage estimator.
@@ -196,11 +195,8 @@ class Learner(types_lib.Learner):
         self.agent_name = 'PPO-learner'
         self._policy_network = policy_network.to(device=device)
         self._policy_network.train()
-        self._old_policy_network = old_policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
         self._device = device
-
-        self._update_old_policy()
 
         self._total_unroll_length = total_unroll_length
         self._storage = []
@@ -270,10 +266,10 @@ class Learner(types_lib.Learner):
         discount_tp1 = (~stacked_done_tp1).float() * self._discount
 
         # Get output from old policy
-        output_t = self._old_policy_network(stacked_s_t)
+        output_t = self._policy_network(stacked_s_t)
         v_t = output_t.baseline.squeeze(-1)
 
-        v_tp1 = self._old_policy_network(stacked_s_tp1).baseline.squeeze(-1)
+        v_tp1 = self._policy_network(stacked_s_tp1).baseline.squeeze(-1)
         advantage_t = multistep.truncated_generalized_advantage_estimation(stacked_r_t, v_t, v_tp1, discount_tp1, self._lambda)
 
         returns_t = advantage_t + v_t
@@ -307,7 +303,6 @@ class Learner(types_lib.Learner):
                 yield self.statistics
 
         del self._storage[:]  # discard old samples after using it
-        self._update_old_policy()
 
     def _update(self, transitions: Transition) -> None:
         self._policy_optimizer.zero_grad()
@@ -378,9 +373,6 @@ class Learner(types_lib.Learner):
 
         return loss
 
-    def _update_old_policy(self):
-        self._old_policy_network.load_state_dict(self._policy_network.state_dict())
-
     @property
     def clip_epsilon(self):
         """Call external clip epsilon scheduler"""
@@ -423,7 +415,6 @@ class GaussianLearner(types_lib.Learner):
         self,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
-        old_policy_network: nn.Module,
         critic_network: nn.Module,
         critic_optimizer: torch.optim.Optimizer,
         clip_epsilon: LinearSchedule,
@@ -441,7 +432,8 @@ class GaussianLearner(types_lib.Learner):
         Args:
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
-            old_policy_network: the old policy network used for workers.
+            critic_network: the baseline network we want to train.
+            critic_optimizer: the optimizer for baseline network.
             clip_epsilon: external scheduler to decay clip epsilon.
             discount: the gamma discount for future rewards.
             gae_lambda: lambda for the GAE general advantage estimator.
@@ -468,14 +460,11 @@ class GaussianLearner(types_lib.Learner):
         self.agent_name = 'PPO-learner'
         self._policy_network = policy_network.to(device=device)
         self._policy_network.train()
-        self._old_policy_network = old_policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
 
         self._critic_network = critic_network.to(device=device)
         self._critic_optimizer = critic_optimizer
         self._device = device
-
-        self._update_old_policy()
 
         self._total_unroll_length = total_unroll_length
         self._storage = []
@@ -571,7 +560,6 @@ class GaussianLearner(types_lib.Learner):
                 yield self.statistics
 
         del self._storage[:]  # discard old samples after using it
-        self._update_old_policy()
 
     def _update_policy(self, transitions: Iterable[Tuple]) -> None:
         self._policy_optimizer.zero_grad()
@@ -674,9 +662,6 @@ class GaussianLearner(types_lib.Learner):
         self._baseline_loss_t = baseline_loss.detach().cpu().item()
 
         return baseline_loss
-
-    def _update_old_policy(self):
-        self._old_policy_network.load_state_dict(self._policy_network.state_dict())
 
     @property
     def clip_epsilon(self):

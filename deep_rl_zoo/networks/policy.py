@@ -60,14 +60,14 @@ class RndActorCriticNetworkOutputs(NamedTuple):
 class ActorMlpNet(nn.Module):
     """Actor MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(64, action_dim),
         )
 
     def forward(self, x: torch.Tensor) -> ActorNetworkOutputs:
@@ -81,14 +81,14 @@ class ActorMlpNet(nn.Module):
 class CriticMlpNet(nn.Module):
     """Critic MLP network."""
 
-    def __init__(self, input_shape: int) -> None:
+    def __init__(self, state_dim: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(64, 1),
         )
 
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
@@ -100,17 +100,27 @@ class CriticMlpNet(nn.Module):
 class ActorCriticMlpNet(nn.Module):
     """Actor-Critic MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int) -> None:
         super().__init__()
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
             nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(128, num_actions)
-        self.baseline_head = nn.Linear(128, 1)
+        self.policy_head = nn.Sequential(
+            # nn.Linear(64, 64),
+            # nn.ReLU(),
+            nn.Linear(64, action_dim),
+        )
+        self.baseline_head = nn.Sequential(
+            # nn.Linear(64, 64),
+            # nn.ReLU(),
+            nn.Linear(64, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
@@ -130,21 +140,30 @@ class ActorCriticMlpNet(nn.Module):
 class GaussianActorMlpNet(nn.Module):
     """Gaussian Actor MLP network for continuous action space."""
 
-    def __init__(self, input_shape: int, num_actions: int, hidden_size: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int, hidden_size: int) -> None:
         super().__init__()
         self.body = nn.Sequential(
-            nn.Linear(input_shape, hidden_size),
+            nn.Linear(state_dim, hidden_size),
             nn.Tanh(),
             nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
-            # nn.Linear(hidden_size, hidden_size),
-            # nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
         )
 
-        self.mu_head = nn.Linear(hidden_size, num_actions)
-        # self.sigma_head = nn.Linear(hidden_size, num_actions)
+        self.mu_head = nn.Sequential(
+            # nn.Linear(hidden_size, hidden_size),
+            # nn.Tanh(),
+            nn.Linear(hidden_size, action_dim),
+        )
 
-        self.logstd = nn.Parameter(torch.zeros(1, num_actions))
+        # self.sigma_head = nn.Sequential(
+        #     # nn.Linear(hidden_size, hidden_size),
+        #     # nn.Tanh(),
+        #     nn.Linear(hidden_size, action_dim),
+        # )
+
+        self.logstd = nn.Parameter(torch.zeros(1, action_dim))
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor]:
         """Given raw state x, predict the action probability distribution
@@ -164,15 +183,13 @@ class GaussianActorMlpNet(nn.Module):
 class GaussianCriticMlpNet(nn.Module):
     """Gaussian Critic MLP network for continuous action space."""
 
-    def __init__(self, input_shape: int, hidden_size: int) -> None:
+    def __init__(self, state_dim: int, hidden_size: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_shape, hidden_size),
+            nn.Linear(state_dim, hidden_size),
             nn.Tanh(),
             nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
-            # nn.Linear(hidden_size, hidden_size),
-            # nn.Tanh(),
             nn.Linear(hidden_size, 1),
         )
 
@@ -188,34 +205,43 @@ class GaussianCriticMlpNet(nn.Module):
 class ImpalaActorCriticMlpNet(nn.Module):
     """IMPALA Actor-Critic MLP network, with LSTM."""
 
-    def __init__(self, input_shape: int, num_actions: int, use_lstm: bool = False) -> None:
+    def __init__(self, state_dim: int, action_dim: int, use_lstm: bool = False) -> None:
         """
         Args:
-            input_shape: state space size of environment state dimension
-            num_actions: action space size of number of actions of the environment
+            state_dim: state space size of environment state dimension
+            action_dim: action space size of number of actions of the environment
             feature_size: number of units of the last feature representation linear layer
         """
         super().__init__()
-        self.input_shape = input_shape
-        self.num_actions = num_actions
+        self.state_dim = state_dim
+        self.action_dim = action_dim
         self.use_lstm = use_lstm
 
         self.body = nn.Sequential(
-            nn.Linear(self.input_shape, 64),
+            nn.Linear(self.state_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(64, 64),
             nn.ReLU(),
         )
 
         # Feature representation output size + one-hot of last action + last reward.
-        core_output_size = 128 + self.num_actions + 1
+        core_output_size = 64 + self.action_dim + 1
 
         if self.use_lstm:
-            self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
-            core_output_size = 128
+            self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=64, num_layers=1)
+            core_output_size = 64
 
-        self.policy_head = nn.Linear(core_output_size, num_actions)
-        self.baseline_head = nn.Linear(core_output_size, 1)
+        self.policy_head = nn.Sequential(
+            nn.Linear(core_output_size, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_dim),
+        )
+
+        self.baseline_head = nn.Sequential(
+            nn.Linear(core_output_size, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+        )
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
@@ -260,7 +286,7 @@ class ImpalaActorCriticMlpNet(nn.Module):
         x = self.body(x)
 
         # Append clipped last reward and one hot last action.
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.action_dim).float().to(device=x.device)
         rewards = torch.clamp(r_t, -1, 1).view(T * B, 1)  # Clip reward [-1, 1]
         core_input = torch.cat([x, rewards, one_hot_a_tm1], dim=-1)
 
@@ -296,7 +322,7 @@ class ImpalaActorCriticMlpNet(nn.Module):
         baseline = self.baseline_head(core_output)
 
         # Reshape to matching original shape
-        pi_logits = pi_logits.view(T, B, self.num_actions)
+        pi_logits = pi_logits.view(T, B, self.action_dim)
         baseline = baseline.view(T, B)
         return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline, hidden_s=hidden_s)
 
@@ -308,20 +334,33 @@ class RndActorCriticMlpNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, input_shape: int, num_actions: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int) -> None:
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(64, 64),
             nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(128, num_actions)
+        self.policy_head = nn.Sequential(
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_dim),
+        )
 
-        self.ext_baseline_head = nn.Linear(128, 1)
-        self.int_baseline_head = nn.Linear(128, 1)
+        self.ext_baseline_head = nn.Sequential(
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+        )
+
+        self.int_baseline_head = nn.Sequential(
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,
@@ -342,15 +381,15 @@ class RndActorCriticMlpNet(nn.Module):
 class ActorConvNet(nn.Module):
     """Actor Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.policy_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         # Initialize weights
@@ -370,10 +409,10 @@ class ActorConvNet(nn.Module):
 class CriticConvNet(nn.Module):
     """Critic Conv2d network."""
 
-    def __init__(self, input_shape: int) -> None:
+    def __init__(self, state_dim: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.baseline_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
@@ -398,15 +437,15 @@ class CriticConvNet(nn.Module):
 class ActorCriticConvNet(nn.Module):
     """Actor-Critic Conv2d network."""
 
-    def __init__(self, input_shape: tuple, num_actions: int) -> None:
+    def __init__(self, state_dim: tuple, action_dim: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.policy_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         self.baseline_head = nn.Sequential(
@@ -441,13 +480,13 @@ class ImpalaActorCriticConvNet(nn.Module):
     https://github.com/facebookresearch/torchbeast/blob/0af07b051a2176a8f9fd20c36891ba2bba6bae68/torchbeast/polybeast_learner.py#L135
     """
 
-    def __init__(self, input_shape: tuple, num_actions: int, use_lstm: bool = False) -> None:
+    def __init__(self, state_dim: tuple, action_dim: int, use_lstm: bool = False) -> None:
         super().__init__()
 
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.use_lstm = use_lstm
 
-        assert input_shape[1] == input_shape[2] == 84
+        assert state_dim[1] == state_dim[2] == 84
 
         self.feat_convs = []
         self.resnet1 = []
@@ -455,7 +494,7 @@ class ImpalaActorCriticConvNet(nn.Module):
 
         self.convs = []
 
-        input_channels = input_shape[0]
+        input_channels = state_dim[0]
         for num_ch in [16, 32, 32]:
             feats_convs = []
             feats_convs.append(nn.Conv2d(in_channels=input_channels, out_channels=num_ch, kernel_size=3, stride=1, padding=1))
@@ -498,7 +537,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         self.fc = nn.Linear(3872, 256)
 
         # Feature representation output size + one-hot of last action + last reward.
-        core_output_size = self.fc.out_features + self.num_actions + 1
+        core_output_size = self.fc.out_features + self.action_dim + 1
 
         if self.use_lstm:
             self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=256, num_layers=1)
@@ -507,7 +546,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         self.policy_head = nn.Sequential(
             nn.Linear(core_output_size, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         self.baseline_head = nn.Sequential(
@@ -528,7 +567,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         # self.policy_head = nn.Sequential(
         #     nn.Linear(core_output_size, 512),
         #     nn.ReLU(),
-        #     nn.Linear(512, num_actions),
+        #     nn.Linear(512, action_dim),
         # )
 
         # self.baseline_head = nn.Sequential(
@@ -574,7 +613,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         done = input_.done
         hidden_s = input_.hidden_s
 
-        T, B, *_ = s_t.shape  # [T, B, input_shape].
+        T, B, *_ = s_t.shape  # [T, B, state_dim].
         x = torch.flatten(s_t, 0, 1)  # Merge time and batch.
         x = x.float() / 255.0
 
@@ -594,7 +633,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         x = F.relu(self.fc(x))
 
         # Append clipped last reward and one hot last action.
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.action_dim).float().to(device=x.device)
         rewards = torch.clamp(r_t, -1, 1).view(T * B, 1)  # Clip reward [-1, 1]
         core_input = torch.cat([x, rewards, one_hot_a_tm1], dim=-1)
 
@@ -631,7 +670,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         baseline = self.baseline_head(core_output)
 
         # Reshape to matching original shape
-        pi_logits = pi_logits.view(T, B, self.num_actions)
+        pi_logits = pi_logits.view(T, B, self.action_dim)
         baseline = baseline.view(T, B)
         return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline, hidden_s=hidden_s)
 
@@ -643,15 +682,15 @@ class RndActorCriticConvNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, input_shape: tuple, num_actions: int) -> None:
+    def __init__(self, state_dim: tuple, action_dim: int) -> None:
         super().__init__()
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.policy_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         self.ext_baseline_head = nn.Sequential(

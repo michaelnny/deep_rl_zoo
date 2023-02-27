@@ -67,9 +67,9 @@ def main(argv):
     # Create evaluation environments
     if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
         eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=random_state.randint(1, 2**32))
-        input_shape = eval_env.observation_space.shape[0]
-        num_actions = eval_env.action_space.n
-        network = IqnMlpNet(input_shape=input_shape, num_actions=num_actions, latent_dim=FLAGS.tau_latent_dim)
+        state_dim = eval_env.observation_space.shape[0]
+        action_dim = eval_env.action_space.n
+        network = IqnMlpNet(state_dim=state_dim, action_dim=action_dim, latent_dim=FLAGS.tau_latent_dim)
     else:
         eval_env = gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
@@ -83,13 +83,13 @@ def main(argv):
             terminal_on_life_loss=False,
             clip_reward=False,
         )
-        input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
-        num_actions = eval_env.action_space.n
-        network = IqnConvNet(input_shape=input_shape, num_actions=num_actions, latent_dim=FLAGS.tau_latent_dim)
+        state_dim = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+        action_dim = eval_env.action_space.n
+        network = IqnConvNet(state_dim=state_dim, action_dim=action_dim, latent_dim=FLAGS.tau_latent_dim)
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
-    logging.info('Observation spec: %s', input_shape)
+    logging.info('Action spec: %s', action_dim)
+    logging.info('Observation spec: %s', state_dim)
 
     # Setup checkpoint and load model weights from checkpoint.
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='IQN', restore_only=True)

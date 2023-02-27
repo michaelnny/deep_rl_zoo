@@ -241,12 +241,12 @@ class RainbowDqn(types_lib.Agent):
         discount_t = (~done).float() * self._discount**self._n_step
 
         # Compute predicted q values distribution for s_tm1, using online Q network
-        logits_q_tm1 = self._online_network(s_tm1).q_logits  # [batch_size, num_actions, num_atoms]
+        logits_q_tm1 = self._online_network(s_tm1).q_logits  # [batch_size, action_dim, num_atoms]
 
         # Compute predicted q values distribution for s_t, using target Q network and double Q
         with torch.no_grad():
-            q_t_selector = self._online_network(s_t).q_values  # [batch_size, num_actions]
-            target_logits_q_t = self._target_network(s_t).q_logits  # [batch_size, num_actions, num_atoms]
+            q_t_selector = self._online_network(s_t).q_values  # [batch_size, action_dim]
+            target_logits_q_t = self._target_network(s_t).q_logits  # [batch_size, action_dim, num_atoms]
 
         # Calculate loss
         loss = rl.categorical_dist_double_qlearning(

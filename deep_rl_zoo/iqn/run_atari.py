@@ -120,15 +120,15 @@ def main(argv):
     logging.info('Action spec: %s', train_env.action_space.n)
     logging.info('Observation spec: %s', train_env.observation_space.shape)
 
-    input_shape = train_env.observation_space.shape
-    num_actions = train_env.action_space.n
+    state_dim = train_env.observation_space.shape
+    action_dim = train_env.action_space.n
 
     # Test environment and state shape.
     obs = train_env.reset()
     assert isinstance(obs, np.ndarray)
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
-    network = IqnConvNet(input_shape=input_shape, num_actions=num_actions, latent_dim=FLAGS.tau_latent_dim)
+    network = IqnConvNet(state_dim=state_dim, action_dim=action_dim, latent_dim=FLAGS.tau_latent_dim)
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network input and output
@@ -137,8 +137,8 @@ def main(argv):
     q_dist = network_output.q_dist
     q_values = network_output.q_values
     taus = network_output.taus
-    assert q_dist.shape == (1, 1, num_actions)
-    assert q_values.shape == (1, num_actions)
+    assert q_dist.shape == (1, 1, action_dim)
+    assert q_values.shape == (1, action_dim)
     assert taus.shape == (1, 1)
 
     # Create e-greedy exploration epsilon schedule
@@ -202,7 +202,7 @@ def main(argv):
         discount=FLAGS.discount,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
-        num_actions=num_actions,
+        action_dim=action_dim,
         huber_param=FLAGS.huber_param,
         tau_samples_policy=FLAGS.tau_samples_policy,
         random_state=random_state,

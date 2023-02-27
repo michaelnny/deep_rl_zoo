@@ -41,9 +41,9 @@ def apply_egreedy_policy(
     random_state: np.random.RandomState,  # pylint: disable=no-member
 ) -> types_lib.Action:
     """Apply e-greedy policy."""
-    num_actions = q_values.shape[-1]
+    action_dim = q_values.shape[-1]
     if random_state.rand() <= epsilon:
-        a_t = random_state.randint(0, num_actions)
+        a_t = random_state.randint(0, action_dim)
     else:
         a_t = q_values.argmax(-1).cpu().item()
     return a_t

@@ -37,17 +37,17 @@ class CategoricalDistributionLogProbsFromLogitsAndActionsTest(parameterized.Test
         """Tests categorical_distribution."""
         batch_size = 2
         seq_len = 7
-        num_actions = 3
+        action_dim = 3
 
-        policy_logits = _shaped_arange(seq_len, batch_size, num_actions) + 10
-        actions = torch.from_numpy(np.random.randint(0, num_actions - 1, size=(seq_len, batch_size))).long()
+        policy_logits = _shaped_arange(seq_len, batch_size, action_dim) + 10
+        actions = torch.from_numpy(np.random.randint(0, action_dim - 1, size=(seq_len, batch_size))).long()
 
         categorical_distribution = distributions.categorical_distribution(policy_logits)
         action_log_probs_tensor = categorical_distribution.log_prob(actions)
 
         # Ground Truth
         # Using broadcasting to create a mask that indexes action logits
-        action_index_mask = actions[..., None] == torch.arange(num_actions)
+        action_index_mask = actions[..., None] == torch.arange(action_dim)
 
         def index_with_mask(array, mask):
             return array[mask].reshape(*array.shape[:-1])

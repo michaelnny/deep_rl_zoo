@@ -49,7 +49,7 @@ class Actor(types_lib.Agent):
         policy_network: torch.nn.Module,
         transition_accumulator: replay_lib.TransitionAccumulator,
         min_replay_size: int,
-        num_actions: int,
+        action_dim: int,
         device: torch.device,
     ) -> None:
         """
@@ -59,14 +59,14 @@ class Actor(types_lib.Agent):
             policy_network: the policy network for worker to make action choice.
             transition_accumulator: external helper class to build n-step transition.
             min_replay_size: minimum replay size before do learning.
-            num_actions: number of actions for the environment.
+            action_dim: number of actions for the environment.
             device: PyTorch runtime device.
         """
 
         if not 1 <= min_replay_size:
             raise ValueError(f'Expect min_replay_size to be integer greater than or equal to 1, got {min_replay_size}')
-        if not 1 <= num_actions:
-            raise ValueError(f'Expect num_actions to be integer greater than or equal to 1, got {num_actions}')
+        if not 1 <= action_dim:
+            raise ValueError(f'Expect action_dim to be integer greater than or equal to 1, got {action_dim}')
 
         self.rank = rank
         self.agent_name = f'SAC-actor{rank}'
@@ -75,7 +75,7 @@ class Actor(types_lib.Agent):
 
         self._queue = data_queue
         self._transition_accumulator = transition_accumulator
-        self._num_actions = num_actions
+        self._action_dim = action_dim
         self._min_replay_size = min_replay_size
 
         self._step_t = -1
@@ -105,7 +105,7 @@ class Actor(types_lib.Agent):
     def _choose_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Given timestep, choose action a_t"""
         if self._step_t < self._min_replay_size:  # Act randomly when staring out.
-            a_t = np.random.randint(0, self._num_actions)
+            a_t = np.random.randint(0, self._action_dim)
             return a_t
         else:
             s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
@@ -134,7 +134,7 @@ class Learner(types_lib.Learner):
         q2_optimizer: torch.optim.Optimizer,
         discount: float,
         batch_size: int,
-        num_actions: int,
+        action_dim: int,
         min_replay_size: int,
         learn_frequency: int,
         q_target_tau: float,
@@ -153,7 +153,7 @@ class Learner(types_lib.Learner):
             q2_optimizer: the optimizer for the second Q network.
             discount: the gamma discount for future rewards.
             batch_size: sample batch_size of transitions.
-            num_actions: number of actions for the environment.
+            action_dim: number of actions for the environment.
             min_replay_size: minimum replay size before do learning.
             learn_frequency: how often should the agent learn.
             q_target_tau: the coefficient of target Q network parameters.
@@ -165,8 +165,8 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
         if not 1 <= batch_size <= 512:
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not 1 <= num_actions:
-            raise ValueError(f'Expect num_actions to be integer greater than or equal to 1, got {num_actions}')
+        if not 1 <= action_dim:
+            raise ValueError(f'Expect action_dim to be integer greater than or equal to 1, got {action_dim}')
         if not 1 <= learn_frequency:
             raise ValueError(f'Expect learn_frequency to be positive integer, got {learn_frequency}')
         if not 1 <= min_replay_size:
@@ -195,7 +195,7 @@ class Learner(types_lib.Learner):
 
         # Entropy temperature parameters is learned
         # Automating Entropy Adjustment for Maximum Entropy RL section of https://arxiv.org/abs/1812.05905
-        self._target_entropy = -np.log(1.0 / num_actions) * 0.98
+        self._target_entropy = -np.log(1.0 / action_dim) * 0.98
         # Use log is more numerical stable as discussed in https://github.com/rail-berkeley/softlearning/issues/37
         self._log_ent_coef = torch.log(torch.ones(1, device=device)).requires_grad_(True)
         lr = self._policy_optimizer.param_groups[0]['lr']  # Copy learning rate from policy network optimizer
@@ -208,7 +208,7 @@ class Learner(types_lib.Learner):
         self._batch_size = batch_size
         self._min_replay_size = min_replay_size
         self._learn_frequency = learn_frequency
-        self._num_actions = num_actions
+        self._action_dim = action_dim
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
@@ -330,19 +330,19 @@ class Learner(types_lib.Learner):
         # Computes target q value
         with torch.no_grad():
             # Get action a_t probabilities for s_t from current policy
-            logits_t = self._policy_network(s_t).pi_logits  # [batch_size, num_actions]
+            logits_t = self._policy_network(s_t).pi_logits  # [batch_size, action_dim]
 
             # Calculate log probabilities for all actions
             logprob_t = F.log_softmax(logits_t, dim=1)
             prob_t = F.softmax(logits_t, dim=1)
 
             # Get estimated q values from target Q networks
-            q1_s_t = self._q1_target_network(s_t).q_values  # [batch_size, num_actions]
-            q2_s_t = self._q2_target_network(s_t).q_values  # [batch_size, num_actions]
-            q_s_t = torch.min(q1_s_t, q2_s_t)  # [batch_size, num_actions]
+            q1_s_t = self._q1_target_network(s_t).q_values  # [batch_size, action_dim]
+            q2_s_t = self._q2_target_network(s_t).q_values  # [batch_size, action_dim]
+            q_s_t = torch.min(q1_s_t, q2_s_t)  # [batch_size, action_dim]
 
             # Calculate soft state-value for s_t with respect to current policy
-            target_q_t = prob_t * (q_s_t - self.ent_coef * logprob_t)  # eq 10, (batch_size, num_actions)
+            target_q_t = prob_t * (q_s_t - self.ent_coef * logprob_t)  # eq 10, (batch_size, action_dim)
 
         # Compute q loss is 0.5 * square(td_errors)
         q1_loss = value_learning.qlearning(q1_tm1, a_tm1, r_t, discount_t, target_q_t).loss
@@ -362,7 +362,7 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(s_tm1, (2, 4), torch.float32)
 
         # Compute action logits for s_tm1.
-        logits_tm1 = self._policy_network(s_tm1).pi_logits  # [batch_size, num_actions]
+        logits_tm1 = self._policy_network(s_tm1).pi_logits  # [batch_size, action_dim]
         logprob_tm1 = F.log_softmax(logits_tm1, dim=1)
         prob_tm1 = F.softmax(logits_tm1, dim=1)
 
@@ -376,14 +376,12 @@ class Learner(types_lib.Learner):
         q_tm1 = torch.sum(min_q_tm1 * prob_tm1, dim=1, keepdim=True)
 
         # Compute entropy temperature parameter loss.
-        ent_coef_losses = (
-            self._log_ent_coef * (logprob_tm1 + self._target_entropy).detach()
-        )  # eq 11, (batch_size, num_actions)
+        ent_coef_losses = self._log_ent_coef * (logprob_tm1 + self._target_entropy).detach()  # eq 11, (batch_size, action_dim)
 
         # Compute SAC policy gradient loss.
-        policy_losses = prob_tm1 * (q_tm1 - self.ent_coef * logprob_tm1)  # [batch_size, num_actions]
+        policy_losses = prob_tm1 * (q_tm1 - self.ent_coef * logprob_tm1)  # [batch_size, action_dim]
         # alternative, we can calculate it according to original paper eq 12
-        # policy_losses = prob_tm1 * (self.ent_coef * logprob_tm1 - q_tm1)  # eq 12, (batch_size, num_actions)
+        # policy_losses = prob_tm1 * (self.ent_coef * logprob_tm1 - q_tm1)  # eq 12, (batch_size, action_dim)
 
         # Sum over all actions, averaging over batch dimension.
         # Negative sign to indicate we want to maximize the policy gradient objective function

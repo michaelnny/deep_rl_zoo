@@ -97,22 +97,22 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape[0]
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Create policy network which is shared between actors and learner.
-    policy_network = ActorMlpNet(input_shape=state_dim, num_actions=num_actions)
+    policy_network = ActorMlpNet(state_dim=state_dim, action_dim=action_dim)
     policy_network.share_memory()
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Create Q networks, only used by learner process to do policy evaluation
-    q1_network = DqnMlpNet(input_shape=state_dim, num_actions=num_actions)
+    q1_network = DqnMlpNet(state_dim=state_dim, action_dim=action_dim)
     q1_optimizer = torch.optim.Adam(q1_network.parameters(), lr=FLAGS.q_learning_rate)
 
-    q2_network = DqnMlpNet(input_shape=state_dim, num_actions=num_actions)
+    q2_network = DqnMlpNet(state_dim=state_dim, action_dim=action_dim)
     q2_optimizer = torch.optim.Adam(q2_network.parameters(), lr=FLAGS.q_learning_rate)
 
     # Test network output.
@@ -121,8 +121,8 @@ def main(argv):
     pi_logits = policy_network(s).pi_logits
     q1_values = q1_network(s).q_values
     q2_values = q2_network(s).q_values
-    assert pi_logits.shape == (1, num_actions)
-    assert q1_values.shape == q2_values.shape == (1, num_actions)
+    assert pi_logits.shape == (1, action_dim)
+    assert q1_values.shape == q2_values.shape == (1, action_dim)
 
     # Create queue shared between actors and learner.
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
@@ -142,7 +142,7 @@ def main(argv):
         q1_optimizer=q1_optimizer,
         q2_network=q2_network,
         q2_optimizer=q2_optimizer,
-        num_actions=num_actions,
+        action_dim=action_dim,
         q_target_tau=FLAGS.q_target_tau,
         discount=FLAGS.discount,
         batch_size=FLAGS.batch_size,
@@ -164,7 +164,7 @@ def main(argv):
             rank=i,
             data_queue=data_queue,
             policy_network=policy_network,
-            num_actions=num_actions,
+            action_dim=action_dim,
             min_replay_size=FLAGS.min_replay_size,
             transition_accumulator=replay_lib.TransitionAccumulator(),
             device=actor_devices[i],

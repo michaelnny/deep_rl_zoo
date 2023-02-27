@@ -172,7 +172,7 @@ class Actor(types_lib.Agent):
         a_t = distributions.categorical_distribution(logits_t).sample()
 
         # Remove T and B dimensions.
-        logits_t = logits_t.squeeze(0).squeeze(0)  # [num_actions]
+        logits_t = logits_t.squeeze(0).squeeze(0)  # [action_dim]
         return (a_t.cpu().item(), logits_t.cpu().numpy(), pi_output.hidden_s)
 
     def _prepare_network_input(self, timestep: types_lib.TimeStep) -> ImpalaActorCriticNetworkInputs:
@@ -313,7 +313,7 @@ class Learner(types_lib.Learner):
         a_t = torch.from_numpy(transitions.a_t).squeeze(-1).to(device=self._device, dtype=torch.int64)  # [T+1, B]
         behavior_logits_t = torch.from_numpy(transitions.logits_t).to(
             device=self._device, dtype=torch.float32
-        )  # [T+1, B, num_actions]
+        )  # [T+1, B, action_dim]
         last_actions = (
             torch.from_numpy(transitions.last_action).squeeze(-1).to(device=self._device, dtype=torch.int64)
         )  # [T+1, B]

@@ -55,7 +55,7 @@ flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.'
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
-flags.DEFINE_integer('unroll_length', 1024, 'Collect N transitions (cross episodes) before send to learner, per actor.')
+flags.DEFINE_integer('unroll_length', 128, 'Collect N transitions (cross episodes) before send to learner, per actor.')
 flags.DEFINE_integer('update_k', 4, 'Number of epochs to update network parameters.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration, per actor.')
@@ -93,25 +93,23 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape[0]
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Create policy network, master will optimize this network
-    policy_network = ActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions)
+    policy_network = ActorCriticMlpNet(state_dim=state_dim, action_dim=action_dim)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
-    # The 'old' policy for actors to act
-    old_policy_network = ActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions)
-    old_policy_network.share_memory()
+    policy_network.share_memory()
 
     # Test network output.
     obs = eval_env.reset()
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.pi_logits.shape == (1, action_dim)
     assert network_output.baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner
@@ -130,7 +128,6 @@ def main(argv):
     learner_agent = agent.Learner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        old_policy_network=old_policy_network,
         clip_epsilon=clip_epsilon_scheduler,
         discount=FLAGS.discount,
         gae_lambda=FLAGS.gae_lambda,
@@ -154,7 +151,7 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            policy_network=old_policy_network,
+            policy_network=policy_network,
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

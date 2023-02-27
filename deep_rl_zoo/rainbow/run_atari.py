@@ -114,8 +114,8 @@ def main(argv):
     logging.info('Action spec: %s', train_env.action_space.n)
     logging.info('Observation spec: %s', train_env.observation_space.shape)
 
-    input_shape = train_env.observation_space.shape
-    num_actions = train_env.action_space.n
+    state_dim = train_env.observation_space.shape
+    action_dim = train_env.action_space.n
 
     # Test environment and state shape.
     obs = train_env.reset()
@@ -124,13 +124,13 @@ def main(argv):
 
     atoms = torch.linspace(FLAGS.v_min, FLAGS.v_max, FLAGS.num_atoms).to(device=runtime_device, dtype=torch.float32)
 
-    network = RainbowDqnConvNet(input_shape=input_shape, num_actions=num_actions, atoms=atoms)
+    network = RainbowDqnConvNet(state_dim=state_dim, action_dim=action_dim, atoms=atoms)
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network input and output
     network_output = network(torch.from_numpy(obs[None, ...]).float())
-    assert network_output.q_logits.shape == (1, num_actions, FLAGS.num_atoms)
-    assert network_output.q_values.shape == (1, num_actions)
+    assert network_output.q_logits.shape == (1, action_dim, FLAGS.num_atoms)
+    assert network_output.q_values.shape == (1, action_dim)
 
     # Create prioritized transition replay
     # Note the t in the replay is not exactly aligned with the agent t.

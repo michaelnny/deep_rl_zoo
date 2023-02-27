@@ -80,15 +80,15 @@ def main(argv):
     logging.info('Action spec: %s', train_env.action_space.n)
     logging.info('Observation spec: %s', train_env.observation_space.shape[0])
 
-    input_shape = train_env.observation_space.shape[0]
-    num_actions = train_env.action_space.n
+    state_dim = train_env.observation_space.shape[0]
+    action_dim = train_env.action_space.n
 
     # Create policy network and optimizer
-    policy_network = ActorMlpNet(input_shape=input_shape, num_actions=num_actions)
+    policy_network = ActorMlpNet(state_dim=state_dim, action_dim=action_dim)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Create value network and optimizer
-    baseline_network = CriticMlpNet(input_shape=input_shape)
+    baseline_network = CriticMlpNet(state_dim=state_dim)
     baseline_optimizer = torch.optim.Adam(baseline_network.parameters(), lr=FLAGS.value_learning_rate)
 
     # Test network output.
@@ -96,7 +96,7 @@ def main(argv):
     s = torch.from_numpy(obs[None, ...]).float()
     pi_logits = policy_network(s).pi_logits
     baseline = baseline_network(s).baseline
-    assert pi_logits.shape == (1, num_actions)
+    assert pi_logits.shape == (1, action_dim)
     assert baseline.shape == (1, 1)
 
     # Create reinforce with baseline agent instance

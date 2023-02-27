@@ -515,7 +515,7 @@ def create_continuous_environment(
     max_abs_reward: int = 10,
 ) -> gym.Env:
     """
-    Process gym env for classic control tasks like CartPole, LunarLander, MountainCar
+    Process gym env for classic robotic control tasks like Humanoid, Ant.
 
     Args:
         env_name: the environment name with version attached.
@@ -524,7 +524,7 @@ def create_continuous_environment(
         max_abs_reward: clip reward in the range of [-max_abs_reward, max_abs_reward], default 10.
 
     Returns:
-        gym.Env for classic control tasks
+        gym.Env for classic robotic control tasks
     """
 
     env = gym.make(env_name)

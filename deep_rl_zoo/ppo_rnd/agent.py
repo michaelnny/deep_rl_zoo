@@ -154,7 +154,6 @@ class Learner(types_lib.Learner):
         self,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
-        old_policy_network: nn.Module,
         rnd_target_network: nn.Module,
         rnd_predictor_network: nn.Module,
         observation_normalizer: normalizer.Normalizer,
@@ -176,7 +175,6 @@ class Learner(types_lib.Learner):
         Args:
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
-            old_policy_network: the old policy network used for workers.
             rnd_target_network: RND target fixed random network.
             rnd_predictor_network: RND predictor network.
             observation_normalizer: observation normalizer, only for RND networks.
@@ -213,7 +211,6 @@ class Learner(types_lib.Learner):
 
         self.agent_name = 'PPO-RND-learner'
         self._policy_network = policy_network.to(device=device)
-        self._old_policy_network = old_policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
         self._rnd_predictor_network = rnd_predictor_network.to(device=device)
         self._rnd_target_network = rnd_target_network.to(device=device)
@@ -302,13 +299,12 @@ class Learner(types_lib.Learner):
         discount_tp1 = (~stacked_done_tp1).float() * self._discount
         rnd_discount_tp1 = (~stacked_done_tp1).float() * self._rnd_discount
 
-        # Get output from old policy
-        output_t = self._old_policy_network(stacked_s_t)
+        output_t = self._policy_network(stacked_s_t)
 
         ext_v_t = output_t.ext_baseline.squeeze(1)  # [batch_size]
         int_v_t = output_t.int_baseline.squeeze(1)  # [batch_size]
 
-        output_tp1 = self._old_policy_network(stacked_s_tp1)
+        output_tp1 = self._policy_network(stacked_s_tp1)
 
         ext_v_tp1 = output_tp1.ext_baseline.squeeze(-1)
         int_v_tp1 = output_tp1.int_baseline.squeeze(-1)
@@ -361,7 +357,6 @@ class Learner(types_lib.Learner):
                 yield self.statistics
 
         del self._storage[:]  # discard old samples after using it
-        self._update_old_policy()
 
     def _update(self, transitions: Transition) -> None:
         self._policy_optimizer.zero_grad()
@@ -502,9 +497,6 @@ class Learner(types_lib.Learner):
             self._observation_normalizer.update(observation)
             normalized_obs = self._observation_normalizer(observation)
         return normalized_obs
-
-    def _update_old_policy(self):
-        self._old_policy_network.load_state_dict(self._policy_network.state_dict())
 
     @property
     def clip_epsilon(self):

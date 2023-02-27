@@ -108,10 +108,10 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape[0]
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Create observation normalizer and run random steps to generate statistics.
@@ -129,15 +129,13 @@ def main(argv):
         observation_normalizer.update(torch.from_numpy(s_t[None, ...]).to(device=runtime_device))
 
     # Create policy network, master will optimize this network
-    policy_network = RndActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions)
+    policy_network = RndActorCriticMlpNet(state_dim=state_dim, action_dim=action_dim)
 
-    # The 'old' policy for actors to act
-    old_policy_network = RndActorCriticMlpNet(input_shape=state_dim, num_actions=num_actions)
-    old_policy_network.share_memory()
+    policy_network.share_memory()
 
     # Create RND target and predictor networks.
-    rnd_target_network = RndMlpNet(input_shape=state_dim, is_target=True)
-    rnd_predictor_network = RndMlpNet(input_shape=state_dim)
+    rnd_target_network = RndMlpNet(state_dim=state_dim, is_target=True)
+    rnd_predictor_network = RndMlpNet(state_dim=state_dim)
 
     # Use a single optimizer for both policy and RND predictor networks.
     policy_optimizer = torch.optim.Adam(
@@ -152,7 +150,7 @@ def main(argv):
     pi_logits = network_output.pi_logits
     ext_baseline = network_output.ext_baseline
     int_baseline = network_output.int_baseline
-    assert pi_logits.shape == (1, num_actions)
+    assert pi_logits.shape == (1, action_dim)
     assert ext_baseline.shape == int_baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner and log queue.
@@ -171,7 +169,6 @@ def main(argv):
     learner_agent = agent.Learner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        old_policy_network=old_policy_network,
         rnd_target_network=rnd_target_network,
         rnd_predictor_network=rnd_predictor_network,
         observation_normalizer=observation_normalizer,
@@ -200,7 +197,7 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            policy_network=old_policy_network,
+            policy_network=policy_network,
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

@@ -55,7 +55,7 @@ class C51Dqn(types_lib.Agent):
         target_network_update_frequency: int,
         min_replay_size: int,
         batch_size: int,
-        num_actions: int,
+        action_dim: int,
         discount: float,
         clip_grad: bool,
         max_grad_norm: float,
@@ -75,7 +75,7 @@ class C51Dqn(types_lib.Agent):
                  to Update target network parameters.
             min_replay_size: Minimum replay size before start to do learning.
             batch_size: sample batch size.
-            num_actions: number of valid actions in the environment.
+            action_dim: number of valid actions in the environment.
             discount: gamma discount for future rewards.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: maximum gradient norm for clip grad, only works if clip_grad is True.
@@ -94,8 +94,8 @@ class C51Dqn(types_lib.Agent):
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not batch_size <= min_replay_size <= replay.capacity:
             raise ValueError(f'Expect min_replay_size >= {batch_size} and <= {replay.capacity} and, got {min_replay_size}')
-        if not 0 < num_actions:
-            raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
+        if not 0 < action_dim:
+            raise ValueError(f'Expect action_dim to be positive integer, got {action_dim}')
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
 
@@ -104,7 +104,7 @@ class C51Dqn(types_lib.Agent):
         self.agent_name = 'C51-DQN'
         self._device = device
         self._random_state = random_state
-        self._num_actions = num_actions
+        self._action_dim = action_dim
 
         # Online Q network
         self._online_network = network.to(device=self._device)
@@ -185,7 +185,7 @@ class C51Dqn(types_lib.Agent):
         """
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
-            a_t = self._random_state.randint(0, self._num_actions)
+            a_t = self._random_state.randint(0, self._action_dim)
             return a_t
 
         s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
@@ -246,12 +246,12 @@ class C51Dqn(types_lib.Agent):
         discount_t = (~done).float() * self._discount
 
         # Compute predicted q values distribution for s_tm1, using online Q network
-        logits_q_tm1 = self._online_network(s_tm1).q_logits  # [batch_size, num_actions, num_atoms]
+        logits_q_tm1 = self._online_network(s_tm1).q_logits  # [batch_size, action_dim, num_atoms]
 
         # Compute predicted q values distribution for s_t, using target Q network and double Q
         with torch.no_grad():
-            q_t_selector = self._online_network(s_t).q_values  # [batch_size, num_actions]
-            target_logits_q_t = self._target_network(s_t).q_logits  # [batch_size, num_actions, num_atoms]
+            q_t_selector = self._online_network(s_t).q_values  # [batch_size, action_dim]
+            target_logits_q_t = self._target_network(s_t).q_logits  # [batch_size, action_dim, num_atoms]
 
         # Calculate categorical distribution q loss.
         loss = rl.categorical_dist_double_qlearning(

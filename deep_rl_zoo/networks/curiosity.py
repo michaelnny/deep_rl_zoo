@@ -41,21 +41,21 @@ class IcmMlpNet(nn.Module):
     https://arxiv.org/abs/1705.05363.
     """
 
-    def __init__(self, input_shape: int, num_actions: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int) -> None:
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
-            num_actions: the number of units for the output liner layer.
+            state_dim: the shape of the input tensor to the neural network.
+            action_dim: the number of units for the output liner layer.
         """
         super().__init__()
 
-        self.num_actions = num_actions
+        self.action_dim = action_dim
 
         feature_vector_size = 128
 
         # Feature representations
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -65,7 +65,7 @@ class IcmMlpNet(nn.Module):
 
         # Forward model, predict feature vector of s_t from s_tm1 and a_t
         self.forward_net = nn.Sequential(
-            nn.Linear(feature_vector_size + num_actions, 128),
+            nn.Linear(feature_vector_size + action_dim, 128),
             nn.ReLU(),
             nn.Linear(128, feature_vector_size),
             nn.ReLU(),
@@ -75,7 +75,7 @@ class IcmMlpNet(nn.Module):
         self.inverse_net = nn.Sequential(
             nn.Linear(feature_vector_size * 2, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(128, action_dim),
         )
 
     def forward(self, s_tm1: torch.Tensor, a_tm1: torch.Tensor, s_t: torch.Tensor) -> IcmNetworkOutput:
@@ -85,7 +85,7 @@ class IcmMlpNet(nn.Module):
         base.assert_rank(s_t, 2)
         base.assert_rank(a_tm1, 1)
 
-        a_tm1_onehot = F.one_hot(a_tm1, self.num_actions).float()
+        a_tm1_onehot = F.one_hot(a_tm1, self.action_dim).float()
 
         # Get feature vectors of s_tm1 and s_t
         features_tm1 = self.body(s_tm1)
@@ -109,18 +109,18 @@ class IcmNatureConvNet(nn.Module):
     https://arxiv.org/abs/1705.05363.
     """
 
-    def __init__(self, input_shape: int, num_actions: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int) -> None:
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
-            num_actions: the number of units for the output liner layer.
+            state_dim: the shape of the input tensor to the neural network.
+            action_dim: the number of units for the output liner layer.
         """
         super().__init__()
 
-        self.num_actions = num_actions
+        self.action_dim = action_dim
 
         # Compute the output shape of final conv2d layer
-        c, h, w = input_shape
+        c, h, w = state_dim
         h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
         h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
         h, w = common.calc_conv2d_output((h, w), 3, 2, 1)
@@ -141,7 +141,7 @@ class IcmNatureConvNet(nn.Module):
 
         # Forward model, predict feature vector of s_t from s_tm1 and a_t
         self.forward_net = nn.Sequential(
-            nn.Linear(conv2d_out_size + self.num_actions, 256),
+            nn.Linear(conv2d_out_size + self.action_dim, 256),
             nn.ReLU(),
             nn.Linear(256, conv2d_out_size),
             nn.ReLU(),
@@ -151,7 +151,7 @@ class IcmNatureConvNet(nn.Module):
         self.inverse_net = nn.Sequential(
             nn.Linear(conv2d_out_size * 2, 256),
             nn.ReLU(),
-            nn.Linear(256, num_actions),
+            nn.Linear(256, action_dim),
         )
 
         common.initialize_weights(self)
@@ -163,7 +163,7 @@ class IcmNatureConvNet(nn.Module):
         base.assert_rank(s_t, (2, 4))
         base.assert_rank(a_tm1, 1)
 
-        a_tm1_onehot = F.one_hot(a_tm1, self.num_actions).float()
+        a_tm1_onehot = F.one_hot(a_tm1, self.action_dim).float()
 
         # Get feature vectors of s_tm1 and s_t
         s_tm1 = s_tm1.float() / 255.0
@@ -189,17 +189,17 @@ class RndMlpNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, input_shape: int, is_target: bool = False, latent_dim: int = 128) -> None:
+    def __init__(self, state_dim: int, is_target: bool = False, latent_dim: int = 128) -> None:
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
+            state_dim: the shape of the input tensor to the neural network.
             is_target: if True, use one single linear layer at the head, default False.
             latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.LeakyReLU(),
             nn.Linear(64, 128),
             nn.LeakyReLU(),
@@ -233,17 +233,17 @@ class RndConvNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, input_shape: int, is_target: bool = False, latent_dim: int = 128) -> None:
+    def __init__(self, state_dim: int, is_target: bool = False, latent_dim: int = 128) -> None:
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
+            state_dim: the shape of the input tensor to the neural network.
             is_target: if True, use one single linear layer at the head, default False.
             latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
 
         # Compute the output shape of final conv2d layer
-        c, h, w = input_shape
+        c, h, w = state_dim
         h, w = common.calc_conv2d_output((h, w), 8, 4)
         h, w = common.calc_conv2d_output((h, w), 4, 2)
         h, w = common.calc_conv2d_output((h, w), 3, 1)
@@ -288,17 +288,17 @@ class NguEmbeddingMlpNet(nn.Module):
     https://arxiv.org/abs/2002.06038
     """
 
-    def __init__(self, input_shape: tuple, num_actions: int, latent_dim: int = 64):
+    def __init__(self, state_dim: tuple, action_dim: int, latent_dim: int = 64):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
-            num_actions: the number of units for the output liner layer.
+            state_dim: the shape of the input tensor to the neural network.
+            action_dim: the number of units for the output liner layer.
             latent_dim: the embedding latent dimension, default 64.
         """
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -309,7 +309,7 @@ class NguEmbeddingMlpNet(nn.Module):
         self.inverse_head = nn.Sequential(
             nn.Linear(latent_dim * 2, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(128, action_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -318,7 +318,7 @@ class NguEmbeddingMlpNet(nn.Module):
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
         """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
-        pi_logits = self.inverse_head(x)  # [batch_size, num_actions]
+        pi_logits = self.inverse_head(x)  # [batch_size, action_dim]
         return pi_logits
 
 
@@ -329,16 +329,16 @@ class NguEmbeddingConvNet(nn.Module):
     https://arxiv.org/abs/2002.06038
     """
 
-    def __init__(self, input_shape: tuple, num_actions: int, latent_dim: int = 128):
+    def __init__(self, state_dim: tuple, action_dim: int, latent_dim: int = 128):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
-            num_actions: the number of units for the output liner layer.
+            state_dim: the shape of the input tensor to the neural network.
+            action_dim: the number of units for the output liner layer.
             latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
 
-        self.net = common.NatureCnnBackboneNet(input_shape)
+        self.net = common.NatureCnnBackboneNet(state_dim)
 
         self.fc = nn.Linear(self.net.out_features, 32)
 
@@ -346,7 +346,7 @@ class NguEmbeddingConvNet(nn.Module):
         self.inverse_head = nn.Sequential(
             nn.Linear(32 * 2, latent_dim),
             nn.ReLU(),
-            nn.Linear(latent_dim, num_actions),
+            nn.Linear(latent_dim, action_dim),
         )
 
         common.initialize_weights(self)
@@ -360,7 +360,7 @@ class NguEmbeddingConvNet(nn.Module):
 
     def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
         """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
-        pi_logits = self.inverse_head(x)  # [batch_size, num_actions]
+        pi_logits = self.inverse_head(x)  # [batch_size, action_dim]
         return pi_logits
 
 
@@ -371,16 +371,16 @@ class NGURndConvNet(nn.Module):
     https://arxiv.org/abs/2002.06038
     """
 
-    def __init__(self, input_shape: int, latent_dim: int = 128) -> None:
+    def __init__(self, state_dim: int, latent_dim: int = 128) -> None:
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
+            state_dim: the shape of the input tensor to the neural network.
             latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
 
         # Compute the output shape of final conv2d layer
-        c, h, w = input_shape
+        c, h, w = state_dim
         h, w = common.calc_conv2d_output((h, w), 8, 4)
         h, w = common.calc_conv2d_output((h, w), 4, 2)
         h, w = common.calc_conv2d_output((h, w), 3, 1)

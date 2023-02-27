@@ -75,12 +75,12 @@ def main(argv):
     # Create evaluation environments
     if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
         eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=random_state.randint(1, 2**32))
-        input_shape = eval_env.observation_space.shape[0]
-        num_actions = eval_env.action_space.n
-        network = NguDqnMlpNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies)
-        rnd_target_network = RndMlpNet(input_shape=input_shape)
-        rnd_predictor_network = RndMlpNet(input_shape=input_shape)
-        embedding_network = NguEmbeddingMlpNet(input_shape=input_shape, num_actions=num_actions)
+        state_dim = eval_env.observation_space.shape[0]
+        action_dim = eval_env.action_space.n
+        network = NguDqnMlpNet(state_dim=state_dim, action_dim=action_dim, num_policies=FLAGS.num_policies)
+        rnd_target_network = RndMlpNet(state_dim=state_dim)
+        rnd_predictor_network = RndMlpNet(state_dim=state_dim)
+        embedding_network = NguEmbeddingMlpNet(state_dim=state_dim, action_dim=action_dim)
     else:
         eval_env = gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
@@ -94,16 +94,16 @@ def main(argv):
             terminal_on_life_loss=False,
             clip_reward=False,
         )
-        input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
-        num_actions = eval_env.action_space.n
-        network = NguDqnConvNet(input_shape=input_shape, num_actions=num_actions, num_policies=FLAGS.num_policies)
-        rnd_target_network = RndConvNet(input_shape=input_shape)
-        rnd_predictor_network = RndConvNet(input_shape=input_shape)
-        embedding_network = NguEmbeddingConvNet(input_shape=input_shape, num_actions=num_actions)
+        state_dim = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+        action_dim = eval_env.action_space.n
+        network = NguDqnConvNet(state_dim=state_dim, action_dim=action_dim, num_policies=FLAGS.num_policies)
+        rnd_target_network = RndConvNet(state_dim=state_dim)
+        rnd_predictor_network = RndConvNet(state_dim=state_dim)
+        embedding_network = NguEmbeddingConvNet(state_dim=state_dim, action_dim=action_dim)
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
-    logging.info('Observation spec: %s', input_shape)
+    logging.info('Action spec: %s', action_dim)
+    logging.info('Observation spec: %s', state_dim)
 
     # Setup checkpoint and load model weights from checkpoint.
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='NGU', restore_only=True)

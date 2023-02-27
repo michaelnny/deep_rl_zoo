@@ -53,7 +53,7 @@ class QRDqn(types_lib.Agent):
         target_network_update_frequency: int,
         min_replay_size: int,
         batch_size: int,
-        num_actions: int,
+        action_dim: int,
         quantiles: torch.Tensor,
         huber_param: float,
         discount: float,
@@ -74,7 +74,7 @@ class QRDqn(types_lib.Agent):
                  to Update target network parameters.
             min_replay_size: Minimum replay size before start to do learning.
             batch_size: sample batch size.
-            num_actions: number of valid actions in the environment.
+            action_dim: number of valid actions in the environment.
             quantiles: support for q value distribution.
             huber_param: parameter k for huber loss.
             discount: gamma discount for future rewards.
@@ -94,8 +94,8 @@ class QRDqn(types_lib.Agent):
             raise ValueError(f'Expect batch_size [1, 512], got {batch_size}')
         if not batch_size <= min_replay_size <= replay.capacity:
             raise ValueError(f'Expect min_replay_size >= {batch_size} and <= {replay.capacity} and, got {min_replay_size}')
-        if not 0 < num_actions:
-            raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
+        if not 0 < action_dim:
+            raise ValueError(f'Expect action_dim to be positive integer, got {action_dim}')
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount [0.0, 1.0], got {discount}')
         if not 0.0 <= huber_param:
@@ -106,7 +106,7 @@ class QRDqn(types_lib.Agent):
         self.agent_name = 'QR-DQN'
         self._device = device
         self._random_state = random_state
-        self._num_actions = num_actions
+        self._action_dim = action_dim
 
         # Online Q network
         self._online_network = network.to(device=self._device)
@@ -185,7 +185,7 @@ class QRDqn(types_lib.Agent):
         """
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
-            a_t = self._random_state.randint(0, self._num_actions)
+            a_t = self._random_state.randint(0, self._action_dim)
             return a_t
 
         s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
@@ -246,12 +246,12 @@ class QRDqn(types_lib.Agent):
         discount_t = (~done).float() * self._discount
 
         # Compute predicted q values distribution for s_tm1, using online Q network
-        dist_q_tm1 = self._online_network(s_tm1).q_dist  # [batch_size, num_taus, num_actions]
+        dist_q_tm1 = self._online_network(s_tm1).q_dist  # [batch_size, num_taus, action_dim]
 
         # Computes predicted q values distribution for s_t, using target Q network and double Q
         with torch.no_grad():
-            q_t_selector = self._online_network(s_t).q_dist  # [batch_size, num_taus, num_actions]
-            target_dist_q_t = self._target_network(s_t).q_dist  # [batch_size, num_taus, num_actions]
+            q_t_selector = self._online_network(s_t).q_dist  # [batch_size, num_taus, action_dim]
+            target_dist_q_t = self._target_network(s_t).q_dist  # [batch_size, num_taus, action_dim]
 
         # Compute quantile regression loss.
         tau_tm1 = self._quantiles.expand(dist_q_tm1.shape[0], dist_q_tm1.shape[1])  # [batch_size, num_taus]

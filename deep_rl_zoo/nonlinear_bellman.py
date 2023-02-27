@@ -93,14 +93,14 @@ def transformed_retrace(
     Kapturowski et al. (https://openreview.net/pdf?id=r1lyTjAqYX).
 
     Args:
-      q_tm1: Q-values at time t-1, this is from the online Q network, shape [T, B, num_actions].
-      q_t: Q-values at time t, this is often from the target Q network, shape [T, B, num_actions].
+      q_tm1: Q-values at time t-1, this is from the online Q network, shape [T, B, action_dim].
+      q_t: Q-values at time t, this is often from the target Q network, shape [T, B, action_dim].
       a_tm1: action index at time t-1, the action the agent took in state s_tm1, shape [T, B].
       a_t: action index at time t, the action the agent took in state s_t, shape [T, B].
       r_t: reward at time t, for state-action pair (s_tm1, a_tm1), shape [T, B].
       discount_t: discount at time t, shape [T, B].
-      pi_t: target policy probs at time t, shape [T, B, num_actions].
-      mu_t: behavior policy probs at time t, shape [T, B, num_actions].
+      pi_t: target policy probs at time t, shape [T, B, action_dim].
+      mu_t: behavior policy probs at time t, shape [T, B, action_dim].
       lambda_: scalar mixing parameter lambda.
       eps: small value to add to mu_t for numerical stability.
 

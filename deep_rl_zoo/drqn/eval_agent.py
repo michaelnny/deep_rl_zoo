@@ -68,9 +68,9 @@ def main(argv):
         eval_env = gym_env.create_classic_environment(
             env_name=FLAGS.environment_name, obscure_epsilon=FLAGS.obscure_epsilon, seed=random_state.randint(1, 2**32)
         )
-        input_shape = eval_env.observation_space.shape[0]
-        num_actions = eval_env.action_space.n
-        network = DrqnMlpNet(input_shape=input_shape, num_actions=num_actions)
+        state_dim = eval_env.observation_space.shape[0]
+        action_dim = eval_env.action_space.n
+        network = DrqnMlpNet(state_dim=state_dim, action_dim=action_dim)
     else:
         eval_env = gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
@@ -85,13 +85,13 @@ def main(argv):
             terminal_on_life_loss=False,
             clip_reward=False,
         )
-        input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
-        num_actions = eval_env.action_space.n
-        network = DrqnConvNet(input_shape=input_shape, num_actions=num_actions)
+        state_dim = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+        action_dim = eval_env.action_space.n
+        network = DrqnConvNet(state_dim=state_dim, action_dim=action_dim)
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
-    logging.info('Observation spec: %s', input_shape)
+    logging.info('Action spec: %s', action_dim)
+    logging.info('Observation spec: %s', state_dim)
 
     # Setup checkpoint and load model weights from checkpoint.
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='DRDQN', restore_only=True)

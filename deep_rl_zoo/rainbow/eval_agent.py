@@ -68,9 +68,9 @@ def main(argv):
     atoms = torch.linspace(FLAGS.v_min, FLAGS.v_max, FLAGS.num_atoms).to(device=runtime_device, dtype=torch.float32)
     if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
         eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=random_state.randint(1, 2**32))
-        input_shape = eval_env.observation_space.shape[0]
-        num_actions = eval_env.action_space.n
-        network = RainbowDqnMlpNet(input_shape=input_shape, num_actions=num_actions, atoms=atoms)
+        state_dim = eval_env.observation_space.shape[0]
+        action_dim = eval_env.action_space.n
+        network = RainbowDqnMlpNet(state_dim=state_dim, action_dim=action_dim, atoms=atoms)
     else:
         eval_env = gym_env.create_atari_environment(
             env_name=FLAGS.environment_name,
@@ -84,13 +84,13 @@ def main(argv):
             terminal_on_life_loss=False,
             clip_reward=False,
         )
-        input_shape = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
-        num_actions = eval_env.action_space.n
-        network = RainbowDqnConvNet(input_shape=input_shape, num_actions=num_actions, atoms=atoms)
+        state_dim = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+        action_dim = eval_env.action_space.n
+        network = RainbowDqnConvNet(state_dim=state_dim, action_dim=action_dim, atoms=atoms)
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
-    logging.info('Observation spec: %s', input_shape)
+    logging.info('Action spec: %s', action_dim)
+    logging.info('Observation spec: %s', state_dim)
 
     # Setup checkpoint and load model weights from checkpoint.
     checkpoint = PyTorchCheckpoint(environment_name=FLAGS.environment_name, agent_name='Rainbow', restore_only=True)

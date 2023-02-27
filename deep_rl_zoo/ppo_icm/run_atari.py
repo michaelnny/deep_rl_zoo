@@ -117,10 +117,10 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape.
@@ -129,21 +129,19 @@ def main(argv):
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network, master will optimize this network
-    policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
+    policy_network = ActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
-    # The 'old' policy for actors to act
-    old_policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
-    old_policy_network.share_memory()
+    policy_network.share_memory()
 
     # ICM module
-    icm_network = IcmNatureConvNet(input_shape=state_dim, num_actions=num_actions)
+    icm_network = IcmNatureConvNet(state_dim=state_dim, action_dim=action_dim)
     icm_optimizer = torch.optim.Adam(icm_network.parameters(), lr=FLAGS.icm_learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.pi_logits.shape == (1, action_dim)
     assert network_output.baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner
@@ -162,7 +160,6 @@ def main(argv):
     learner_agent = agent.Learner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        old_policy_network=old_policy_network,
         icm_network=icm_network,
         icm_optimizer=icm_optimizer,
         clip_epsilon=clip_epsilon_scheduler,
@@ -191,7 +188,7 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            policy_network=old_policy_network,
+            policy_network=policy_network,
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

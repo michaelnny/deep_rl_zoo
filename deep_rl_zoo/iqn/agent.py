@@ -65,7 +65,7 @@ class Iqn(types_lib.Agent):
         target_network_update_frequency: int,
         min_replay_size: int,
         batch_size: int,
-        num_actions: int,
+        action_dim: int,
         huber_param: float,
         tau_samples_policy: int,
         discount: float,
@@ -86,7 +86,7 @@ class Iqn(types_lib.Agent):
                  to Update target network parameters.
             min_replay_size: Minimum replay size before start to do learning.
             batch_size: sample batch size.
-            num_actions: number of valid actions in the environment.
+            action_dim: number of valid actions in the environment.
             huber_param: parameter k for huber loss.
             tau_samples_policy: number of samples to 'pull' from the network for e-greedy policy.
             discount: gamma discount for future rewards.
@@ -106,8 +106,8 @@ class Iqn(types_lib.Agent):
             raise ValueError(f'Expect batch_size [1, 512], got {batch_size}')
         if not batch_size <= min_replay_size <= replay.capacity:
             raise ValueError(f'Expect min_replay_size >= {batch_size} and <= {replay.capacity} and, got {min_replay_size}')
-        if not 0 < num_actions:
-            raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
+        if not 0 < action_dim:
+            raise ValueError(f'Expect action_dim to be positive integer, got {action_dim}')
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount [0.0, 1.0], got {discount}')
         if not 0.0 <= huber_param:
@@ -118,7 +118,7 @@ class Iqn(types_lib.Agent):
         self.agent_name = 'IQN'
         self._device = device
         self._random_state = random_state
-        self._num_actions = num_actions
+        self._action_dim = action_dim
 
         # Online Q network
         self._online_network = network.to(device=self._device)
@@ -196,7 +196,7 @@ class Iqn(types_lib.Agent):
         """
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
-            a_t = self._random_state.randint(0, self._num_actions)
+            a_t = self._random_state.randint(0, self._action_dim)
             return a_t
 
         s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
@@ -258,13 +258,13 @@ class Iqn(types_lib.Agent):
 
         # Compute predicted q values distribution for s_tm1, using online Q network
         network_output = self._online_network(s_tm1, self._tau_policy)
-        dist_q_tm1 = network_output.q_dist  # [batch_size, num_actions, num_taus]
-        tau_tm1 = network_output.taus  # [batch_size, num_actions, num_taus]
+        dist_q_tm1 = network_output.q_dist  # [batch_size, action_dim, num_taus]
+        tau_tm1 = network_output.taus  # [batch_size, action_dim, num_taus]
 
         # Computes predicted q values distribution for s_t, using target Q network and double Q
         with torch.no_grad():
-            q_t_selector = self._online_network(s_t, self._tau_policy).q_dist  # [batch_size, num_actions, num_taus]
-            target_dist_q_t = self._target_network(s_t, self._tau_policy).q_dist  # [batch_size, num_actions, num_taus]
+            q_t_selector = self._online_network(s_t, self._tau_policy).q_dist  # [batch_size, action_dim, num_taus]
+            target_dist_q_t = self._target_network(s_t, self._tau_policy).q_dist  # [batch_size, action_dim, num_taus]
 
         # Compute quantile regression loss.
         loss = rl.quantile_double_q_learning(

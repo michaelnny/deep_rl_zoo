@@ -46,18 +46,18 @@ flags.DEFINE_string(
 )
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
-flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate.')
-flags.DEFINE_float('baseline_learning_rate', 0.0001, 'Learning rate for critic.')
+flags.DEFINE_float('max_grad_norm', 1.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('learning_rate', 0.0003, 'Learning rate.')
+flags.DEFINE_float('baseline_learning_rate', 0.0003, 'Learning rate for critic.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
-flags.DEFINE_float('entropy_coef', 0.01, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('entropy_coef', 0.0025, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
 flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
 flags.DEFINE_integer('hidden_size', 64, 'Number of units in the hidden layer.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
-flags.DEFINE_integer('unroll_length', 2048, 'Collect N transitions (cross episodes) before send to learner, per actor.')
-flags.DEFINE_integer('update_k', 10, 'Run update k times when do learning.')
+flags.DEFINE_integer('unroll_length', 1024, 'Collect N transitions (cross episodes) before send to learner, per actor.')
+flags.DEFINE_integer('update_k', 4, 'Run update k times when do learning.')
 flags.DEFINE_integer('num_iterations', 1, 'Number of iterations to run.')
 flags.DEFINE_integer('num_train_frames', int(5e6), 'Number of training env steps to run per iteration, per actor.')
 flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
@@ -76,7 +76,7 @@ flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
 def main(argv):
     """Trains PPO agent on continuous action control tasks."""
     del argv
-    runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    runtime_device = 'cpu'  # torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Runs PPO agent on {runtime_device}')
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
     torch.manual_seed(FLAGS.seed)
@@ -98,18 +98,16 @@ def main(argv):
 
     logging.info('Environment: %s', FLAGS.environment_name)
     logging.info('Action spec: %s', action_dim)
-    logging.info('Observation spec: %s', action_dim)
+    logging.info('Observation spec: %s', state_dim)
 
     # Create policy network, master will optimize this network
-    policy_network = GaussianActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)
+    policy_network = GaussianActorMlpNet(state_dim=state_dim, action_dim=action_dim, hidden_size=FLAGS.hidden_size)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
-    critic_network = GaussianCriticMlpNet(input_shape=state_dim, hidden_size=FLAGS.hidden_size)
+    critic_network = GaussianCriticMlpNet(state_dim=state_dim, hidden_size=FLAGS.hidden_size)
     critic_optimizer = torch.optim.Adam(critic_network.parameters(), lr=FLAGS.baseline_learning_rate)
 
-    # The 'old' policy for actors to act
-    old_policy_network = GaussianActorMlpNet(input_shape=state_dim, num_actions=action_dim, hidden_size=FLAGS.hidden_size)
-    old_policy_network.share_memory()
+    policy_network.share_memory()
 
     # Create queue shared between actors and learner
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
@@ -127,7 +125,6 @@ def main(argv):
     learner_agent = agent.GaussianLearner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        old_policy_network=old_policy_network,
         critic_network=critic_network,
         critic_optimizer=critic_optimizer,
         clip_epsilon=clip_epsilon_scheduler,
@@ -152,7 +149,7 @@ def main(argv):
         agent.GaussianActor(
             rank=i,
             data_queue=data_queue,
-            policy_network=old_policy_network,
+            policy_network=policy_network,
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

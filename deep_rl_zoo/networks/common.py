@@ -47,11 +47,11 @@ def initialize_weights(net: nn.Module) -> None:
 class NatureCnnBackboneNet(nn.Module):
     """DQN Nature paper conv2d layers backbone, returns feature representation vector."""
 
-    def __init__(self, input_shape: tuple) -> None:
+    def __init__(self, state_dim: tuple) -> None:
         super().__init__()
 
         # Compute the output shape of final conv2d layer
-        c, h, w = input_shape
+        c, h, w = state_dim
         h, w = calc_conv2d_output((h, w), 8, 4)
         h, w = calc_conv2d_output((h, w), 4, 2)
         h, w = calc_conv2d_output((h, w), 3, 1)

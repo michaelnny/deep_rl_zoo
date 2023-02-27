@@ -40,11 +40,11 @@ class Normalizer:
         self.initialized = False
         self.device = device
 
-    def _build(self, input_shape: tuple) -> None:
+    def _build(self, state_dim: tuple) -> None:
         assert not self.initialized
         self.initialized = True
 
-        size = input_shape[-1]
+        size = state_dim[-1]
 
         # Statistics accumulators
         self.steps = torch.zeros(1, dtype=torch.float32, device=self.device).requires_grad_(False)

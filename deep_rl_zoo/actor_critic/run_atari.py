@@ -92,22 +92,22 @@ def main(argv):
     logging.info('Action spec: %s', train_env.action_space.n)
     logging.info('Observation spec: %s', train_env.observation_space.shape)
 
-    input_shape = train_env.observation_space.shape
-    num_actions = train_env.action_space.n
+    state_dim = train_env.observation_space.shape
+    action_dim = train_env.action_space.n
 
     # Test environment and state shape.
     obs = train_env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == input_shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+    assert obs.shape == state_dim == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network and optimizer
-    policy_network = ActorCriticConvNet(input_shape=input_shape, num_actions=num_actions)
+    policy_network = ActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.pi_logits.shape == (1, action_dim)
     assert network_output.baseline.shape == (1, 1)
 
     # Create Actor-Critic agent instance

@@ -161,7 +161,6 @@ class Learner(types_lib.Learner):
         self,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
-        old_policy_network: nn.Module,
         icm_network: nn.Module,
         icm_optimizer: torch.optim.Optimizer,
         clip_epsilon: LinearSchedule,
@@ -183,7 +182,6 @@ class Learner(types_lib.Learner):
         Args:
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
-            old_policy_network: the old policy network used for workers.
             icm_network: the ICM module network.
             icm_optimizer: the optimizer for ICM module network.
             clip_epsilon: external scheduler to decay clip epsilon.
@@ -225,13 +223,10 @@ class Learner(types_lib.Learner):
 
         self.agent_name = 'PPO-ICM-learner'
         self._policy_network = policy_network.to(device=device)
-        self._old_policy_network = old_policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
         self._icm_network = icm_network.to(device=device)
         self._icm_optimizer = icm_optimizer
         self._device = device
-
-        self._update_old_policy()
 
         # Accumulate running statistics to calculate mean and std online,
         # this will also clip intrinsic reward values in the range [-10, 10]
@@ -310,11 +305,10 @@ class Learner(types_lib.Learner):
 
         discount_tp1 = (~stacked_done_tp1).float() * self._discount
 
-        # Get output from old policy
-        output_t = self._old_policy_network(stacked_s_t)
+        output_t = self._policy_network(stacked_s_t)
         v_t = output_t.baseline.squeeze(-1)
 
-        v_tp1 = self._old_policy_network(stacked_s_tp1).baseline.squeeze(-1)
+        v_tp1 = self._policy_network(stacked_s_tp1).baseline.squeeze(-1)
         advantage_t = multistep.truncated_generalized_advantage_estimation(stacked_r_t, v_t, v_tp1, discount_tp1, self._lambda)
 
         returns_t = advantage_t + v_t
@@ -352,8 +346,7 @@ class Learner(types_lib.Learner):
                 self._update_t += 1
                 yield self.statistics
 
-        self._storage = []  # discard old samples after using it
-        self._update_old_policy()
+        del self._storage[:]  # discard old samples after using it
 
     def _update_icm(self, transitions: Transition) -> None:
         self._icm_optimizer.zero_grad()
@@ -446,7 +439,7 @@ class Learner(types_lib.Learner):
         a_t = torch.from_numpy(transitions.a_t).to(device=self._device, dtype=torch.int64)  # [batch_size]
         behavior_logprob_a_t = torch.from_numpy(transitions.logprob_a_t).to(
             device=self._device, dtype=torch.float32
-        )  # [batch_size, num_actions]
+        )  # [batch_size, action_dim]
         returns_t = torch.from_numpy(transitions.returns_t).to(device=self._device, dtype=torch.float32)  # [batch_size]
         advantage_t = torch.from_numpy(transitions.advantage_t).to(device=self._device, dtype=torch.float32)  # [batch_size]
 
@@ -509,9 +502,6 @@ class Learner(types_lib.Learner):
         self._icm_forward_loss_t = icm_forward_loss.detach().cpu().item()
 
         return loss
-
-    def _update_old_policy(self):
-        self._old_policy_network.load_state_dict(self._policy_network.state_dict())
 
     @property
     def clip_epsilon(self):

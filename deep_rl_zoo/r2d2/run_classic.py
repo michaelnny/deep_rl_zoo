@@ -118,14 +118,14 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape[0]
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Create network for learner to optimize, actor will use the same network with share memory.
-    network = R2d2DqnMlpNet(input_shape=state_dim, num_actions=num_actions)
+    network = R2d2DqnMlpNet(state_dim=state_dim, action_dim=action_dim)
     network.share_memory()
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate, eps=FLAGS.adam_eps)
 
@@ -138,7 +138,7 @@ def main(argv):
         hidden_s=network.get_initial_hidden_state(1),
     )
     network_output = network(x)
-    assert network_output.q_values.shape == (1, 1, num_actions)
+    assert network_output.q_values.shape == (1, 1, action_dim)
     assert len(network_output.hidden_s) == 2
 
     # Create prioritized transition replay, no importance_sampling_exponent decay
@@ -190,11 +190,11 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            network=R2d2DqnMlpNet(input_shape=state_dim, num_actions=num_actions),
+            network=R2d2DqnMlpNet(state_dim=state_dim, action_dim=action_dim),
             learner_network=network,
             random_state=np.random.RandomState(FLAGS.seed + int(i)),  # pylint: disable=no-member
             num_actors=FLAGS.num_actors,
-            num_actions=num_actions,
+            action_dim=action_dim,
             unroll_length=FLAGS.unroll_length,
             burn_in=FLAGS.burn_in,
             actor_update_frequency=FLAGS.actor_update_frequency,

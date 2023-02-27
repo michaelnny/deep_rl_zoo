@@ -50,16 +50,16 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate.')
-flags.DEFINE_float('discount', 0.999, 'Discount rate for entrinsic environment reward.')
+flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default off.')
+flags.DEFINE_float('max_grad_norm', 1.0, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
+flags.DEFINE_float('discount', 0.999, 'Discount rate for extrinsic environment reward.')
 flags.DEFINE_float('rnd_discount', 0.99, 'Discount rate intrinsic reward.')
 flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
-flags.DEFINE_float('entropy_coef', 0.05, 'Coefficient for the entropy loss.')
-flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
+flags.DEFINE_float('entropy_coef', 0.00, 'Coefficient for the entropy loss.')
+flags.DEFINE_float('baseline_coef', 1.0, 'Coefficient for the state-value loss.')
 flags.DEFINE_float('clip_epsilon_begin_value', 0.2, 'PPO clip epsilon begin value.')
-flags.DEFINE_float('clip_epsilon_end_value', 0.0, 'PPO clip epsilon final value.')
+flags.DEFINE_float('clip_epsilon_end_value', 0.2, 'PPO clip epsilon final value.')
 flags.DEFINE_float('rnd_experience_proportion', 0.25, 'Proportion of experience used for training RND predictor.')
 flags.DEFINE_integer(
     'observation_norm_steps',
@@ -71,7 +71,7 @@ flags.DEFINE_integer('observation_norm_clip', 5, 'Observation normalization clip
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size for learning.')
 flags.DEFINE_integer('unroll_length', 128, 'Collect N transitions (cross episodes) before send to learner, per actor.')
 flags.DEFINE_integer('update_k', 4, 'Run update k times when do learning.')
-flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
+flags.DEFINE_integer('num_iterations', 200, 'Number of iterations to run.')
 flags.DEFINE_integer(
     'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
 )
@@ -114,16 +114,16 @@ def main(argv):
             max_episode_steps=FLAGS.max_episode_steps,
             seed=random_state.randint(1, 2**32),
             noop_max=30,
-            terminal_on_life_loss=False,
+            terminal_on_life_loss=True,
         )
 
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape..
@@ -150,15 +150,12 @@ def main(argv):
             observation_normalizer.update(observation[..., None].to(device=runtime_device))
 
     # Create policy network, master will optimize this network
-    policy_network = RndActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
-
-    # The 'old' policy for actors to act
-    old_policy_network = RndActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
-    old_policy_network.share_memory()
+    policy_network = RndActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
+    policy_network.share_memory()
 
     # Create RND target and predictor networks.
-    rnd_target_network = RndConvNet(input_shape=state_dim, is_target=True)
-    rnd_predictor_network = RndConvNet(input_shape=state_dim)
+    rnd_target_network = RndConvNet(state_dim=state_dim, is_target=True)
+    rnd_predictor_network = RndConvNet(state_dim=state_dim)
 
     # Use a single optimizer for both policy and RND predictor networks.
     policy_optimizer = torch.optim.Adam(
@@ -172,7 +169,7 @@ def main(argv):
     pi_logits = network_output.pi_logits
     ext_baseline = network_output.ext_baseline
     int_baseline = network_output.int_baseline
-    assert pi_logits.shape == (1, num_actions)
+    assert pi_logits.shape == (1, action_dim)
     assert ext_baseline.shape == int_baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner and log queue.
@@ -191,7 +188,6 @@ def main(argv):
     learner_agent = agent.Learner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        old_policy_network=old_policy_network,
         rnd_target_network=rnd_target_network,
         rnd_predictor_network=rnd_predictor_network,
         observation_normalizer=observation_normalizer,
@@ -220,7 +216,7 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            policy_network=old_policy_network,
+            policy_network=policy_network,
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

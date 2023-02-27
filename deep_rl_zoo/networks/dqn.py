@@ -69,52 +69,52 @@ class NguDqnNetworkInputs(NamedTuple):
 class DqnMlpNet(nn.Module):
     """MLP DQN network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
 
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(128, action_dim),
         )
 
     def forward(self, x: torch.Tensor) -> DqnNetworkOutputs:
         """Given state, return state-action value for all possible actions"""
 
-        q_values = self.body(x)  # [batch_size, num_actions]
+        q_values = self.body(x)  # [batch_size, action_dim]
         return DqnNetworkOutputs(q_values=q_values)
 
 
 class DuelingDqnMlpNet(nn.Module):
     """MLP Dueling DQN network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
 
         super().__init__()
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -123,7 +123,7 @@ class DuelingDqnMlpNet(nn.Module):
         self.advantage_head = nn.Sequential(
             nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(128, action_dim),
         )
 
         self.value_head = nn.Sequential(
@@ -137,10 +137,10 @@ class DuelingDqnMlpNet(nn.Module):
 
         features = self.body(x)
 
-        advantages = self.advantage_head(features)  # [batch_size, num_actions]
+        advantages = self.advantage_head(features)  # [batch_size, action_dim]
         values = self.value_head(features)  # [batch_size, 1]
 
-        q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))  # [batch_size, num_actions]
+        q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))  # [batch_size, action_dim]
 
         return DqnNetworkOutputs(q_values=q_values)
 
@@ -148,41 +148,41 @@ class DuelingDqnMlpNet(nn.Module):
 class C51DqnMlpNet(nn.Module):
     """C51 DQN MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
+    def __init__(self, state_dim: int, action_dim: int, atoms: torch.Tensor):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             atoms: the support for q value distribution, used here to turn Z into Q values
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
         if len(atoms.shape) != 1:
             raise ValueError(f'Expect atoms to be a 1D tensor, got {atoms.shape}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions * self.num_atoms),
+            nn.Linear(128, action_dim * self.num_atoms),
         )
 
     def forward(self, x: torch.Tensor) -> C51NetworkOutputs:
         """Given state, return state-action value for all possible actions"""
         x = self.body(x)
 
-        q_logits = x.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
+        q_logits = x.view(-1, self.action_dim, self.num_atoms)  # [batch_size, action_dim, num_atoms]
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1)  # [batch_size, num_actions]
+        q_values = torch.sum(q_dist * atoms, dim=-1)  # [batch_size, action_dim]
 
         return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
@@ -190,28 +190,28 @@ class C51DqnMlpNet(nn.Module):
 class RainbowDqnMlpNet(nn.Module):
     """Rainbow combines C51, dueling architecture, and noisy net."""
 
-    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
+    def __init__(self, state_dim: int, action_dim: int, atoms: torch.Tensor):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             atoms: the support for q value distribution, used here to turn Z into Q values
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
         if len(atoms.shape) != 1:
             raise ValueError(f'Expect atoms to be a 1D tensor, got {atoms.shape}')
 
         super().__init__()
 
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -220,7 +220,7 @@ class RainbowDqnMlpNet(nn.Module):
         self.advantage_head = nn.Sequential(
             common.NoisyLinear(128, 128),
             nn.ReLU(),
-            common.NoisyLinear(128, num_actions * self.num_atoms),
+            common.NoisyLinear(128, action_dim * self.num_atoms),
         )
         self.value_head = nn.Sequential(
             common.NoisyLinear(128, 128),
@@ -234,12 +234,12 @@ class RainbowDqnMlpNet(nn.Module):
         advantages = self.advantage_head(x)
         values = self.value_head(x)
 
-        advantages = advantages.view(-1, self.num_actions, self.num_atoms)
+        advantages = advantages.view(-1, self.action_dim, self.num_atoms)
         values = values.view(-1, 1, self.num_atoms)
 
         q_logits = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))
 
-        q_logits = q_logits.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
+        q_logits = q_logits.view(-1, self.action_dim, self.num_atoms)  # [batch_size, action_dim, num_atoms]
 
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
@@ -258,37 +258,37 @@ class RainbowDqnMlpNet(nn.Module):
 class QRDqnMlpNet(nn.Module):
     """Quantile Regression DQN MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int, quantiles: torch.Tensor):
+    def __init__(self, state_dim: int, action_dim: int, quantiles: torch.Tensor):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             quantiles: the quantiles for QR DQN
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
         if len(quantiles.shape) != 1:
             raise ValueError(f'Expect quantiles to be a 1D tensor, got {quantiles.shape}')
 
         super().__init__()
         self.taus = quantiles
         self.num_taus = quantiles.size(0)
-        self.num_actions = num_actions
+        self.action_dim = action_dim
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions * self.num_taus),
+            nn.Linear(128, action_dim * self.num_taus),
         )
 
     def forward(self, x: torch.Tensor) -> QRDqnNetworkOutputs:
         """Given state, return state-action value for all possible actions."""
         # No softmax as the model is trying to approximate the 'whole' probability distributions
-        q_dist = self.body(x).view(-1, self.num_taus, self.num_actions)  # [batch_size, num_taus, num_actions]
+        q_dist = self.body(x).view(-1, self.num_taus, self.action_dim)  # [batch_size, num_taus, action_dim]
         q_values = torch.mean(q_dist, dim=1)
 
         return QRDqnNetworkOutputs(q_values=q_values, q_dist=q_dist)
@@ -297,28 +297,28 @@ class QRDqnMlpNet(nn.Module):
 class IqnMlpNet(nn.Module):
     """Implicity Quantiel MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int, latent_dim: int):
+    def __init__(self, state_dim: int, action_dim: int, latent_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             latent_dim: the cos embedding linear layer input shapes
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
         if latent_dim < 1:
             raise ValueError(f'Expect latent_dim to be a positive integer, got {latent_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.latent_dim = latent_dim
 
         self.pis = torch.arange(1, self.latent_dim + 1).float() * 3.141592653589793  # [latent_dim]
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -326,7 +326,7 @@ class IqnMlpNet(nn.Module):
 
         self.embedding_layer = nn.Linear(latent_dim, 128)
 
-        self.value_head = nn.Linear(128, num_actions)
+        self.value_head = nn.Linear(128, action_dim)
 
     def sample_taus(self, batch_size: int, num_taus: int) -> torch.Tensor:
         """Returns sampled batch taus."""
@@ -341,8 +341,8 @@ class IqnMlpNet(nn.Module):
             taus: tau embedding samples, shape (B, num_taus)
 
         Returns:
-            q_values: # [batch_size, num_actions]
-            q_dist: # [batch_size, num_actions, num_taus]
+            q_values: # [batch_size, action_dim]
+            q_dist: # [batch_size, action_dim, num_taus]
         """
         batch_size = x.shape[0]
         # Apply DQN to embed state.
@@ -369,31 +369,31 @@ class IqnMlpNet(nn.Module):
         head_input = head_input.view(-1, self.embedding_layer.out_features)
 
         # No softmax as the model is trying to approximate the 'whole' probability distributions
-        q_dist = self.value_head(head_input)  # [batch_size x num_taus, num_actions]
-        q_dist = q_dist.view(batch_size, -1, self.num_actions)  # [batch_size, num_taus, num_actions]
-        q_values = torch.mean(q_dist, dim=1)  # [batch_size, num_actions]
+        q_dist = self.value_head(head_input)  # [batch_size x num_taus, action_dim]
+        q_dist = q_dist.view(batch_size, -1, self.action_dim)  # [batch_size, num_taus, action_dim]
+        q_values = torch.mean(q_dist, dim=1)  # [batch_size, action_dim]
         return IqnNetworkOutputs(q_values=q_values, q_dist=q_dist, taus=taus)
 
 
 class DrqnMlpNet(nn.Module):
     """DRQN MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -401,7 +401,7 @@ class DrqnMlpNet(nn.Module):
 
         self.lstm = nn.LSTM(input_size=128, hidden_size=128, num_layers=1, batch_first=True)
 
-        self.value_head = nn.Linear(self.lstm.hidden_size, num_actions)
+        self.value_head = nn.Linear(self.lstm.hidden_size, action_dim)
 
     def forward(self, x: torch.Tensor, hidden_s: None) -> RnnDqnNetworkOutputs:
         """
@@ -430,7 +430,7 @@ class DrqnMlpNet(nn.Module):
 
         x = torch.flatten(x, 0, 1)  # Merge batch and time dimension.
         q_values = self.value_head(x)
-        q_values = q_values.view(B, T, -1)  # reshape to in the range [B, T, num_actions]
+        q_values = q_values.view(B, T, -1)  # reshape to in the range [B, T, action_dim]
         return RnnDqnNetworkOutputs(q_values=q_values, hidden_s=hidden_s)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
@@ -443,36 +443,36 @@ class DrqnMlpNet(nn.Module):
 class R2d2DqnMlpNet(nn.Module):
     """R2D2 DQN MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
         )
 
         # Feature representation output size + one-hot of last action + last reward.
-        core_output_size = 128 + self.num_actions + 1
+        core_output_size = 128 + self.action_dim + 1
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
         self.advantage_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(128, action_dim),
         )
         self.value_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 128),
@@ -511,7 +511,7 @@ class R2d2DqnMlpNet(nn.Module):
         x = x.view(T * B, -1)
 
         # Append reward and one hot last action.
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.action_dim).float().to(device=x.device)
 
         reward = r_t.view(T * B, 1)
         core_input = torch.cat([x, reward, one_hot_a_tm1], dim=-1)
@@ -525,11 +525,11 @@ class R2d2DqnMlpNet(nn.Module):
         x, hidden_s = self.lstm(core_input, hidden_s)
 
         x = torch.flatten(x, 0, 1)  # Merge batch and time dimension.
-        advantages = self.advantage_head(x)  # [T*B, num_actions]
+        advantages = self.advantage_head(x)  # [T*B, action_dim]
         values = self.value_head(x)  # [T*B, 1]
 
         q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))
-        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, num_actions]
+        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, action_dim]
         return RnnDqnNetworkOutputs(q_values=q_values, hidden_s=hidden_s)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
@@ -542,19 +542,19 @@ class R2d2DqnMlpNet(nn.Module):
 class NguDqnMlpNet(nn.Module):
     """NGU DQN MLP network."""
 
-    def __init__(self, input_shape: int, num_actions: int, num_policies: int):
+    def __init__(self, state_dim: int, action_dim: int, num_policies: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
-            num_actions: the number of units for the output liner layer.
+            state_dim: the shape of the input tensor to the neural network.
+            action_dim: the number of units for the output liner layer.
             num_policies: the number of mixtures for intrinsic reward scale betas.
         """
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.num_policies = num_policies  # intrinsic reward scale betas
 
         self.body = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
@@ -566,14 +566,14 @@ class NguDqnMlpNet(nn.Module):
         # one-hot of last action
         # last intrinsic reward
         # last extrinsic reward
-        core_output_size = 128 + self.num_policies + self.num_actions + 1 + 1
+        core_output_size = 128 + self.num_policies + self.action_dim + 1 + 1
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=128, num_layers=1)
 
         self.advantage_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 128),
             nn.ReLU(),
-            nn.Linear(128, num_actions),
+            nn.Linear(128, action_dim),
         )
         self.value_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 128),
@@ -616,7 +616,7 @@ class NguDqnMlpNet(nn.Module):
 
         # Append one-hot intrinsic scale beta, one-hot last action, previous intrinsic reward, previous extrinsic reward.
         one_hot_beta = F.one_hot(policy_index.view(T * B), self.num_policies).float().to(device=x.device)
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.action_dim).float().to(device=x.device)
         int_reward = int_r_t.view(T * B, 1)
         ext_reward = ext_r_t.view(T * B, 1)
 
@@ -635,7 +635,7 @@ class NguDqnMlpNet(nn.Module):
         values = self.value_head(x)
 
         q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))
-        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, num_actions]
+        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, action_dim]
         return RnnDqnNetworkOutputs(q_values=q_values, hidden_s=hidden_s)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
@@ -648,25 +648,25 @@ class NguDqnMlpNet(nn.Module):
 class DqnConvNet(nn.Module):
     """DQN Conv2d network."""
 
-    def __init__(self, input_shape: tuple, num_actions: int):
+    def __init__(self, state_dim: tuple, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.action_dim = action_dim
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         # Initialize weights.
@@ -676,33 +676,33 @@ class DqnConvNet(nn.Module):
         """Given state, return state-action value for all possible actions"""
         x = x.float() / 255.0
         x = self.body(x)
-        q_values = self.value_head(x)  # [batch_size, num_actions]
+        q_values = self.value_head(x)  # [batch_size, action_dim]
         return DqnNetworkOutputs(q_values=q_values)
 
 
 class DuelingDqnConvNet(nn.Module):
     """Dueling DQN Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if input_shape < 1:
-            raise ValueError(f'Expect input_shape to be a positive integer, got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if state_dim < 1:
+            raise ValueError(f'Expect state_dim to be a positive integer, got {state_dim}')
 
         super().__init__()
 
-        self.num_actions = num_actions
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.action_dim = action_dim
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.advantage_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         self.value_head = nn.Sequential(
@@ -716,10 +716,10 @@ class DuelingDqnConvNet(nn.Module):
 
         features = self.body(x)
 
-        advantages = self.advantage_head(features)  # [batch_size, num_actions]
+        advantages = self.advantage_head(features)  # [batch_size, action_dim]
         values = self.value_head(features)  # [batch_size, 1]
 
-        q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))  # [batch_size, num_actions]
+        q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))  # [batch_size, action_dim]
 
         return DqnNetworkOutputs(q_values=q_values)
 
@@ -727,31 +727,31 @@ class DuelingDqnConvNet(nn.Module):
 class C51DqnConvNet(nn.Module):
     """C51 DQN Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
+    def __init__(self, state_dim: int, action_dim: int, atoms: torch.Tensor):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             atoms: the support for q value distribution, used here to turn Z into Q values
         """
 
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
         if len(atoms.shape) != 1:
             raise ValueError(f'Expect atoms to be a 1D tensor, got {atoms.shape}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions * self.num_atoms),
+            nn.Linear(512, action_dim * self.num_atoms),
         )
 
         # Initialize weights.
@@ -763,10 +763,10 @@ class C51DqnConvNet(nn.Module):
         x = self.body(x)
         x = self.value_head(x)
 
-        q_logits = x.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
+        q_logits = x.view(-1, self.action_dim, self.num_atoms)  # [batch_size, action_dim, num_atoms]
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
-        q_values = torch.sum(q_dist * atoms, dim=-1)  # [batch_size, num_actions]
+        q_values = torch.sum(q_dist * atoms, dim=-1)  # [batch_size, action_dim]
 
         return C51NetworkOutputs(q_logits=q_logits, q_values=q_values)
 
@@ -774,31 +774,31 @@ class C51DqnConvNet(nn.Module):
 class RainbowDqnConvNet(nn.Module):
     """Rainbow combines C51, dueling architecture, and noisy net."""
 
-    def __init__(self, input_shape: int, num_actions: int, atoms: torch.Tensor):
+    def __init__(self, state_dim: int, action_dim: int, atoms: torch.Tensor):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             atoms: the support for q value distribution, used here to turn Z into Q values
         """
         if len(atoms.shape) != 1:
             raise ValueError(f'Expect atoms to be a 1D tensor, got {atoms.shape}')
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.atoms = atoms
         self.num_atoms = atoms.size(0)
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.advantage_head = nn.Sequential(
             common.NoisyLinear(self.body.out_features, 512),
             nn.ReLU(),
-            common.NoisyLinear(512, num_actions * self.num_atoms),
+            common.NoisyLinear(512, action_dim * self.num_atoms),
         )
 
         self.value_head = nn.Sequential(
@@ -817,12 +817,12 @@ class RainbowDqnConvNet(nn.Module):
         advantages = self.advantage_head(x)
         values = self.value_head(x)
 
-        advantages = advantages.view(-1, self.num_actions, self.num_atoms)
+        advantages = advantages.view(-1, self.action_dim, self.num_atoms)
         values = values.view(-1, 1, self.num_atoms)
 
         q_logits = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))
 
-        q_logits = q_logits.view(-1, self.num_actions, self.num_atoms)  # [batch_size, num_actions, num_atoms]
+        q_logits = q_logits.view(-1, self.action_dim, self.num_atoms)  # [batch_size, action_dim, num_atoms]
 
         q_dist = F.softmax(q_logits, dim=-1)
         atoms = self.atoms[None, None, :].to(device=x.device)
@@ -841,32 +841,32 @@ class RainbowDqnConvNet(nn.Module):
 class QRDqnConvNet(nn.Module):
     """Quantile Regression DQN Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int, quantiles: torch.Tensor):
+    def __init__(self, state_dim: int, action_dim: int, quantiles: torch.Tensor):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             quantiles: the quantiles for QR DQN
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
         if len(quantiles.shape) != 1:
             raise ValueError(f'Expect quantiles to be a 1D tensor, got {quantiles.shape}')
 
         super().__init__()
 
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.taus = quantiles
         self.num_taus = quantiles.size(0)
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions * self.num_taus),
+            nn.Linear(512, action_dim * self.num_taus),
         )
 
         # Initialize weights.
@@ -878,7 +878,7 @@ class QRDqnConvNet(nn.Module):
         x = self.body(x)
         q_dist = self.value_head(x)
         # No softmax as the model is trying to approximate the 'whole' probability distributions
-        q_dist = q_dist.view(-1, self.num_taus, self.num_actions)  # [batch_size, num_taus, num_actions]
+        q_dist = q_dist.view(-1, self.num_taus, self.action_dim)  # [batch_size, num_taus, action_dim]
         q_values = torch.mean(q_dist, dim=1)
 
         return QRDqnNetworkOutputs(q_values=q_values, q_dist=q_dist)
@@ -887,34 +887,34 @@ class QRDqnConvNet(nn.Module):
 class IqnConvNet(nn.Module):
     """Implicit Quantile Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int, latent_dim: int):
+    def __init__(self, state_dim: int, action_dim: int, latent_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
             latent_dim: the cos embedding linear layer input shapes
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
         if latent_dim < 1:
             raise ValueError(f'Expect latent_dim to be a positive integer, got {latent_dim}')
 
         super().__init__()
 
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.latent_dim = latent_dim
 
         self.pis = torch.arange(1, self.latent_dim + 1).float() * 3.141592653589793  # [latent_dim]
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
         self.embedding_layer = nn.Linear(latent_dim, self.body.out_features)
 
         self.value_head = nn.Sequential(
             nn.Linear(self.body.out_features, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         # Initialize weights.
@@ -933,8 +933,8 @@ class IqnConvNet(nn.Module):
             taus: tau embedding samples # batch x samples
 
         Returns:
-            q_values: # [batch_size, num_actions]
-            q_dist: # [batch_size, num_taus, num_actions]
+            q_values: # [batch_size, action_dim]
+            q_dist: # [batch_size, num_taus, action_dim]
         """
         batch_size = x.shape[0]
 
@@ -963,37 +963,37 @@ class IqnConvNet(nn.Module):
         head_input = head_input.view(-1, self.embedding_layer.out_features)
 
         # No softmax as the model is trying to approximate the 'whole' probability distributions
-        q_dist = self.value_head(head_input)  # [batch_size x num_taus, num_actions]
-        q_dist = q_dist.view(batch_size, -1, self.num_actions)  # [batch_size, num_taus, num_actions]
-        q_values = torch.mean(q_dist, dim=1)  # [batch_size, num_actions]
+        q_dist = self.value_head(head_input)  # [batch_size x num_taus, action_dim]
+        q_dist = q_dist.view(batch_size, -1, self.action_dim)  # [batch_size, num_taus, action_dim]
+        q_values = torch.mean(q_dist, dim=1)  # [batch_size, action_dim]
         return IqnNetworkOutputs(q_values=q_values, q_dist=q_dist, taus=taus)
 
 
 class DrqnConvNet(nn.Module):
     """DRQN Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
 
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.action_dim = action_dim
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         self.lstm = nn.LSTM(input_size=self.body.out_features, hidden_size=256, num_layers=1, batch_first=True)
 
         self.value_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         # Initialize weights.
@@ -1026,7 +1026,7 @@ class DrqnConvNet(nn.Module):
 
         x = torch.flatten(x, 0, 1)  # Merge batch and time dimension.
         q_values = self.value_head(x)
-        q_values = q_values.view(B, T, -1)  # reshape to in the range [B, T, num_actions]
+        q_values = q_values.view(B, T, -1)  # reshape to in the range [B, T, action_dim]
         return RnnDqnNetworkOutputs(q_values=q_values, hidden_s=hidden_s)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
@@ -1039,31 +1039,31 @@ class DrqnConvNet(nn.Module):
 class R2d2DqnConvNet(nn.Module):
     """R2D2 DQN Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int):
+    def __init__(self, state_dim: int, action_dim: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network
-            num_actions: the number of units for the output liner layer
+            state_dim: the shape of the input tensor to the neural network
+            action_dim: the number of units for the output liner layer
         """
-        if num_actions < 1:
-            raise ValueError(f'Expect num_actions to be a positive integer, got {num_actions}')
-        if len(input_shape) != 3:
-            raise ValueError(f'Expect input_shape to be a tuple with [C, H, W], got {input_shape}')
+        if action_dim < 1:
+            raise ValueError(f'Expect action_dim to be a positive integer, got {action_dim}')
+        if len(state_dim) != 3:
+            raise ValueError(f'Expect state_dim to be a tuple with [C, H, W], got {state_dim}')
 
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         # Feature representation output size + one-hot of last action + last reward.
-        core_output_size = self.body.out_features + self.num_actions + 1
+        core_output_size = self.body.out_features + self.action_dim + 1
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=512, num_layers=1)
 
         self.advantage_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         self.value_head = nn.Sequential(
@@ -1106,7 +1106,7 @@ class R2d2DqnConvNet(nn.Module):
         x = x.view(T * B, -1)
 
         # Append reward and one hot last action.
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.action_dim).float().to(device=x.device)
 
         reward = r_t.view(T * B, 1)
         core_input = torch.cat([x, reward, one_hot_a_tm1], dim=-1)
@@ -1120,11 +1120,11 @@ class R2d2DqnConvNet(nn.Module):
         x, hidden_s = self.lstm(core_input, hidden_s)
 
         x = torch.flatten(x, 0, 1)  # Merge batch and time dimension.
-        advantages = self.advantage_head(x)  # [T*B, num_actions]
+        advantages = self.advantage_head(x)  # [T*B, action_dim]
         values = self.value_head(x)  # [T*B, 1]
 
         q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))
-        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, num_actions]
+        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, action_dim]
         return RnnDqnNetworkOutputs(q_values=q_values, hidden_s=hidden_s)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
@@ -1137,18 +1137,18 @@ class R2d2DqnConvNet(nn.Module):
 class NguDqnConvNet(nn.Module):
     """NGU DQN Conv2d network."""
 
-    def __init__(self, input_shape: int, num_actions: int, num_policies: int):
+    def __init__(self, state_dim: int, action_dim: int, num_policies: int):
         """
         Args:
-            input_shape: the shape of the input tensor to the neural network.
-            num_actions: the number of units for the output liner layer.
+            state_dim: the shape of the input tensor to the neural network.
+            action_dim: the number of units for the output liner layer.
             num_policies: the number of mixtures for intrinsic reward scale betas.
         """
         super().__init__()
-        self.num_actions = num_actions
+        self.action_dim = action_dim
         self.num_policies = num_policies  # intrinsic reward scale betas
 
-        self.body = common.NatureCnnBackboneNet(input_shape)
+        self.body = common.NatureCnnBackboneNet(state_dim)
 
         # Core input includes:
         # feature representation output size
@@ -1156,14 +1156,14 @@ class NguDqnConvNet(nn.Module):
         # one-hot of last action
         # last intrinsic reward
         # last extrinsic reward
-        core_output_size = self.body.out_features + self.num_policies + self.num_actions + 1 + 1
+        core_output_size = self.body.out_features + self.num_policies + self.action_dim + 1 + 1
 
         self.lstm = nn.LSTM(input_size=core_output_size, hidden_size=512, num_layers=1)
 
         self.advantage_head = nn.Sequential(
             nn.Linear(self.lstm.hidden_size, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
         self.value_head = nn.Sequential(
@@ -1211,7 +1211,7 @@ class NguDqnConvNet(nn.Module):
 
         # Append one-hot intrinsic scale beta, one-hot last action, previous intrinsic reward, previous extrinsic reward.
         one_hot_beta = F.one_hot(policy_index.view(T * B), self.num_policies).float().to(device=x.device)
-        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.num_actions).float().to(device=x.device)
+        one_hot_a_tm1 = F.one_hot(a_tm1.view(T * B), self.action_dim).float().to(device=x.device)
 
         int_reward = int_r_t.view(T * B, 1)
         ext_reward = ext_r_t.view(T * B, 1)
@@ -1231,7 +1231,7 @@ class NguDqnConvNet(nn.Module):
         values = self.value_head(x)
 
         q_values = values + (advantages - torch.mean(advantages, dim=1, keepdim=True))
-        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, num_actions]
+        q_values = q_values.view(T, B, -1)  # reshape to in the range [B, T, action_dim]
         return RnnDqnNetworkOutputs(q_values=q_values, hidden_s=hidden_s)
 
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:

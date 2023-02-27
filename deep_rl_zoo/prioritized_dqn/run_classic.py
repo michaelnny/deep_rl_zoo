@@ -102,16 +102,16 @@ def main(argv):
     logging.info('Action spec: %s', train_env.action_space.n)
     logging.info('Observation spec: %s', train_env.observation_space.shape[0])
 
-    input_shape = train_env.observation_space.shape[0]
-    num_actions = train_env.action_space.n
+    state_dim = train_env.observation_space.shape[0]
+    action_dim = train_env.action_space.n
 
-    network = DqnMlpNet(input_shape=input_shape, num_actions=num_actions)
+    network = DqnMlpNet(state_dim=state_dim, action_dim=action_dim)
     optimizer = torch.optim.Adam(network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network input and output
     obs = train_env.reset()
     q = network(torch.from_numpy(obs[None, ...]).float()).q_values
-    assert q.shape == (1, num_actions)
+    assert q.shape == (1, action_dim)
 
     # Create e-greedy exploration epsilon schedule
     exploration_epsilon_schedule = LinearSchedule(
@@ -153,7 +153,7 @@ def main(argv):
         discount=FLAGS.discount,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
-        num_actions=num_actions,
+        action_dim=action_dim,
         random_state=random_state,
         device=runtime_device,
     )

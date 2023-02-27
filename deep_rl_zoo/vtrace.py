@@ -119,7 +119,7 @@ def from_importance_weights(
 
     In the notation used throughout documentation and comments, T refers to the
     time dimension ranging from 0 to T-1. B refers to the batch size and
-    NUM_ACTIONS refers to the number of actions. This code also supports the
+    action_dim refers to the number of actions. This code also supports the
     case where all tensors have the same number of additional dimensions, e.g.,
     `rewards` is [T, B, C], `values` is [T, B, C], `bootstrap_value` is [B, C].
 

@@ -106,7 +106,7 @@ class Actor(types_lib.Agent):
         ext_discount: float,
         int_discount: float,
         num_actors: int,
-        num_actions: int,
+        action_dim: int,
         unroll_length: int,
         burn_in: int,
         num_policies: int,
@@ -134,7 +134,7 @@ class Actor(types_lib.Agent):
             ext_discount: extrinsic reward discount.
             int_discount: intrinsic reward discount.
             num_actors: number of actors.
-            num_actions: number of valid actions in the environment.
+            action_dim: number of valid actions in the environment.
             unroll_length: how many agent time step to unroll transitions before put on to queue.
             burn_in: two consecutive unrolls will overlap on burn_in+1 steps.
             num_policies: number of exploring and exploiting policies.
@@ -153,8 +153,8 @@ class Actor(types_lib.Agent):
             raise ValueError(f'Expect int_discount to be [0.0, 1.0], got {int_discount}')
         if not 0 < num_actors:
             raise ValueError(f'Expect num_actors to be positive integer, got {num_actors}')
-        if not 0 < num_actions:
-            raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
+        if not 0 < action_dim:
+            raise ValueError(f'Expect action_dim to be positive integer, got {action_dim}')
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
         if not 0 <= burn_in < unroll_length:
@@ -199,7 +199,7 @@ class Actor(types_lib.Agent):
         self._device = device
         self._random_state = random_state
         self._num_actors = num_actors
-        self._num_actions = num_actions
+        self._action_dim = action_dim
         self._actor_update_frequency = actor_update_frequency
         self._num_policies = num_policies
 
@@ -307,7 +307,7 @@ class Actor(types_lib.Agent):
 
         # During the first step of a new episode,
         # use 'fake' previous action and 'intrinsic' reward for network pass
-        self._last_action = self._random_state.randint(0, self._num_actions)  # Initialize a_tm1 randomly
+        self._last_action = self._random_state.randint(0, self._action_dim)  # Initialize a_tm1 randomly
         self._episodic_bonus_t = 0.0
         self._lifelong_bonus_t = 0.0
         self._lstm_state = self._network.get_initial_hidden_state(batch_size=1)
@@ -327,15 +327,15 @@ class Actor(types_lib.Agent):
         a_t = torch.argmax(q_t, dim=-1).cpu().item()
 
         # Policy probability for a_t, the detailed equation is mentioned in Agent57 paper.
-        prob_a_t = 1 - (self._exploration_epsilon * ((self._num_actions - 1) / self._num_actions))
+        prob_a_t = 1 - (self._exploration_epsilon * ((self._action_dim - 1) / self._action_dim))
 
         # To make sure every actors generates the same amount of samples, we apply e-greedy after the network pass,
         # otherwise the actor with higher epsilons will generate more samples,
         # while the actor with lower epsilon will generate less samples.
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
-            a_t = self._random_state.randint(0, self._num_actions)
-            prob_a_t = self._exploration_epsilon / self._num_actions
+            a_t = self._random_state.randint(0, self._action_dim)
+            prob_a_t = self._exploration_epsilon / self._action_dim
 
         return (q_t.cpu().numpy(), a_t, prob_a_t, pi_output.hidden_s)
 
@@ -647,7 +647,7 @@ class Learner(types_lib.Learner):
         embedding_s_tm1 = self._embedding_network(s_tm1)  # [5*B, latent_dim]
         embedding_s_t = self._embedding_network(s_t)  # [5*B, latent_dim]
         embeddings = torch.cat([embedding_s_tm1, embedding_s_t], dim=-1)
-        pi_logits = self._embedding_network.inverse_prediction(embeddings)  # [5*B, num_actions]
+        pi_logits = self._embedding_network.inverse_prediction(embeddings)  # [5*B, action_dim]
 
         # [5*B,]
         loss = F.cross_entropy(pi_logits, a_tm1, reduction='none')
@@ -723,7 +723,7 @@ class Learner(types_lib.Learner):
         discount_t = (~done).float() * discount  # (T+1, B)
 
         # Derive target policy probabilities from q values.
-        target_policy_probs = F.softmax(q_t, dim=-1)  # [T+1, B, num_actions]
+        target_policy_probs = F.softmax(q_t, dim=-1)  # [T+1, B, action_dim]
 
         if self._transformed_retrace:
             transform_tx_pair = nonlinear_bellman.SIGNED_HYPERBOLIC_PAIR
@@ -823,7 +823,7 @@ class Learner(types_lib.Learner):
         _, learn_transition = replay_lib.split_structure(transitions, TransitionStructure, self._burn_in)
 
         a_t = torch.from_numpy(learn_transition.a_t).to(device=self._device, dtype=torch.int64)  # [T+1, ]
-        q_t = torch.from_numpy(learn_transition.q_t).to(device=self._device, dtype=torch.float32)  # [T+1, num_actions]
+        q_t = torch.from_numpy(learn_transition.q_t).to(device=self._device, dtype=torch.float32)  # [T+1, action_dim]
         ext_r_t = torch.from_numpy(learn_transition.ext_r_t).to(device=self._device, dtype=torch.float32)  # [T+1, ]
         int_r_t = torch.from_numpy(learn_transition.int_r_t).to(device=self._device, dtype=torch.float32)  # [T+1, ]
         beta = torch.from_numpy(learn_transition.beta).to(device=self._device, dtype=torch.float32)  # [T+1, ]
@@ -845,7 +845,7 @@ class Learner(types_lib.Learner):
         discount_t = (~done).float() * discount
 
         # Derive policy probabilities from q values
-        target_policy_probs = F.softmax(q_t, dim=-1)  # [T+1, num_actions]
+        target_policy_probs = F.softmax(q_t, dim=-1)  # [T+1, action_dim]
 
         # Compute retrace loss, add a batch dimension before retrace ops.
         if self._transformed_retrace:

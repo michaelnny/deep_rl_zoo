@@ -97,7 +97,7 @@ def calculate_losses_and_priorities(
     T is the unrolled length, B the batch size, N is number of actions.
 
     Args:
-        q_value: (T+1, B, num_actions) the predicted q values for a given state 's_t' from online Q network.
+        q_value: (T+1, B, action_dim) the predicted q values for a given state 's_t' from online Q network.
         action: [T+1, B] the actual action the agent take in state 's_t'.
         reward: [T+1, B] the reward the agent received at timestep t, this is for (s_tm1, a_tm1).
         done: [T+1, B] terminal mask for timestep t, state 's_t'.
@@ -164,7 +164,7 @@ class Actor(types_lib.Agent):
         learner_network: torch.nn.Module,
         random_state: np.random.RandomState,  # pylint: disable=no-member
         num_actors: int,
-        num_actions: int,
+        action_dim: int,
         unroll_length: int,
         burn_in: int,
         actor_update_frequency: int,
@@ -178,7 +178,7 @@ class Actor(types_lib.Agent):
             learner_network: the Q network with the updated weights.
             random_state: used to sample random actions for e-greedy policy.
             num_actors: the number actors for calculating e-greedy epsilon.
-            num_actions: the number of valid actions in the environment.
+            action_dim: the number of valid actions in the environment.
             unroll_length: how many agent time step to unroll transitions before put on to queue.
             burn_in: two consecutive unrolls will overlap on burn_in+1 steps.
             actor_update_frequency: the frequency to update actor local Q network.
@@ -186,8 +186,8 @@ class Actor(types_lib.Agent):
         """
         if not 0 < num_actors:
             raise ValueError(f'Expect num_actors to be positive integer, got {num_actors}')
-        if not 0 < num_actions:
-            raise ValueError(f'Expect num_actions to be positive integer, got {num_actions}')
+        if not 0 < action_dim:
+            raise ValueError(f'Expect action_dim to be positive integer, got {action_dim}')
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
         if not 0 <= burn_in < unroll_length:
@@ -211,7 +211,7 @@ class Actor(types_lib.Agent):
 
         self._device = device
         self._random_state = random_state
-        self._num_actions = num_actions
+        self._action_dim = action_dim
         self._actor_update_frequency = actor_update_frequency
 
         self._unroll = replay_lib.Unroll(
@@ -262,7 +262,7 @@ class Actor(types_lib.Agent):
     def reset(self) -> None:
         """This method should be called at the beginning of every episode before take any action."""
         self._unroll.reset()
-        self._last_action = self._random_state.randint(0, self._num_actions)  # Initialize a_tm1 randomly
+        self._last_action = self._random_state.randint(0, self._action_dim)  # Initialize a_tm1 randomly
         self._lstm_state = self._network.get_initial_hidden_state(batch_size=1)
 
     def act(self, timestep: types_lib.TimeStep) -> Tuple[np.ndarray, types_lib.Action, Tuple[torch.Tensor]]:
@@ -283,7 +283,7 @@ class Actor(types_lib.Agent):
         # while the actor with lower epsilon will generate less samples.
         if self._random_state.rand() <= epsilon:
             # randint() return random integers from low (inclusive) to high (exclusive).
-            a_t = self._random_state.randint(0, self._num_actions)
+            a_t = self._random_state.randint(0, self._action_dim)
 
         return (q_t.cpu().numpy(), a_t, pi_output.hidden_s)
 

@@ -44,8 +44,8 @@ flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
-flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
+flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default off.')
+flags.DEFINE_float('max_grad_norm', 1.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
@@ -106,10 +106,10 @@ def main(argv):
     eval_env = environment_builder()
 
     state_dim = eval_env.observation_space.shape
-    num_actions = eval_env.action_space.n
+    action_dim = eval_env.action_space.n
 
     logging.info('Environment: %s', FLAGS.environment_name)
-    logging.info('Action spec: %s', num_actions)
+    logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
 
     # Test environment and state shape.
@@ -118,17 +118,15 @@ def main(argv):
     assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network, master will optimize this network
-    policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
+    policy_network = ActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
-    # The 'old' policy for actors to act
-    old_policy_network = ActorCriticConvNet(input_shape=state_dim, num_actions=num_actions)
-    old_policy_network.share_memory()
+    policy_network.share_memory()
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
-    assert network_output.pi_logits.shape == (1, num_actions)
+    assert network_output.pi_logits.shape == (1, action_dim)
     assert network_output.baseline.shape == (1, 1)
 
     # Create queue shared between actors and learner
@@ -147,7 +145,6 @@ def main(argv):
     learner_agent = agent.Learner(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
-        old_policy_network=old_policy_network,
         clip_epsilon=clip_epsilon_scheduler,
         discount=FLAGS.discount,
         gae_lambda=FLAGS.gae_lambda,
@@ -171,7 +168,7 @@ def main(argv):
         agent.Actor(
             rank=i,
             data_queue=data_queue,
-            policy_network=old_policy_network,
+            policy_network=policy_network,
             unroll_length=FLAGS.unroll_length,
             device=actor_devices[i],
         )

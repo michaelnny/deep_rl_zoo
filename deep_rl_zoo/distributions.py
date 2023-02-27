@@ -37,9 +37,9 @@ def categorical_importance_sampling_ratios(
 
     Args:
       pi_logits_t: raw logits at time t for the target policy,
-        shape [B, num_actions] or [T, B, num_actions].
+        shape [B, action_dim] or [T, B, action_dim].
       mu_logits_t: raw logits at time t for the behavior policy,
-        shape [B, num_actions] or [T, B, num_actions].
+        shape [B, action_dim] or [T, B, action_dim].
       a_t: actions at time t, shape [B] or [T, B].
 
     Returns:
