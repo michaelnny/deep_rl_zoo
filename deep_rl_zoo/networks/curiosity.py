@@ -182,50 +182,6 @@ class IcmNatureConvNet(nn.Module):
         return IcmNetworkOutput(pi_logits=pi_logits_a_tm1, pred_features=pred_features_t, features=features_t)
 
 
-class RndMlpNet(nn.Module):
-    """RND MLP network.
-
-    From the paper "Exploration by Random Network Distillation"
-    https://arxiv.org/abs/1810.12894
-    """
-
-    def __init__(self, state_dim: int, is_target: bool = False, latent_dim: int = 128) -> None:
-        """
-        Args:
-            state_dim: the shape of the input tensor to the neural network.
-            is_target: if True, use one single linear layer at the head, default False.
-            latent_dim: the embedding latent dimension, default 128.
-        """
-        super().__init__()
-
-        self.body = nn.Sequential(
-            nn.Linear(state_dim, 64),
-            nn.LeakyReLU(),
-            nn.Linear(64, 128),
-            nn.LeakyReLU(),
-        )
-
-        if is_target:
-            self.head = nn.Linear(128, latent_dim)
-        else:
-            self.head = nn.Sequential(
-                nn.Linear(128, 128),
-                nn.ReLU(),
-                nn.Linear(128, latent_dim),
-            )
-
-        # Initialize weights.
-        for m in self.modules():
-            if isinstance(m, (nn.Conv2d, nn.Linear)):
-                nn.init.orthogonal_(m.weight, np.sqrt(2))
-                m.bias.data.zero_()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Given raw state x, returns the feature embedding."""
-        x = self.body(x)
-        return self.head(x)
-
-
 class RndConvNet(nn.Module):
     """RND Conv2d network.
 
@@ -233,12 +189,12 @@ class RndConvNet(nn.Module):
     https://arxiv.org/abs/1810.12894
     """
 
-    def __init__(self, state_dim: int, is_target: bool = False, latent_dim: int = 128) -> None:
+    def __init__(self, state_dim: int, is_target: bool = False, latent_dim: int = 256) -> None:
         """
         Args:
             state_dim: the shape of the input tensor to the neural network.
             is_target: if True, use one single linear layer at the head, default False.
-            latent_dim: the embedding latent dimension, default 128.
+            latent_dim: the embedding latent dimension, default 256.
         """
         super().__init__()
 
@@ -265,6 +221,8 @@ class RndConvNet(nn.Module):
             self.head = nn.Sequential(
                 nn.Linear(conv2d_out_size, 512),
                 nn.ReLU(),
+                nn.Linear(512, 512),
+                nn.ReLU(),
                 nn.Linear(512, latent_dim),
             )
 
@@ -274,52 +232,15 @@ class RndConvNet(nn.Module):
                 nn.init.orthogonal_(module.weight, np.sqrt(2))
                 module.bias.data.zero_()
 
+        if is_target:
+            for param in self.parameters():
+                param.requires_grad = False
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given raw state x, returns the feature embedding."""
         # RND normalizes state using a running mean and std instead of divide by 255.
         x = self.body(x)
         return self.head(x)
-
-
-class NguEmbeddingMlpNet(nn.Module):
-    """MLP Embedding networks for NGU.
-
-    From the paper "Never Give Up: Learning Directed Exploration Strategies"
-    https://arxiv.org/abs/2002.06038
-    """
-
-    def __init__(self, state_dim: tuple, action_dim: int, latent_dim: int = 64):
-        """
-        Args:
-            state_dim: the shape of the input tensor to the neural network.
-            action_dim: the number of units for the output liner layer.
-            latent_dim: the embedding latent dimension, default 64.
-        """
-        super().__init__()
-
-        self.body = nn.Sequential(
-            nn.Linear(state_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, 128),
-            nn.ReLU(),
-            nn.Linear(128, latent_dim),
-            nn.ReLU(),
-        )
-
-        self.inverse_head = nn.Sequential(
-            nn.Linear(latent_dim * 2, 128),
-            nn.ReLU(),
-            nn.Linear(128, action_dim),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Given state x, return the embedding."""
-        return self.body(x)
-
-    def inverse_prediction(self, x: torch.Tensor) -> torch.Tensor:
-        """Given combined embedding features of (s_tm1 + s_t), returns the raw logits of predicted action a_tm1."""
-        pi_logits = self.inverse_head(x)  # [batch_size, action_dim]
-        return pi_logits
 
 
 class NguEmbeddingConvNet(nn.Module):
@@ -329,14 +250,15 @@ class NguEmbeddingConvNet(nn.Module):
     https://arxiv.org/abs/2002.06038
     """
 
-    def __init__(self, state_dim: tuple, action_dim: int, latent_dim: int = 128):
+    def __init__(self, state_dim: tuple, action_dim: int):
         """
         Args:
             state_dim: the shape of the input tensor to the neural network.
             action_dim: the number of units for the output liner layer.
-            latent_dim: the embedding latent dimension, default 128.
         """
         super().__init__()
+
+        self.embed_size = 32
 
         self.net = common.NatureCnnBackboneNet(state_dim)
 
@@ -344,9 +266,9 @@ class NguEmbeddingConvNet(nn.Module):
 
         # *2 because the input to inverse head is two embeddings [s_t, s-tp1]
         self.inverse_head = nn.Sequential(
-            nn.Linear(32 * 2, latent_dim),
+            nn.Linear(32 * 2, 128),
             nn.ReLU(),
-            nn.Linear(latent_dim, action_dim),
+            nn.Linear(128, action_dim),
         )
 
         common.initialize_weights(self)
@@ -371,11 +293,11 @@ class NGURndConvNet(nn.Module):
     https://arxiv.org/abs/2002.06038
     """
 
-    def __init__(self, state_dim: int, latent_dim: int = 128) -> None:
+    def __init__(self, state_dim: int, latent_dim: int = 128, is_target: bool = False) -> None:
         """
         Args:
             state_dim: the shape of the input tensor to the neural network.
-            latent_dim: the embedding latent dimension, default 128.
+            latent_dim: the latent vector dimension, default 128.
         """
         super().__init__()
 
@@ -399,13 +321,14 @@ class NGURndConvNet(nn.Module):
         self.head = nn.Linear(conv2d_out_size, latent_dim)
 
         # Initialize weights.
-        for module in self.modules():
-            if isinstance(module, (nn.Conv2d, nn.Linear)):
-                nn.init.orthogonal_(module.weight, np.sqrt(2))
-                module.bias.data.zero_()
+        common.initialize_weights(self)
+
+        if is_target:
+            for param in self.parameters():
+                param.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Given raw state x, returns the feature embedding."""
+        """Given raw state x, returns the laten feature vector."""
         # RND normalizes state using a running mean and std instead of divide by 255.
         x = self.body(x)
         return self.head(x)

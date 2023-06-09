@@ -16,7 +16,7 @@
 Notes:
     * Actors collects transitions and send to master through multiprocessing.Queue.
     * Learner will sample batch of transitions then do the learning step.
-    * Learner update policy network parameters for workers (shared_memory).
+    * Learner update policy network parameters for actors.
 
 Note only supports training on single machine.
 
@@ -33,10 +33,12 @@ from absl import logging
 import os
 
 os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
 
 import multiprocessing
 import numpy as np
 import torch
+import copy
 
 # pylint: disable=import-error
 from deep_rl_zoo.networks.policy import ActorCriticConvNet
@@ -54,30 +56,33 @@ flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.
 flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
 flags.DEFINE_integer('environment_frame_stack', 4, 'Number of frames to stack.')
-flags.DEFINE_integer('num_actors', 8, 'Number of worker processes to use.')
+flags.DEFINE_integer('num_actors', 16, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.0025, 'Coefficient for the entropy loss.')
-flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
+flags.DEFINE_float('value_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_integer('batch_size', 64, 'Learner batch size.')
 flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer(
-    'num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration, per actor.'
+    'num_train_steps', int(5e5), 'Number of training steps (environment steps or frames) to run per iteration, per actor.'
 )
-flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer(
+    'num_eval_steps', int(2e4), 'Number of evaluation steps (environment steps or frames) to run per iteration.'
+)
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('actors_on_gpu', True, 'Run actors on GPU, default on.')
 flags.DEFINE_integer(
-    'debug_screenshots_frequency',
+    'debug_screenshots_interval',
     0,
     'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
-flags.DEFINE_string('results_csv_path', 'logs/a2c_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
+flags.DEFINE_string('results_csv_path', './logs/a2c_atari_results.csv', 'Path for CSV log file.')
+flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -85,14 +90,13 @@ def main(argv):
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Runs A2C agent on {runtime_device}')
-    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+    np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-    # Listen to signals to exit process.
-    main_loop.handle_exit_signal()
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Create environment.
     def environment_builder():
@@ -103,7 +107,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=random_state.randint(1, 2**32),
+            seed=random_state.randint(1, 2**10),
             noop_max=30,
             terminal_on_life_loss=True,
         )
@@ -124,20 +128,25 @@ def main(argv):
 
     # Create policy network and optimizer
     policy_network = ActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
-    policy_network.share_memory()
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     network_output = policy_network(s)
     assert network_output.pi_logits.shape == (1, action_dim)
-    assert network_output.baseline.shape == (1, 1)
+    assert network_output.value.shape == (1, 1)
 
     replay = replay_lib.UniformReplay(FLAGS.batch_size, replay_lib.TransitionStructure, random_state)
 
-    # Create queue shared between actors and learner
+    # Create queue to shared transitions between actors and learner
     data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
     lock = multiprocessing.Lock()
+
+    # Create shared objects so all actor processes can access them
+    manager = multiprocessing.Manager()
+
+    # Store copy of latest parameters of the neural network in a shared dictionary, so actors can later access it
+    shared_params = manager.dict({'policy_network': None})
 
     # Create A2C learner agent instance
     learner_agent = agent.Learner(
@@ -148,26 +157,31 @@ def main(argv):
         discount=FLAGS.discount,
         batch_size=FLAGS.batch_size,
         entropy_coef=FLAGS.entropy_coef,
-        baseline_coef=FLAGS.baseline_coef,
+        value_coef=FLAGS.value_coef,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
+        shared_params=shared_params,
     )
 
     # Create actor environments, runtime devices, and actor instances.
     actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
 
-    # TODO map to dedicated device if have multiple GPUs
-    actor_devices = [runtime_device] * FLAGS.num_actors
+    actor_devices = ['cpu'] * FLAGS.num_actors
+    # Evenly distribute the actors to all available GPUs
+    if torch.cuda.is_available() and FLAGS.actors_on_gpu:
+        num_gpus = torch.cuda.device_count()
+        actor_devices = [torch.device(f'cuda:{i % num_gpus}') for i in range(FLAGS.num_actors)]
 
     actors = [
         agent.Actor(
             rank=i,
             lock=lock,
             data_queue=data_queue,
-            policy_network=policy_network,
+            policy_network=copy.deepcopy(policy_network),
             transition_accumulator=replay_lib.TransitionAccumulator(),
             device=actor_devices[i],
+            shared_params=shared_params,
         )
         for i in range(FLAGS.num_actors)
     ]
@@ -186,9 +200,8 @@ def main(argv):
     # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_frames=FLAGS.num_train_frames,
-        num_eval_frames=FLAGS.num_eval_frames,
-        network=policy_network,
+        num_train_steps=FLAGS.num_train_steps,
+        num_eval_steps=FLAGS.num_eval_steps,
         learner_agent=learner_agent,
         eval_agent=eval_agent,
         eval_env=eval_env,
@@ -197,9 +210,9 @@ def main(argv):
         data_queue=data_queue,
         checkpoint=checkpoint,
         csv_file=FLAGS.results_csv_path,
-        tensorboard=FLAGS.tensorboard,
+        use_tensorboard=FLAGS.use_tensorboard,
         tag=FLAGS.tag,
-        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
+        debug_screenshots_interval=FLAGS.debug_screenshots_interval,
     )
 
 

@@ -33,7 +33,7 @@ import deep_rl_zoo.types as types_lib
 import deep_rl_zoo.value_learning as rl
 from deep_rl_zoo import base
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 class Drqn(types_lib.Agent):
@@ -47,8 +47,8 @@ class Drqn(types_lib.Agent):
         replay: replay_lib.UniformReplay,
         transition_accumulator: replay_lib.TransitionAccumulator,
         exploration_epsilon: Callable[[int], float],
-        learn_frequency: int,
-        target_network_update_frequency: int,
+        learn_interval: int,
+        target_net_update_interval: int,
         min_replay_size: int,
         batch_size: int,
         action_dim: int,
@@ -66,8 +66,8 @@ class Drqn(types_lib.Agent):
             replay: experience replay.
             transition_accumulator: external helper class to build n-step transition.
             exploration_epsilon: external schedule of e in e-greedy exploration rate.
-            learn_frequency: the frequency (measured in agent steps) to do learning.
-            target_network_update_frequency: the frequency (measured in number of online Q network parameter updates)
+            learn_interval: the frequency (measured in agent steps) to do learning.
+            target_net_update_interval: the frequency (measured in number of online Q network parameter updates)
                  to Update target network parameters.
             min_replay_size: Minimum replay size before start to do learning.
             batch_size: sample batch size.
@@ -78,12 +78,10 @@ class Drqn(types_lib.Agent):
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
         """
-        if not 1 <= learn_frequency:
-            raise ValueError(f'Expect learn_frequency to be positive integer, got {learn_frequency}')
-        if not 1 <= target_network_update_frequency:
-            raise ValueError(
-                f'Expect target_network_update_frequency to be positive integer, got {target_network_update_frequency}'
-            )
+        if not 1 <= learn_interval:
+            raise ValueError(f'Expect learn_interval to be positive integer, got {learn_interval}')
+        if not 1 <= target_net_update_interval:
+            raise ValueError(f'Expect target_net_update_interval to be positive integer, got {target_net_update_interval}')
         if not 1 <= min_replay_size:
             raise ValueError(f'Expect min_replay_size to be positive integer, got {min_replay_size}')
         if not 1 <= batch_size <= 512:
@@ -128,8 +126,8 @@ class Drqn(types_lib.Agent):
         self._discount = discount
         self._exploration_epsilon = exploration_epsilon
         self._min_replay_size = min_replay_size
-        self._learn_frequency = learn_frequency
-        self._target_network_update_frequency = target_network_update_frequency
+        self._learn_interval = learn_interval
+        self._target_net_update_interval = target_net_update_interval
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
@@ -158,7 +156,7 @@ class Drqn(types_lib.Agent):
             return a_t
 
         # Start to learn
-        if self._step_t % self._learn_frequency == 0:
+        if self._step_t % self._learn_interval == 0:
             self._learn()
 
         return a_t
@@ -203,7 +201,7 @@ class Drqn(types_lib.Agent):
         self._update(transitions)
 
         # Update target network parameters
-        if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
+        if self._update_t > 1 and self._update_t % self._target_net_update_interval == 0:
             self._update_target_network()
 
     def _update(self, transitions):

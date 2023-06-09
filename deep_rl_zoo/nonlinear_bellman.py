@@ -123,6 +123,6 @@ def transformed_retrace(
         target_tm1 = transformed_general_off_policy_returns_from_action_values(tx_pair, q_t, a_t, r_t, discount_t, c_t, pi_t)
     q_a_tm1 = base.batched_index(q_tm1, a_tm1)
     td_error = target_tm1 - q_a_tm1
-    loss = 0.5 * torch.square(td_error)
+    loss = 0.5 * td_error**2
 
     return base.LossOutput(loss, value_learning.QExtra(target=target_tm1, td_error=td_error))

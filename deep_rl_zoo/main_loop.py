@@ -19,22 +19,18 @@
 #
 # ==============================================================================
 """Training loops for Deep RL Zoo."""
-import os
-
-os.environ['OMP_NUM_THREADS'] = '1'
-
-from typing import Iterable, List, Tuple, Text, Mapping, Union, Any
+from typing import Iterable, List, Tuple, Text, Mapping, Any
 import itertools
 import collections
 import sys
 import time
 import signal
 import queue
+import math
 import multiprocessing
 import threading
 from absl import logging
 import gym
-import torch
 
 # pylint: disable=import-error
 import deep_rl_zoo.trackers as trackers_lib
@@ -69,47 +65,42 @@ def run_env_loop(
 
     while True:  # For each episode.
         agent.reset()
-        # Think reset is a special 'action' the agent take, thus given us a reward 'zero', and a new state s_t.
+        # Think of reset as a special 'action' the agent takes, thus given us a reward 'zero', and a new state 's_t'.
         observation = env.reset()
-        reward = raw_reward = 0.0
-        loss_life = False
-        done = False
+        reward = 0.0
+        done = loss_life = False
         first_step = True
+        info = {}
 
         while True:  # For each step in the current episode.
             timestep_t = types_lib.TimeStep(
                 observation=observation,
                 reward=reward,
-                raw_reward=raw_reward,
                 done=done or loss_life,
                 first=first_step,
+                info=info,
             )
             a_t = agent.step(timestep_t)
             yield env, timestep_t, agent, a_t
 
             a_tm1 = a_t
             observation, reward, done, info = env.step(a_tm1)
+
             first_step = False
 
-            # Only keep track of non-clipped/unscaled raw reward when collecting statistics
-            raw_reward = reward
-            if 'raw_reward' in info and isinstance(info['raw_reward'], (float, int)):
-                raw_reward = info['raw_reward']
-
-            # For Atari games, check if treat loss a life as a soft-terminal state
+            # For Atari games, check if should treat loss a life as a soft-terminal state
             loss_life = False
-            if 'loss_life' in info and isinstance(info['loss_life'], bool):
+            if 'loss_life' in info and info['loss_life']:
                 loss_life = info['loss_life']
 
             if done:  # Actual end of an episode
-                # Notice if we don't add additional step to agent, with our way of constructing the run loop,
-                # the done state and final reward will never be seen by the agent
+                # This final agent.step() will ensure the done state and final reward will be seen by the agent and the trackers
                 timestep_t = types_lib.TimeStep(
                     observation=observation,
                     reward=reward,
-                    raw_reward=raw_reward,
-                    done=done,
-                    first=first_step,
+                    done=True,
+                    first=False,
+                    info=info,
                 )
                 unused_a = agent.step(timestep_t)  # noqa: F841
                 yield env, timestep_t, agent, None
@@ -137,75 +128,67 @@ def run_env_steps(num_steps: int, agent: types_lib.Agent, env: gym.Env, trackers
 
 def run_single_thread_training_iterations(
     num_iterations: int,
-    num_train_frames: int,
-    num_eval_frames: int,
-    network: Union[torch.nn.Module, List[torch.nn.Module]],
+    num_train_steps: int,
+    num_eval_steps: int,
     train_agent: types_lib.Agent,
     train_env: gym.Env,
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
     checkpoint: PyTorchCheckpoint,
     csv_file: str,
-    tensorboard: bool,
+    use_tensorboard: bool,
     tag: str = None,
-    debug_screenshots_frequency: int = 0,
+    debug_screenshots_interval: int = 0,
 ) -> None:
     """Runs single-thread training and evaluation for N iterations.
     The same code structure is shared by most single-threaded DQN agents,
     and some policy gradients agents like reinforce, actor-critic.
 
     For every iteration:
-        1. Start to run agent for num_train_frames training environment steps/frames.
+        1. Start to run agent for num_train_steps training environment steps/frames.
         2. Create checkpoint file.
         3. (Optional) Run some evaluation steps with a separate evaluation actor and environment.
 
     Args:
         num_iterations: number of iterations to run.
-        num_train_frames: number of frames (or env steps) to run, per iteration.
-        num_eval_frames: number of evaluation frames (or env steps) to run, per iteration.
-        network: the main network (or list of networks), we switch between train and eval mode.
+        num_train_steps: number of frames (or env steps) to run, per iteration.
+        num_eval_steps: number of evaluation frames (or env steps) to run, per iteration.
         train_agent: training agent, expect the agent to have step(), reset(), and a agent_name property.
         train_env: training environment.
         eval_agent: evaluation agent.
         eval_env: evaluation environment.
         checkpoint: checkpoint object.
         csv_file: csv log file path and name.
-        tensorboard: if True, use tensorboard to log the runs.
+        use_tensorboard: if True, use tensorboard to log the runs.
         tag: tensorboard run log tag, default None.
-        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
+        debug_screenshots_interval: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
     """
-
-    networks = []
-    if isinstance(network, List):
-        networks = network
-    elif isinstance(network, torch.nn.Module):
-        networks.append(network)
 
     # Create log file writer.
     writer = CsvWriter(csv_file)
 
     # Create trackers for training and evaluation
-    train_tb_log_prefix = get_tb_log_prefix(train_env.spec.id, train_agent.agent_name, tag, 'train') if tensorboard else None
-    train_trackers = trackers_lib.make_default_trackers(train_tb_log_prefix, debug_screenshots_frequency)
+    train_tb_log_prefix = (
+        get_tb_log_prefix(train_env.spec.id, train_agent.agent_name, tag, 'train') if use_tensorboard else None
+    )
+    train_trackers = trackers_lib.make_default_trackers(train_tb_log_prefix, debug_screenshots_interval)
 
     should_run_evaluator = False
     eval_trackers = None
-    if num_eval_frames > 0 and eval_agent is not None and eval_env is not None:
+    if num_eval_steps > 0 and eval_agent is not None and eval_env is not None:
         should_run_evaluator = True
-        eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval') if tensorboard else None
-        eval_trackers = trackers_lib.make_default_trackers(eval_tb_log_prefix, debug_screenshots_frequency)
+        eval_tb_log_prefix = (
+            get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval') if use_tensorboard else None
+        )
+        eval_trackers = trackers_lib.make_default_trackers(eval_tb_log_prefix, debug_screenshots_interval)
 
     # Start training
-    for iteration in range(num_iterations):
-        # Set network in train mode.
-        for net in networks:
-            net.train()
-
+    for iteration in range(1, num_iterations + 1):
         logging.info(f'Training iteration {iteration}')
 
         # Run training steps.
-        train_stats = run_env_steps(num_train_frames, train_agent, train_env, train_trackers)
+        train_stats = run_env_steps(num_train_steps, train_agent, train_env, train_trackers)
 
         checkpoint.set_iteration(iteration)
         saved_ckpt = checkpoint.save()
@@ -216,7 +199,7 @@ def run_single_thread_training_iterations(
         # Logging training statistics.
         log_output = [
             ('iteration', iteration, '%3d'),
-            ('train_step', num_eval_frames, '%5d'),
+            ('train_step', iteration * num_train_steps, '%5d'),
             ('train_episode_return', train_stats['mean_episode_return'], '%2.2f'),
             ('train_num_episodes', train_stats['num_episodes'], '%3d'),
             ('train_step_rate', train_stats['step_rate'], '%4.0f'),
@@ -225,17 +208,14 @@ def run_single_thread_training_iterations(
 
         # Run evaluation steps.
         if should_run_evaluator is True:
-            # Set network in eval mode.
-            for net in networks:
-                net.eval()
-
             logging.info(f'Evaluation iteration {iteration}')
 
             # Run some evaluation steps.
-            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_trackers)
+            eval_stats = run_env_steps(num_eval_steps, eval_agent, eval_env, eval_trackers)
 
             # Logging evaluation statistics.
             eval_output = [
+                ('eval_step', iteration * num_eval_steps, '%5d'),
                 ('eval_episode_return', eval_stats['mean_episode_return'], '% 2.2f'),
                 ('eval_num_episodes', eval_stats['num_episodes'], '%3d'),
                 ('eval_step_rate', eval_stats['step_rate'], '%4.0f'),
@@ -251,9 +231,8 @@ def run_single_thread_training_iterations(
 
 def run_parallel_training_iterations(
     num_iterations: int,
-    num_train_frames: int,
-    num_eval_frames: int,
-    network: torch.nn.Module,
+    num_train_steps: int,
+    num_eval_steps: int,
     learner_agent: types_lib.Learner,
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
@@ -262,18 +241,17 @@ def run_parallel_training_iterations(
     data_queue: multiprocessing.Queue,
     checkpoint: PyTorchCheckpoint,
     csv_file: str,
-    tensorboard: bool,
+    use_tensorboard: bool,
     tag: str = None,
-    debug_screenshots_frequency: int = 0,
+    debug_screenshots_interval: int = 0,
 ) -> None:
     """This is the place to kick start parallel training with multiple actors processes and a single learner process.
     The actual flow is controlled by `run_learner`.
 
     Args:
         num_iterations: number of iterations to run.
-        num_train_frames: number of frames (or env steps) to run, per iteration.
-        num_eval_frames: number of evaluation frames (or env steps) to run, per iteration.
-        network: the main network, we switch between train and eval mode.
+        num_train_steps: number of frames (or env steps) to run, per iteration.
+        num_eval_steps: number of evaluation frames (or env steps) to run, per iteration.
         learner_agent: learner agent, expect the agent to have run_train_loop() method.
         eval_agent: evaluation agent.
         eval_env: evaluation environment.
@@ -282,9 +260,9 @@ def run_parallel_training_iterations(
         data_queue: a multiprocessing.Queue used to receive transition samples from actors.
         checkpoint: checkpoint object.
         csv_file: csv log file path and name.
-        tensorboard: if True, use tensorboard to log the runs.
-         tag: tensorboard run log tag, default None.
-        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
+        use_tensorboard: if True, use tensorboard to log the runs.
+        tag: tensorboard run log tag, default None.
+        debug_screenshots_interval: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
     """
 
@@ -304,8 +282,7 @@ def run_parallel_training_iterations(
         target=run_learner,
         args=(
             num_iterations,
-            num_eval_frames,
-            network,
+            num_eval_steps,
             learner_agent,
             eval_agent,
             eval_env,
@@ -316,7 +293,7 @@ def run_parallel_training_iterations(
             stop_event,
             checkpoint,
             len(actors),
-            tensorboard,
+            use_tensorboard,
             tag,
         ),
     )
@@ -330,11 +307,14 @@ def run_parallel_training_iterations(
     logger.start()
 
     # Create and start actor processes once, this will preserve actor's internal state like steps etc.
-    # Tensorboard log dir prefix. Only log to tensorboard for first and last actors.
-    actor_tb_log_prefixes = [None for _ in range(len(actors))]
-    if tensorboard:
-        actor_tb_log_prefixes[0] = get_tb_log_prefix(actor_envs[0].spec.id, actors[0].agent_name, tag, 'train')
-        actor_tb_log_prefixes[-1] = get_tb_log_prefix(actor_envs[-1].spec.id, actors[-1].agent_name, tag, 'train')
+    # Tensorboard log dir prefix.
+    num_actors = len(actors)
+    actor_tb_log_prefixes = [None for _ in range(num_actors)]
+    if use_tensorboard:
+        # To get better performance, we only log a maximum of 8 actor statistics to tensorboard
+        _step = 1 if num_actors <= 8 else math.ceil(num_actors / 8)
+        for i in range(0, num_actors, _step):
+            actor_tb_log_prefixes[i] = get_tb_log_prefix(actor_envs[i].spec.id, actors[i].agent_name, tag, 'train')
 
     processes = []
     for actor, actor_env, tb_log_prefix in zip(actors, actor_envs, actor_tb_log_prefixes):
@@ -345,12 +325,12 @@ def run_parallel_training_iterations(
                 actor_env,
                 data_queue,
                 log_queue,
-                num_train_frames,
+                num_train_steps,
                 iteration_count,
                 start_iteration_event,
                 stop_event,
                 tb_log_prefix,
-                debug_screenshots_frequency,
+                debug_screenshots_interval,
             ),
         )
         p.start()
@@ -361,7 +341,7 @@ def run_parallel_training_iterations(
         p.join()
         p.close()
 
-    learner.join()
+    # learner.join()
     logger.join()
 
     # Close queue.
@@ -373,19 +353,18 @@ def run_actor(
     actor_env: gym.Env,
     data_queue: multiprocessing.Queue,
     log_queue: multiprocessing.SimpleQueue,
-    num_train_frames: int,
+    num_train_steps: int,
     iteration_count: multiprocessing.Value,
     start_iteration_event: multiprocessing.Event,
     stop_event: multiprocessing.Event,
     tb_log_prefix: str = None,
-    debug_screenshots_frequency: int = 0,
+    debug_screenshots_interval: int = 0,
 ) -> None:
-
     """
     Run actor process for as long as required, only terminate if the `stop_event` is set to True.
     Which is set by the main process.
 
-    * Each actor will wait for the `start_iteration_event` signal to start run num_train_frames steps (for one iteration).
+    * Each actor will wait for the `start_iteration_event` signal to start run num_train_steps steps (for one iteration).
     * The actor whoever finished the current iteration first will reset `start_iteration_event` to False,
     so it does not run into a loop that is out of control.
 
@@ -395,12 +374,12 @@ def run_actor(
         data_queue: multiprocessing.Queue used for transferring data from actor to learner.
         log_queue: multiprocessing.SimpleQueue used for transferring training statistics from actor,
             this is only for write to csv file, not for tensorboard.
-        num_train_frames: number of frames (or env steps) to run for one iteration.
+        num_train_steps: number of frames (or env steps) to run for one iteration.
         iteration: a counter which is updated by the main process.
         start_iteration_event: start training signal, set by the main process, clear by actor.
         stop_event: end training signal.
         tb_log_prefix: tensorboard run log dir prefix.
-        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
+        debug_screenshots_interval: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
 
     Raises:
         RuntimeError if the `actor` is not a instance of types_lib.Agent.
@@ -414,7 +393,7 @@ def run_actor(
     # Listen to signals to exit process.
     handle_exit_signal()
 
-    actor_trackers = trackers_lib.make_default_trackers(tb_log_prefix, debug_screenshots_frequency)
+    actor_trackers = trackers_lib.make_default_trackers(tb_log_prefix, debug_screenshots_interval)
 
     while not stop_event.is_set():
         # Wait for start training event signal, which is set by the main process.
@@ -425,7 +404,7 @@ def run_actor(
         iteration = iteration_count.value
 
         # Run training steps.
-        train_stats = run_env_steps(num_train_frames, actor, actor_env, actor_trackers)
+        train_stats = run_env_steps(num_train_steps, actor, actor_env, actor_trackers)
 
         # Mark work done to avoid infinite loop in `run_learner_loop`,
         # also possible multiprocessing.Queue deadlock.
@@ -438,8 +417,8 @@ def run_actor(
         # Logging statistics after training finished
         log_output = [
             ('iteration', iteration, '%3d'),
-            ('type', actor.agent_name, '%2s'),
-            ('step', num_train_frames, '%5d'),
+            ('role', actor.agent_name, '%2s'),
+            ('step', iteration * num_train_steps, '%5d'),
             ('episode_return', train_stats['mean_episode_return'], '% 2.2f'),
             ('num_episodes', train_stats['num_episodes'], '%3d'),
             ('step_rate', train_stats['step_rate'], '%4.0f'),
@@ -452,8 +431,7 @@ def run_actor(
 
 def run_learner(
     num_iterations: int,
-    num_eval_frames: int,
-    network: Union[torch.nn.Module, List[torch.nn.Module]],
+    num_eval_steps: int,
     learner: types_lib.Learner,
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
@@ -464,7 +442,7 @@ def run_learner(
     stop_event: multiprocessing.Event,
     checkpoint: PyTorchCheckpoint,
     num_actors: int,
-    tensorboard: bool,
+    use_tensorboard: bool,
     tag: str = None,
 ) -> None:
     """Run learner for N iterations.
@@ -481,8 +459,7 @@ def run_learner(
 
     Args:
         num_iterations: number of iterations to run.
-        num_eval_frames: number of evaluation frames (or env steps) to run, per iteration.
-        network: the main network, we switch between train and eval mode.
+        num_eval_steps: number of evaluation frames (or env steps) to run, per iteration.
         learner: learner agent, expect the agent to have run_train_loop() method.
         eval_agent: evaluation agent.
         eval_env: evaluation environment.
@@ -491,7 +468,7 @@ def run_learner(
         start_iteration_event: a multiprocessing.Event signal to actors for start training.
         checkpoint: checkpoint object.
         num_actors: number of actors running, used to check if one iteration is over.
-        tensorboard: if True, use tensorboard to log the runs.
+        use_tensorboard: if True, use tensorboard to log the runs.
         tag: tensorboard run log tag.
 
     Raises:
@@ -500,31 +477,23 @@ def run_learner(
     if not isinstance(learner, types_lib.Learner):
         raise RuntimeError('Expect learner to be a instance of types_lib.Learner.')
 
-    networks = []
-    if isinstance(network, List):
-        networks = network
-    elif isinstance(network, torch.nn.Module):
-        networks.append(network)
-
     # Create trackers for learner and evaluator
-    learner_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, learner.agent_name, tag, 'train') if tensorboard else None
+    learner_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, learner.agent_name, tag, 'train') if use_tensorboard else None
     learner_trackers = trackers_lib.make_learner_trackers(learner_tb_log_prefix)
     for tracker in learner_trackers:
         tracker.reset()
 
     should_run_evaluator = False
     eval_trackers = None
-    if num_eval_frames > 0 and eval_agent is not None and eval_env is not None:
+    if num_eval_steps > 0 and eval_agent is not None and eval_env is not None:
         should_run_evaluator = True
-        eval_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval') if tensorboard else None
+        eval_tb_log_prefix = (
+            get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, tag, 'eval') if use_tensorboard else None
+        )
         eval_trackers = trackers_lib.make_default_trackers(eval_tb_log_prefix)
 
     # Start training
-    for iteration in range(num_iterations):
-        # Set network in train mode.
-        for net in networks:
-            net.train()
-
+    for iteration in range(1, num_iterations + 1):
         logging.info(f'Training iteration {iteration}')
         logging.info(f'Starting {learner.agent_name} ...')
 
@@ -546,20 +515,16 @@ def run_learner(
 
         # Run evaluation steps.
         if should_run_evaluator is True:
-            # Set network in eval mode.
-            for net in networks:
-                net.eval()
-
             logging.info(f'Evaluation iteration {iteration}')
 
             # Run some evaluation steps.
-            eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, eval_trackers)
+            eval_stats = run_env_steps(num_eval_steps, eval_agent, eval_env, eval_trackers)
 
             # Logging evaluation statistics
             log_output = [
                 ('iteration', iteration, '%3d'),
-                ('type', 'evaluation', '%3s'),
-                ('step', num_eval_frames, '%5d'),
+                ('role', 'evaluation', '%3s'),
+                ('step', iteration * num_eval_steps, '%5d'),
                 ('episode_return', eval_stats['mean_episode_return'], '%2.2f'),
                 ('num_episodes', eval_stats['num_episodes'], '%3d'),
                 ('step_rate', eval_stats['step_rate'], '%4.0f'),
@@ -638,47 +603,47 @@ def run_logger(log_queue: multiprocessing.SimpleQueue, csv_file: str):
 
 def run_evaluation_iterations(
     num_iterations: int,
-    num_eval_frames: int,
+    num_eval_steps: int,
     eval_agent: types_lib.Agent,
     eval_env: gym.Env,
-    tensorboard: bool,
+    use_tensorboard: bool,
     recording_video_dir: str = None,
 ):
     """Testing an agent restored from checkpoint.
 
     Args:
         num_iterations: number of iterations to run.
-        num_eval_frames: number of evaluation steps, per iteration.
+        num_eval_steps: number of evaluation steps, per iteration.
         eval_agent: evaluation agent, expect the agent has step(), reset(), and agent_name property.
         eval_env: evaluation environment.
-        tensorboard: if True, use tensorboard to log the runs.
+        use_tensorboard: if True, use tensorboard to log the runs.
         recording_video_dir: folder to store agent self-play video for one episode.
     """
 
     # Tensorboard log dir prefix.
-    test_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, None, 'test') if tensorboard else None
+    test_tb_log_prefix = get_tb_log_prefix(eval_env.spec.id, eval_agent.agent_name, None, 'test') if use_tensorboard else None
     test_trackers = trackers_lib.make_default_trackers(test_tb_log_prefix)
 
-    iteration = 0
-    while iteration < num_iterations and num_eval_frames > 0:
-        logging.info(f'Testing iteration {iteration}')
+    if num_iterations > 0 and num_eval_steps > 0:
+        for iteration in range(1, num_iterations + 1):
+            logging.info(f'Testing iteration {iteration}')
 
-        # Run some testing steps.
-        eval_stats = run_env_steps(num_eval_frames, eval_agent, eval_env, test_trackers)
+            # Run some testing steps.
+            eval_stats = run_env_steps(num_eval_steps, eval_agent, eval_env, test_trackers)
 
-        # Logging testing statistics.
-        log_output = [
-            ('iteration', iteration, '%3d'),
-            ('step', iteration * num_eval_frames, '%5d'),
-            ('episode_return', eval_stats['episode_return'], '% 2.2f'),
-            ('num_episodes', eval_stats['num_episodes'], '%3d'),
-            ('step_rate', eval_stats['step_rate'], '%4.0f'),
-            ('duration', eval_stats['duration'], '%.2f'),
-        ]
+            # Logging testing statistics.
+            log_output = [
+                ('iteration', iteration, '%3d'),
+                ('step', iteration * num_eval_steps, '%5d'),
+                ('episode_return', eval_stats['mean_episode_return'], '% 2.2f'),
+                ('num_episodes', eval_stats['num_episodes'], '%3d'),
+                ('step_rate', eval_stats['step_rate'], '%4.0f'),
+                ('duration', eval_stats['duration'], '%.2f'),
+            ]
 
-        log_output_str = ', '.join(('%s: ' + f) % (n, v) for n, v, f in log_output)
-        logging.info(log_output_str)
-        iteration += 1
+            log_output_str = ', '.join(('%s: ' + f) % (n, v) for n, v, f in log_output)
+            logging.info(log_output_str)
+            iteration += 1
 
     if recording_video_dir is not None and recording_video_dir != '':
         gym_env.play_and_record_video(eval_agent, eval_env, recording_video_dir)

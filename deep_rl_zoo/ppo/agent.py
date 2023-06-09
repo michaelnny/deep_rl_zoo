@@ -36,7 +36,7 @@ from deep_rl_zoo import multistep
 import deep_rl_zoo.policy_gradient as rl
 import deep_rl_zoo.types as types_lib
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 class Transition(NamedTuple):
@@ -57,6 +57,7 @@ class Actor(types_lib.Agent):
         policy_network: torch.nn.Module,
         unroll_length: int,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -65,6 +66,7 @@ class Actor(types_lib.Agent):
             policy_network: the policy network for worker to make action choice.
             unroll_length: rollout length.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
@@ -73,8 +75,15 @@ class Actor(types_lib.Agent):
         self.agent_name = f'PPO-actor{rank}'
         self._queue = data_queue
         self._policy_network = policy_network.to(device=device)
-        self._policy_network.eval()
+
+        # Disable autograd for actor networks.
+        for p in self._policy_network.parameters():
+            p.requires_grad = False
+
         self._device = device
+
+        self._shared_params = shared_params
+
         self._unroll_length = unroll_length
         self._unroll_sequence = []
 
@@ -106,6 +115,8 @@ class Actor(types_lib.Agent):
                 self._queue.put(self._unroll_sequence)
                 self._unroll_sequence = []
 
+                self._update_actor_network()
+
         self._s_tm1 = timestep.observation
         self._a_tm1 = a_t
         self._logprob_a_tm1 = logprob_a_t
@@ -121,6 +132,13 @@ class Actor(types_lib.Agent):
     def act(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action]:
         'Given timestep, return an action.'
         return self._choose_action(timestep)
+
+    def _update_actor_network(self):
+        state_dict = self._shared_params['policy_network']
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._policy_network.load_state_dict(state_dict)
 
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action]:
@@ -153,12 +171,12 @@ class Learner(types_lib.Learner):
         gae_lambda: float,
         total_unroll_length: int,
         update_k: int,
-        batch_size: int,
         entropy_coef: float,
-        baseline_coef: float,
+        value_coef: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -167,30 +185,25 @@ class Learner(types_lib.Learner):
             clip_epsilon: external scheduler to decay clip epsilon.
             discount: the gamma discount for future rewards.
             gae_lambda: lambda for the GAE general advantage estimator.
-            total_unroll_length: wait until collected this many transitions before update parameters.
+            total_unroll_length: wait until collects this samples before update networks, computed as num_actors x rollout_length.
             update_k: update k times when it's time to do learning.
             batch_size: batch size for learning.
             entropy_coef: the coefficient of entropy loss.
-            baseline_coef: the coefficient of state-value loss.
+            value_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
 
-        if not 0.0 <= discount <= 1.0:
-            raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
+        if not 1 <= total_unroll_length:
+            raise ValueError(f'Expect total_unroll_length to be greater than 1, got {total_unroll_length}')
         if not 1 <= update_k:
             raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
-        if not 1 <= batch_size <= 512:
-            raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not batch_size <= total_unroll_length:
-            raise ValueError(
-                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
-            )
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
-        if not 0.0 < baseline_coef <= 1.0:
-            raise ValueError(f'Expect baseline_coef to (0.0, 1.0], got {baseline_coef}')
+        if not 0.0 < value_coef <= 1.0:
+            raise ValueError(f'Expect value_coef to (0.0, 1.0], got {value_coef}')
 
         self.agent_name = 'PPO-learner'
         self._policy_network = policy_network.to(device=device)
@@ -198,26 +211,31 @@ class Learner(types_lib.Learner):
         self._policy_optimizer = policy_optimizer
         self._device = device
 
-        self._total_unroll_length = total_unroll_length
+        self._shared_params = shared_params
+
         self._storage = []
 
+        self._total_unroll_length = total_unroll_length
+
+        # For each update epoch, try best to process all samples in 4 batches
+        self._batch_size = min(512, int(np.ceil(total_unroll_length / 4).item()))
+
         self._update_k = update_k
-        self._batch_size = batch_size
 
         self._entropy_coef = entropy_coef
-        self._baseline_coef = baseline_coef
+        self._value_coef = value_coef
         self._clip_epsilon = clip_epsilon
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
         self._discount = discount
-        self._lambda = gae_lambda
+        self._gae_lambda = gae_lambda
 
         # Counters
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
         self._entropy_loss_t = np.nan
 
     def step(self) -> Iterable[Mapping[Text, float]]:
@@ -249,43 +267,17 @@ class Learner(types_lib.Learner):
 
         self._storage += zipped_sequence
 
-    @torch.no_grad()
-    def _compute_returns_and_advantages(
-        self,
-        s_t: Iterable[np.ndarray],
-        r_t: Iterable[float],
-        s_tp1: Iterable[np.ndarray],
-        done_tp1: Iterable[bool],
-    ):
-        """Compute returns, GAE estimated advantages, and log probabilities for the given action a_t under s_t."""
-        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
-
-        discount_tp1 = (~stacked_done_tp1).float() * self._discount
-
-        # Get output from old policy
-        output_t = self._policy_network(stacked_s_t)
-        v_t = output_t.baseline.squeeze(-1)
-
-        v_tp1 = self._policy_network(stacked_s_tp1).baseline.squeeze(-1)
-        advantage_t = multistep.truncated_generalized_advantage_estimation(stacked_r_t, v_t, v_tp1, discount_tp1, self._lambda)
-
-        returns_t = advantage_t + v_t
-
-        # Normalize advantages
-        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
-
-        returns_t = returns_t.cpu().numpy()
-        advantage_t = advantage_t.cpu().numpy()
-
-        return (returns_t, advantage_t)
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
 
     def _learn(self) -> Iterable[Mapping[Text, float]]:
+        num_samples = len(self._storage)
+
+        # Go over the samples for K epochs
         for _ in range(self._update_k):
             # For each update epoch, split indices into 'bins' with batch_size.
-            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
+            binned_indices = utils.split_indices_into_bins(self._batch_size, num_samples, shuffle=True)
             # Update on a batch of transitions.
             for indices in binned_indices:
                 transitions = [self._storage[i] for i in indices]
@@ -301,6 +293,8 @@ class Learner(types_lib.Learner):
                 )
                 self._update(stacked_transitions)
                 yield self.statistics
+
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
 
         del self._storage[:]  # discard old samples after using it
 
@@ -336,10 +330,10 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(advantage_t, 1, torch.float32)
         base.assert_rank_and_dtype(behavior_logprob_a_t, 1, torch.float32)
 
-        # Get policy action logits and baseline for s_tm1.
+        # Get policy action logits and value for s_tm1.
         policy_output = self._policy_network(s_t)
         pi_logits_t = policy_output.pi_logits
-        v_t = policy_output.baseline.squeeze(-1)  # [batch_size]
+        v_t = policy_output.value.squeeze(-1)  # [batch_size]
 
         pi_dist_t = distributions.categorical_distribution(pi_logits_t)
 
@@ -354,24 +348,59 @@ class Learner(types_lib.Learner):
             raise RuntimeError(f'Expect ratio and advantages have same shape, got {ratio.shape} and {advantage_t.shape}')
         policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantage_t, self.clip_epsilon).loss
 
-        # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns_t, v_t).loss
+        # Compute state-value loss.
+        value_loss = rl.value_loss(returns_t, v_t).loss
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss)
-        entropy_loss = self._entropy_coef * torch.mean(entropy_loss)
-        baseline_loss = self._baseline_coef * torch.mean(baseline_loss)
+        entropy_loss = torch.mean(entropy_loss)
+        value_loss = torch.mean(value_loss)
 
-        # Combine policy loss, baseline loss, entropy loss.
+        # Combine policy loss, value loss, entropy loss.
         # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
-        loss = -(policy_loss + entropy_loss) + baseline_loss
+        loss = -(policy_loss + self._entropy_coef * entropy_loss) + self._value_coef * value_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
         self._entropy_loss_t = entropy_loss.detach().cpu().item()
 
         return loss
+
+    @torch.no_grad()
+    def _compute_returns_and_advantages(
+        self,
+        s_t: Iterable[np.ndarray],
+        r_t: Iterable[float],
+        s_tp1: Iterable[np.ndarray],
+        done_tp1: Iterable[bool],
+    ):
+        """Compute returns, GAE estimated advantages"""
+        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
+
+        discount_tp1 = (~stacked_done_tp1).float() * self._discount
+
+        # Get output from old policy
+        output_t = self._policy_network(stacked_s_t)
+        v_t = output_t.value.squeeze(-1)
+
+        v_tp1 = self._policy_network(stacked_s_tp1).value.squeeze(-1)
+        advantage_t = multistep.truncated_generalized_advantage_estimation(
+            stacked_r_t, v_t, v_tp1, discount_tp1, self._gae_lambda
+        )
+
+        return_t = advantage_t + v_t
+
+        # Normalize advantages
+        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
+
+        advantage_t = advantage_t.cpu().numpy()
+        return_t = return_t.cpu().numpy()
+
+        return (return_t, advantage_t)
 
     @property
     def clip_epsilon(self):
@@ -383,11 +412,11 @@ class Learner(types_lib.Learner):
         """Returns current agent statistics as a dictionary."""
         return {
             # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'policy_loss': self._policy_loss_t,
-            'baseline_loss': self._baseline_loss_t,
-            'entropy_loss': self._entropy_loss_t,
             # 'discount': self._discount,
-            # 'updates': self._update_t,
+            'policy_loss': self._policy_loss_t,
+            'value_loss': self._value_loss_t,
+            'entropy_loss': self._entropy_loss_t,
+            'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }
 
@@ -422,42 +451,38 @@ class GaussianLearner(types_lib.Learner):
         gae_lambda: float,
         total_unroll_length: int,
         update_k: int,
-        batch_size: int,
         entropy_coef: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
-            critic_network: the baseline network we want to train.
-            critic_optimizer: the optimizer for baseline network.
+            critic_network: the value network we want to train.
+            critic_optimizer: the optimizer for value network.
             clip_epsilon: external scheduler to decay clip epsilon.
             discount: the gamma discount for future rewards.
             gae_lambda: lambda for the GAE general advantage estimator.
-            total_unroll_length: wait until collected this many transitions before update parameters.
+            total_unroll_length: wait until collects this samples before update networks, computed as num_actors x rollout_length.
             update_k: update k times when it's time to do learning.
-            batch_size: batch size for learning.
             entropy_coef: the coefficient of entropy loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
 
+        if not 1 <= total_unroll_length:
+            raise ValueError(f'Expect total_unroll_length to be greater than 1, got {total_unroll_length}')
         if not 1 <= update_k:
             raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
-        if not 1 <= batch_size <= 512:
-            raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not batch_size <= total_unroll_length:
-            raise ValueError(
-                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
-            )
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
 
-        self.agent_name = 'PPO-learner'
+        self.agent_name = 'PPO-GaussianLearner'
         self._policy_network = policy_network.to(device=device)
         self._policy_network.train()
         self._policy_optimizer = policy_optimizer
@@ -466,11 +491,16 @@ class GaussianLearner(types_lib.Learner):
         self._critic_optimizer = critic_optimizer
         self._device = device
 
-        self._total_unroll_length = total_unroll_length
+        self._shared_params = shared_params
+
         self._storage = []
 
+        self._total_unroll_length = total_unroll_length
+
+        # For each update epoch, try best to process all samples in 4 batches
+        self._batch_size = min(512, int(np.ceil(total_unroll_length / 4).item()))
+
         self._update_k = update_k
-        self._batch_size = batch_size
 
         self._entropy_coef = entropy_coef
         self._clip_epsilon = clip_epsilon
@@ -478,13 +508,13 @@ class GaussianLearner(types_lib.Learner):
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
         self._discount = discount
-        self._lambda = gae_lambda
+        self._gae_lambda = gae_lambda
 
         # Counters
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
         self._entropy_loss_t = np.nan
 
     def step(self) -> Iterable[Mapping[Text, float]]:
@@ -516,52 +546,30 @@ class GaussianLearner(types_lib.Learner):
 
         self._storage += zipped_sequence
 
-    @torch.no_grad()
-    def _compute_returns_and_advantages(
-        self,
-        s_t: Iterable[np.ndarray],
-        r_t: Iterable[float],
-        s_tp1: Iterable[np.ndarray],
-        done_tp1: Iterable[bool],
-    ):
-        """Compute returns, GAE estimated advantages, and log probabilities for the given action a_t under s_t."""
-        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
-
-        discount_tp1 = (~stacked_done_tp1).float() * self._discount
-
-        # Get output from old policy
-        v_t = self._critic_network(stacked_s_t).squeeze(-1)
-        v_tp1 = self._critic_network(stacked_s_tp1).squeeze(-1)
-        advantage_t = multistep.truncated_generalized_advantage_estimation(stacked_r_t, v_t, v_tp1, discount_tp1, self._lambda)
-
-        returns_t = advantage_t + v_t
-
-        # Normalize advantages
-        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
-
-        returns_t = returns_t.cpu().numpy()
-        advantage_t = advantage_t.cpu().numpy()
-
-        return (returns_t, advantage_t)
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
 
     def _learn(self) -> Iterable[Mapping[Text, float]]:
+        num_samples = len(self._storage)
+
+        # Go over the samples for K epochs
         for _ in range(self._update_k):
             # For each update epoch, split indices into 'bins' with batch_size.
-            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
+            binned_indices = utils.split_indices_into_bins(self._batch_size, num_samples, shuffle=True)
             # Update on a batch of transitions.
             for indices in binned_indices:
                 transitions = [self._storage[i] for i in indices]
-                self._update_policy(transitions)
-                self._update_baseline(transitions)
+                self._update_policy_network(transitions)
+                self._update_value_network(transitions)
                 self._update_t += 1
                 yield self.statistics
 
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
+
         del self._storage[:]  # discard old samples after using it
 
-    def _update_policy(self, transitions: Iterable[Tuple]) -> None:
+    def _update_policy_network(self, transitions: Iterable[Tuple]) -> None:
         self._policy_optimizer.zero_grad()
         loss = self._calc_policy_loss(transitions=transitions)
         loss.backward()
@@ -575,9 +583,9 @@ class GaussianLearner(types_lib.Learner):
 
         self._policy_optimizer.step()
 
-    def _update_baseline(self, transitions: Iterable[Tuple]) -> None:
+    def _update_value_network(self, transitions: Iterable[Tuple]) -> None:
         self._critic_optimizer.zero_grad()
-        loss = self._calc_baseline_loss(transitions=transitions)
+        loss = self._calc_value_loss(transitions=transitions)
         loss.backward()
 
         if self._clip_grad:
@@ -608,7 +616,7 @@ class GaussianLearner(types_lib.Learner):
         base.assert_rank_and_dtype(a_t, 2, torch.float32)
         base.assert_rank_and_dtype(behavior_logprob_a_t, 1, torch.float32)
 
-        # Get policy action logits and baseline for s_tm1.
+        # Get policy action logits and value for s_tm1.
         pi_mu, pi_sigma = self._policy_network(s_t)
 
         pi_dist_t = distributions.normal_distribution(pi_mu, pi_sigma)
@@ -626,11 +634,11 @@ class GaussianLearner(types_lib.Learner):
 
         # Average over batch dimension.
         policy_loss = torch.mean(policy_loss)
-        entropy_loss = self._entropy_coef * torch.mean(entropy_loss)
+        entropy_loss = torch.mean(entropy_loss)
 
-        # Combine policy loss, baseline loss, entropy loss.
+        # Combine policy loss, value loss, entropy loss.
         # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
-        loss = -(policy_loss + entropy_loss)
+        loss = -(policy_loss + self._entropy_coef * entropy_loss)
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
@@ -638,7 +646,7 @@ class GaussianLearner(types_lib.Learner):
 
         return loss
 
-    def _calc_baseline_loss(self, transitions: Iterable[Tuple]) -> torch.Tensor:
+    def _calc_value_loss(self, transitions: Iterable[Tuple]) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
         # Unpack list of tuples into separate lists
         s_t, _, _, returns_t, _ = map(list, zip(*transitions))
@@ -652,16 +660,49 @@ class GaussianLearner(types_lib.Learner):
 
         v_t = self._critic_network(s_t).squeeze(-1)  # [batch_size]
 
-        # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns_t, v_t).loss
+        # Compute state-value loss.
+        value_loss = rl.value_loss(returns_t, v_t).loss
 
         # Average over batch dimension.
-        baseline_loss = torch.mean(baseline_loss)
+        value_loss = torch.mean(value_loss)
 
         # For logging only.
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
 
-        return baseline_loss
+        return value_loss
+
+    @torch.no_grad()
+    def _compute_returns_and_advantages(
+        self,
+        s_t: Iterable[np.ndarray],
+        r_t: Iterable[float],
+        s_tp1: Iterable[np.ndarray],
+        done_tp1: Iterable[bool],
+    ):
+        """Compute returns, GAE estimated advantages"""
+        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
+
+        discount_tp1 = (~stacked_done_tp1).float() * self._discount
+
+        # Get output from old policy
+        v_t = self._critic_network(stacked_s_t).squeeze(-1)
+        v_tp1 = self._critic_network(stacked_s_tp1).squeeze(-1)
+        advantage_t = multistep.truncated_generalized_advantage_estimation(
+            stacked_r_t, v_t, v_tp1, discount_tp1, self._gae_lambda
+        )
+
+        return_t = advantage_t + v_t
+
+        # Normalize advantages
+        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
+
+        advantage_t = advantage_t.cpu().numpy()
+        return_t = return_t.cpu().numpy()
+
+        return (return_t, advantage_t)
 
     @property
     def clip_epsilon(self):
@@ -673,10 +714,10 @@ class GaussianLearner(types_lib.Learner):
         """Returns current agent statistics as a dictionary."""
         return {
             # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
-            'policy_loss': self._policy_loss_t,
-            'baseline_loss': self._baseline_loss_t,
-            'entropy_loss': self._entropy_loss_t,
             # 'discount': self._discount,
-            # 'updates': self._update_t,
+            'policy_loss': self._policy_loss_t,
+            'value_loss': self._value_loss_t,
+            'entropy_loss': self._entropy_loss_t,
+            'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }

@@ -14,21 +14,17 @@
 # ==============================================================================
 """PPO-RND agent class.
 
-Notice in this implementation we follow the following naming convention when referring to unroll sequence:
-sₜ, aₜ, rₜ, sₜ₊₁, aₜ₊₁, rₜ₊₁, ...
-
 From the paper "Exploration by Random Network Distillation"
 https://arxiv.org/abs/1810.12894
 """
 
-from typing import Mapping, Tuple, Iterable, Text, Optional, NamedTuple
+from typing import Mapping, Tuple, Iterable, Text
 import multiprocessing
 import numpy as np
 import torch
 from torch import nn
 
 # pylint: disable=import-error
-import deep_rl_zoo.replay as replay_lib
 import deep_rl_zoo.types as types_lib
 from deep_rl_zoo.schedule import LinearSchedule
 import deep_rl_zoo.policy_gradient as rl
@@ -38,21 +34,7 @@ from deep_rl_zoo import utils
 from deep_rl_zoo import base
 from deep_rl_zoo import normalizer
 
-# torch.autograd.set_detect_anomaly(True)
-
-
-class Transition(NamedTuple):
-    s_t: Optional[np.ndarray]
-    a_t: Optional[int]
-    logprob_a_t: Optional[float]
-    ext_returns_t: Optional[float]
-    int_returns_t: Optional[float]
-    advantage_t: Optional[float]
-
-
-TransitionStructure = Transition(
-    s_t=None, a_t=None, logprob_a_t=None, ext_returns_t=None, int_returns_t=None, advantage_t=None
-)
+torch.autograd.set_detect_anomaly(True)
 
 
 class Actor(types_lib.Agent):
@@ -65,6 +47,7 @@ class Actor(types_lib.Agent):
         policy_network: torch.nn.Module,
         unroll_length: int,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -73,6 +56,7 @@ class Actor(types_lib.Agent):
             policy_network: the policy network for worker to make action choice.
             unroll_length: rollout length.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
@@ -81,7 +65,14 @@ class Actor(types_lib.Agent):
         self.agent_name = f'PPO-RND-actor{rank}'
         self._queue = data_queue
         self._policy_network = policy_network.to(device=device)
+        # Disable autograd for actor networks.
+        for p in self._policy_network.parameters():
+            p.requires_grad = False
+
         self._device = device
+
+        self._shared_params = shared_params
+
         self._unroll_length = unroll_length
         self._unroll_sequence = []
 
@@ -95,7 +86,7 @@ class Actor(types_lib.Agent):
         """Given current timestep, return action a_t, and push transition into global queue"""
         self._step_t += 1
 
-        a_t, logprob_a_t = self.act(timestep)
+        a_t, logprob_a_t, ext_value, int_value = self.act(timestep)
 
         if self._a_tm1 is not None:
             self._unroll_sequence.append(
@@ -103,8 +94,9 @@ class Actor(types_lib.Agent):
                     self._s_tm1,  # s_t
                     self._a_tm1,  # a_t
                     self._logprob_a_tm1,  # logprob_a_t
+                    ext_value,
+                    int_value,
                     timestep.reward,  # r_t
-                    timestep.observation,  # s_tp1
                     timestep.done,
                 )
             )
@@ -112,6 +104,7 @@ class Actor(types_lib.Agent):
             if len(self._unroll_sequence) == self._unroll_length:
                 self._queue.put(self._unroll_sequence)
                 self._unroll_sequence = []
+                self._update_actor_network()
 
         self._s_tm1 = timestep.observation
         self._a_tm1 = a_t
@@ -129,17 +122,32 @@ class Actor(types_lib.Agent):
         'Given timestep, return an action.'
         return self._choose_action(timestep)
 
+    def _update_actor_network(self):
+        state_dict = self._shared_params['policy_network']
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._policy_network.load_state_dict(state_dict)
+
     @torch.no_grad()
-    def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action]:
+    def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action, float, float, float]:
         """Given timestep, choose action a_t"""
         s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        pi_logits_t = self._policy_network(s_t).pi_logits
+        output = self._policy_network(s_t)
+        pi_logits_t = output.pi_logits
         # Sample an action
         pi_dist_t = distributions.categorical_distribution(pi_logits_t)
 
         a_t = pi_dist_t.sample()
         logprob_a_t = pi_dist_t.log_prob(a_t)
-        return a_t.cpu().item(), logprob_a_t.cpu().item()
+
+        ext_value, int_value = output.ext_baseline, output.int_baseline
+        return (
+            a_t.cpu().item(),
+            logprob_a_t.cpu().item(),
+            ext_value.squeeze(0).cpu().item(),
+            int_value.squeeze(0).cpu().item(),
+        )
 
     @property
     def statistics(self) -> Mapping[Text, float]:
@@ -156,20 +164,21 @@ class Learner(types_lib.Learner):
         policy_optimizer: torch.optim.Optimizer,
         rnd_target_network: nn.Module,
         rnd_predictor_network: nn.Module,
-        observation_normalizer: normalizer.Normalizer,
+        rnd_optimizer: torch.optim.Optimizer,
+        rnd_obs_clip: float,
         clip_epsilon: LinearSchedule,
-        discount: float,
-        rnd_discount: float,
+        ext_discount: float,
+        int_discount: float,
         gae_lambda: float,
         total_unroll_length: int,
-        batch_size: int,
         update_k: int,
         rnd_experience_proportion: float,
         entropy_coef: float,
-        baseline_coef: float,
+        value_coef: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -177,78 +186,79 @@ class Learner(types_lib.Learner):
             policy_optimizer: the optimizer for policy network.
             rnd_target_network: RND target fixed random network.
             rnd_predictor_network: RND predictor network.
-            observation_normalizer: observation normalizer, only for RND networks.
+            rnd_optimizer: the optimizer for RND predictor network.
+            rnd_obs_clip: clip norm of the RND observation.
             clip_epsilon: external scheduler to decay clip epsilon.
             discount: the gamma discount for future rewards.
-            rnd_discount: the gamma discount for future rewards for RND networks.
+            int_discount: the gamma discount for future rewards for RND networks.
             gae_lambda: lambda for the GAE general advantage estimator.
-            total_unroll_length: wait until collected this many transitions before update parameters.
-            batch_size: sample batch_size of transitions.
+            total_unroll_length: wait until collects this samples before update networks, computed as num_actors x rollout_length.
             update_k: update k times when it's time to do learning.
-            unroll_length: worker rollout horizon.
             rnd_experience_proportion: proportion of experience used for training RND predictor.
             entropy_coef: the coefficient of entropy loss.
-            baseline_coef: the coefficient of state-value loss.
+            value_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+           shared_params: a shared dict, so we can later update the parameters for actors.
         """
 
-        if not 1 <= batch_size <= 512:
-            raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not batch_size <= total_unroll_length:
-            raise ValueError(
-                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
-            )
+        if not 1 <= total_unroll_length:
+            raise ValueError(f'Expect total_unroll_length to be greater than 1, got {total_unroll_length}')
         if not 1 <= update_k:
             raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
-        if not 0.0 <= rnd_experience_proportion <= 10.0:
-            raise ValueError(f'Expect rnd_experience_proportion to in the range [0.0, 10.0], got {rnd_experience_proportion}')
+        if not 0.0 <= rnd_experience_proportion <= 1.0:
+            raise ValueError(f'Expect rnd_experience_proportion to in the range [0.0, 1.0], got {rnd_experience_proportion}')
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
-        if not 0.0 <= baseline_coef <= 1.0:
-            raise ValueError(f'Expect baseline_coef to [0.0, 1.0], got {baseline_coef}')
+        if not 0.0 <= value_coef <= 1.0:
+            raise ValueError(f'Expect value_coef to [0.0, 1.0], got {value_coef}')
 
         self.agent_name = 'PPO-RND-learner'
         self._policy_network = policy_network.to(device=device)
         self._policy_optimizer = policy_optimizer
         self._rnd_predictor_network = rnd_predictor_network.to(device=device)
         self._rnd_target_network = rnd_target_network.to(device=device)
+
+        self._rnd_optimizer = rnd_optimizer
         # Disable autograd for RND target networks.
         for p in self._rnd_target_network.parameters():
             p.requires_grad = False
+
         self._device = device
 
-        self._observation_normalizer = observation_normalizer
+        self._shared_params = shared_params
 
-        # Original paper uses 25% of experience for training RND predictor
-        rnd_loss_mask = torch.rand(batch_size).to(device=self._device)
-        self._rnd_loss_mask = (rnd_loss_mask < rnd_experience_proportion).to(device=self._device, dtype=torch.float32)
+        self._rnd_experience_proportion = rnd_experience_proportion
+        self._rnd_obs_clip = rnd_obs_clip
 
-        # Accumulate running statistics to calculate mean and std online,
-        # this will also clip intrinsic reward values in the range [-10, 10]
-        self._intrinsic_reward_normalizer = normalizer.Normalizer(eps=0.0001, clip_range=(-10, 10), device=self._device)
+        # Accumulate running statistics to calculate mean and std
+        self._int_reward_normalizer = normalizer.RunningMeanStd(shape=(1,))
+        self._rnd_obs_normalizer = normalizer.TorchRunningMeanStd(shape=(1, 84, 84), device=self._device)
 
         self._storage = []
-        self._batch_size = batch_size
         self._total_unroll_length = total_unroll_length
+
+        # For each update epoch, try best to process all samples in 4 batches
+        self._batch_size = min(512, int(np.ceil(total_unroll_length / 4).item()))
+
         self._update_k = update_k
 
         self._entropy_coef = entropy_coef
-        self._baseline_coef = baseline_coef
+        self._value_coef = value_coef
         self._clip_epsilon = clip_epsilon
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
-        self._discount = discount
-        self._rnd_discount = rnd_discount
-        self._lambda = gae_lambda
+        self._ext_discount = ext_discount
+        self._int_discount = int_discount
+        self._gae_lambda = gae_lambda
 
         # Counters
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
         self._entropy_loss_t = np.nan
         self._rnd_loss_t = np.nan
 
@@ -260,7 +270,7 @@ class Learner(types_lib.Learner):
         """
         self._step_t += 1
 
-        if len(self._storage) < self._batch_size:
+        if len(self._storage) < self._total_unroll_length:
             return
 
         return self._learn()
@@ -273,94 +283,166 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
 
         # Unpack list of tuples into separate lists.
-        s_t, a_t, logprob_a_t, r_t, s_tp1, done_tp1 = map(list, zip(*unroll_sequences))
+        observations, actions, logprob_actions, ext_values, int_values, rewards, dones = map(list, zip(*unroll_sequences))
 
-        ext_returns_t, int_returns_t, advantage_t = self._compute_returns_and_advantages(s_t, r_t, s_tp1, done_tp1)
+        s_t = observations[:-1]
+        a_t = actions[:-1]
+        logprob_a_t = logprob_actions[:-1]
+        ext_v_t = ext_values[:-1]
+        ext_r_t = rewards[1:]
 
-        # Zip multiple lists into list of tuples, only keep relevant data
-        zipped_sequence = zip(s_t, a_t, logprob_a_t, ext_returns_t, int_returns_t, advantage_t)
+        ext_v_tp1 = ext_values[1:]
+        done_tp1 = dones[1:]
+
+        int_v_t = int_values[:-1]
+        int_v_tp1 = int_values[1:]
+
+        # Compute extrinsic returns and advantages
+        (ext_return_t, ext_advantage_t) = self._compute_returns_and_advantages(
+            ext_v_t, ext_r_t, ext_v_tp1, done_tp1, self._ext_discount
+        )
+
+        # Get observation for RND, note we only need last frame
+        rnd_s_t = [s[-1:, ...] for s in s_t]
+
+        # Compute intrinsic rewards
+        int_r_t = self._compute_int_reward(rnd_s_t)
+
+        # Compute intrinsic returns and advantages
+        (int_return_t, int_advantage_t) = self._compute_returns_and_advantages(
+            int_v_t,
+            int_r_t,
+            int_v_tp1,
+            np.zeros_like(done_tp1),  # No dones for intrinsic reward.
+            self._int_discount,
+        )
+
+        # Zip multiple lists into list of tuples
+        zipped_sequence = list(
+            zip(s_t, a_t, logprob_a_t, ext_return_t, ext_advantage_t, rnd_s_t, int_return_t, int_advantage_t)
+        )
 
         self._storage += zipped_sequence
 
-    @torch.no_grad()
-    def _compute_returns_and_advantages(
-        self,
-        s_t: Iterable[np.ndarray],
-        r_t: Iterable[float],
-        s_tp1: Iterable[np.ndarray],
-        done_tp1: Iterable[bool],
-    ):
-        """Compute returns, GAE estimated advantages, and log probabilities for the given action a_t under s_t."""
-        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
 
-        discount_tp1 = (~stacked_done_tp1).float() * self._discount
-        rnd_discount_tp1 = (~stacked_done_tp1).float() * self._rnd_discount
-
-        output_t = self._policy_network(stacked_s_t)
-
-        ext_v_t = output_t.ext_baseline.squeeze(1)  # [batch_size]
-        int_v_t = output_t.int_baseline.squeeze(1)  # [batch_size]
-
-        output_tp1 = self._policy_network(stacked_s_tp1)
-
-        ext_v_tp1 = output_tp1.ext_baseline.squeeze(-1)
-        int_v_tp1 = output_tp1.int_baseline.squeeze(-1)
-
-        # Compute intrinsic reward
-        normalized_s_t = self._normalize_observation(stacked_s_t)  # [B, C, H, W] or [B, N]
-
-        rnd_pred_s_t = self._rnd_predictor_network(normalized_s_t)
-        rnd_target_s_t = self._rnd_target_network(normalized_s_t)
-
-        abs_error = torch.sum(torch.abs(rnd_pred_s_t - rnd_target_s_t), dim=-1)  # Sums over latent features [batch_size,]
-
-        # Normalize intrinsic reward
-        intrinsic_reward_t = self._intrinsic_reward_normalizer(abs_error)
-
-        # Calculate advantages using extrinsic rewards
-        ext_advantage_t = multistep.truncated_generalized_advantage_estimation(
-            stacked_r_t, ext_v_t, ext_v_tp1, discount_tp1, self._lambda
-        )
-        ext_returns_t = ext_advantage_t + ext_v_t
-
-        # Calculate advantages using intrinsic rewards
-        int_advantage_t = multistep.truncated_generalized_advantage_estimation(
-            intrinsic_reward_t, int_v_t, int_v_tp1, rnd_discount_tp1, self._lambda
-        )
-        int_returns_t = int_advantage_t + int_v_t
-
-        advantage_t = 2.0 * ext_advantage_t + 1.0 * int_advantage_t
-
-        # Normalize advantages
-        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
-
-        ext_returns_t = ext_returns_t.cpu().numpy()
-        int_returns_t = int_returns_t.cpu().numpy()
-        advantage_t = advantage_t.cpu().numpy()
-
-        return (ext_returns_t, int_returns_t, advantage_t)
+    def init_rnd_obs_stats(self, rnd_obs_list):
+        self._normalize_rnd_obs(rnd_obs_list, True)
 
     def _learn(self) -> Iterable[Mapping[Text, float]]:
-        # Run update for K times
-        for _ in range(self._update_k):
-            # For each update epoch, split indices into 'bins' with batch_size.
-            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
-            for indices in binned_indices:
-                transitions = [self._storage[i] for i in indices]
+        num_samples = len(self._storage)
 
-                # Stack list of transitions, follow our code convention.
-                stacked_transition = replay_lib.np_stack_list_of_transitions(transitions, TransitionStructure)
-                self._update(stacked_transition)
+        # Go over the samples for K epochs
+        for i in range(self._update_k):
+            # For each update epoch, split indices into 'bins' with batch_size.
+            binned_indices = utils.split_indices_into_bins(self._batch_size, num_samples, shuffle=True)
+            for indices in binned_indices:
+                mini_batch = [self._storage[i] for i in indices]
+
+                self._update_policy_network(mini_batch)
+                self._update_rnd_predictor_network(mini_batch)
+
+                self._update_t += 1
                 yield self.statistics
+
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
 
         del self._storage[:]  # discard old samples after using it
 
-    def _update(self, transitions: Transition) -> None:
+    def _update_rnd_predictor_network(self, samples):
+        self._rnd_optimizer.zero_grad()
+
+        # Unpack list of tuples into separate lists
+        _, _, _, _, _, rnd_s_t, _, _ = map(list, zip(*samples))
+
+        normed_s_t = self._normalize_rnd_obs(rnd_s_t, True)
+        normed_s_t = normed_s_t.to(device=self._device, dtype=torch.float32)
+
+        pred_t = self._rnd_predictor_network(normed_s_t)
+        with torch.no_grad():
+            target_t = self._rnd_target_network(normed_s_t)
+
+        rnd_loss = torch.square(pred_t - target_t).mean(dim=1)
+
+        # Proportion of experience used for train RND predictor
+        if self._rnd_experience_proportion < 1:
+            mask = torch.rand(rnd_loss.size())
+            mask = torch.where(mask < self._rnd_experience_proportion, 1.0, 0.0).to(device=self._device, dtype=torch.float32)
+            rnd_loss = rnd_loss * mask
+
+        # Averaging over batch dimension
+        rnd_loss = torch.mean(rnd_loss)
+
+        # Compute gradients
+        rnd_loss.backward()
+
+        if self._clip_grad:
+            torch.nn.utils.clip_grad_norm_(
+                self._rnd_predictor_network.parameters(),
+                max_norm=self._max_grad_norm,
+                error_if_nonfinite=True,
+            )
+
+        # Update parameters
+        self._rnd_optimizer.step()
+
+        # Logging
+        self._rnd_loss_t = rnd_loss.detach().cpu().item()
+
+    def _update_policy_network(self, mini_batch):
         self._policy_optimizer.zero_grad()
-        loss = self._calc_policy_loss(transitions=transitions)
+
+        # Unpack list of tuples into separate lists
+        (s_t, a_t, logprob_a_t, ext_return_t, ext_advantage_t, _, int_return_t, int_advantage_t) = map(list, zip(*mini_batch))
+
+        s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        a_t = torch.from_numpy(np.stack(a_t, axis=0)).to(device=self._device, dtype=torch.int64)
+        behavior_logprob_a_t = torch.from_numpy(np.stack(logprob_a_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        ext_return_t = torch.from_numpy(np.stack(ext_return_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        ext_advantage_t = torch.from_numpy(np.stack(ext_advantage_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        int_return_t = torch.from_numpy(np.stack(int_return_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        int_advantage_t = torch.from_numpy(np.stack(int_advantage_t, axis=0)).to(device=self._device, dtype=torch.float32)
+
+        # Rank and dtype checks, note states may be images, which is rank 4.
+        base.assert_rank_and_dtype(s_t, (2, 4), torch.float32)
+        base.assert_rank_and_dtype(a_t, 1, torch.long)
+        base.assert_rank_and_dtype(ext_return_t, 1, torch.float32)
+        base.assert_rank_and_dtype(ext_advantage_t, 1, torch.float32)
+        base.assert_rank_and_dtype(int_return_t, 1, torch.float32)
+        base.assert_rank_and_dtype(int_advantage_t, 1, torch.float32)
+        base.assert_rank_and_dtype(behavior_logprob_a_t, 1, torch.float32)
+
+        pi_logits_t, ext_v_t, int_v_t = self._policy_network(s_t)
+
+        pi_dist_t = distributions.categorical_distribution(pi_logits_t)
+        pi_logprob_a_t = pi_dist_t.log_prob(a_t)
+        entropy_loss = pi_dist_t.entropy()
+
+        # Combine extrinsic and intrinsic advantages together
+        advantage_t = 2.0 * ext_advantage_t + 1.0 * int_advantage_t
+
+        ratio = torch.exp(pi_logprob_a_t - behavior_logprob_a_t)
+
+        if ratio.shape != advantage_t.shape:
+            raise RuntimeError(f'Expect ratio and advantages have same shape, got {ratio.shape} and {advantage_t.shape}')
+        policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantage_t, self.clip_epsilon).loss
+
+        ext_v_loss = rl.value_loss(ext_return_t, ext_v_t.squeeze(-1)).loss
+        int_v_loss = rl.value_loss(int_return_t, int_v_t.squeeze(-1)).loss
+
+        value_loss = ext_v_loss + int_v_loss
+
+        # Averaging over batch dimension
+        policy_loss = torch.mean(policy_loss)
+        entropy_loss = torch.mean(entropy_loss)
+        value_loss = torch.mean(value_loss)
+
+        # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
+        loss = -(policy_loss + self._entropy_coef * entropy_loss) + self._value_coef * value_loss
+
+        # Compute gradients
         loss.backward()
 
         if self._clip_grad:
@@ -369,134 +451,88 @@ class Learner(types_lib.Learner):
                 max_norm=self._max_grad_norm,
                 error_if_nonfinite=True,
             )
-            torch.nn.utils.clip_grad_norm_(
-                self._rnd_predictor_network.parameters(),
-                max_norm=self._max_grad_norm,
-                error_if_nonfinite=True,
-            )
 
+        # Update parameters
         self._policy_optimizer.step()
-        self._update_t += 1
 
-    def _calc_rnd_loss(self, s_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Update observation normalization statistics and normalize state
-        s_t = self._normalize_observation(s_t)  # [B, C, H, W] or [B, N]
-
-        pred_s_t = self._rnd_predictor_network(s_t)
-        with torch.no_grad():
-            target_s_t = self._rnd_target_network(s_t)
-
-        abs_error = torch.sum(torch.abs(pred_s_t - target_s_t), dim=-1)  # Sums over latent features [batch_size,]
-        assert abs_error.shape == self._rnd_loss_mask.shape
-
-        # Apply proportion mask, averaging over batch dimension
-        rnd_loss = torch.mean(0.5 * torch.square(abs_error * self._rnd_loss_mask.detach()), dim=0)
-
-        # Update intrinsic reward normalization statistics
-        self._intrinsic_reward_normalizer.update(abs_error.detach())
-        # Normalize intrinsic reward
-        intrinsic_reward = self._intrinsic_reward_normalizer(abs_error.detach())
-
-        if len(rnd_loss.shape) != 0:
-            raise RuntimeError(f'Expect rnd_loss to be a scalar tensor, got {rnd_loss.shape}')
-
-        if len(intrinsic_reward.shape) != 1:
-            raise RuntimeError(f'Expect intrinsic_reward to be a 1D tensor, got {intrinsic_reward.shape}')
-
-        return rnd_loss, intrinsic_reward
-
-    def _calc_policy_loss(self, transitions: Transition) -> torch.Tensor:
-        """Calculate loss for a batch transitions"""
-        s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [batch_size, state_shape]
-        a_t = torch.from_numpy(transitions.a_t).to(device=self._device, dtype=torch.int64)  # [batch_size]
-        behavior_logprob_a_t = torch.from_numpy(transitions.logprob_a_t).to(
-            device=self._device, dtype=torch.float32
-        )  # [batch_size]
-        ext_returns_t = torch.from_numpy(transitions.ext_returns_t).to(
-            device=self._device, dtype=torch.float32
-        )  # [batch_size]
-        int_returns_t = torch.from_numpy(transitions.int_returns_t).to(
-            device=self._device, dtype=torch.float32
-        )  # [batch_size]
-        advantage_t = torch.from_numpy(transitions.advantage_t).to(device=self._device, dtype=torch.float32)  # [batch_size]
-
-        # Rank and dtype checks, note states may be images, which is rank 4.
-        base.assert_rank_and_dtype(s_t, (2, 4), torch.float32)
-        base.assert_rank_and_dtype(a_t, 1, torch.long)
-        base.assert_rank_and_dtype(ext_returns_t, 1, torch.float32)
-        base.assert_rank_and_dtype(int_returns_t, 1, torch.float32)
-        base.assert_rank_and_dtype(advantage_t, 1, torch.float32)
-        base.assert_rank_and_dtype(behavior_logprob_a_t, 1, torch.float32)
-
-        # Compute intrinsic reward using RND module.
-        rnd_loss, _ = self._calc_rnd_loss(s_t)
-
-        # Get policy action logits and baseline for s_t.
-        policy_output = self._policy_network(s_t)
-        pi_logits_t = policy_output.pi_logits
-        # Two baseline heads
-        ext_v_t = policy_output.ext_baseline.squeeze(1)  # [batch_size]
-        int_v_t = policy_output.int_baseline.squeeze(1)  # [batch_size]
-
-        pi_dist_t = distributions.categorical_distribution(pi_logits_t)
-
-        # Compute entropy loss.
-        entropy_loss = pi_dist_t.entropy()
-
-        # Compute clipped surrogate policy gradient loss.
-        pi_logprob_a_t = pi_dist_t.log_prob(a_t)
-        ratio = torch.exp(pi_logprob_a_t - behavior_logprob_a_t)
-
-        if ratio.shape != advantage_t.shape:
-            raise RuntimeError(f'Expect ratio and advantage_t have same shape, got {ratio.shape} and {advantage_t.shape}')
-
-        # Compute clipped surrogate policy gradient loss.
-        policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantage_t, self.clip_epsilon).loss
-
-        # Compute baseline state-value loss, combine extrinsic and intrinsic losses.
-        ext_baseline_loss = rl.baseline_loss(ext_returns_t, ext_v_t).loss
-        int_baseline_loss = rl.baseline_loss(int_returns_t, int_v_t).loss
-        baseline_loss = ext_baseline_loss + int_baseline_loss
-
-        # Averaging over batch dimension.
-        policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
-        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
-
-        # Combine policy loss, baseline loss, entropy loss.
-        # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
-        loss = -(policy_loss + entropy_loss) + baseline_loss
-
-        # Add RND predictor loss.
-        loss += rnd_loss
-
-        # For logging only.
+        # Logging
         self._policy_loss_t = policy_loss.detach().cpu().item()
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
         self._entropy_loss_t = entropy_loss.detach().cpu().item()
-        self._rnd_loss_t = rnd_loss.detach().cpu().item()
 
-        return loss
+    @torch.no_grad()
+    def _compute_int_reward(self, rnd_s_t):
+        normed_s_t = self._normalize_rnd_obs(rnd_s_t)
 
-    def _normalize_observation(self, observation: torch.Tensor) -> torch.Tensor:
-        # Normalize observation using online incremental algorithm
-        if len(observation.shape) > 2:  # shape of observation is [B, C, H, W]
-            # Unstack frames, RND normalize one frame.
-            _unstacked = torch.unbind(observation, dim=1)
-            _results = []
-            for obs in _unstacked:
-                # Add last dimension as channel, we normalize images by channel.
-                obs = obs[..., None]
-                self._observation_normalizer.update(obs)
-                norm_states = self._observation_normalizer(obs).squeeze(-1)  # Remove last channel dimension
-                _results.append(norm_states)
+        normed_s_t = normed_s_t.to(device=self._device, dtype=torch.float32)
 
-            # Restack frames
-            normalized_obs = torch.stack(_results, dim=1)
-        else:
-            self._observation_normalizer.update(observation)
-            normalized_obs = self._observation_normalizer(observation)
-        return normalized_obs
+        pred = self._rnd_predictor_network(normed_s_t)
+        target = self._rnd_target_network(normed_s_t)
+
+        int_r_t = torch.square(pred - target).mean(dim=1).detach().cpu().numpy()
+
+        # Normalize intrinsic reward
+        normed_int_r_t = self._normalize_int_rewards(int_r_t)
+
+        return normed_int_r_t
+
+    @torch.no_grad()
+    def _normalize_rnd_obs(self, rnd_obs_list, update_stats=False):
+        # GPU could be much faster
+        tacked_obs = torch.from_numpy(np.stack(rnd_obs_list, axis=0)).to(device=self._device, dtype=torch.float32)
+
+        normed_obs = self._rnd_obs_normalizer.normalize(tacked_obs)
+        normed_obs = normed_obs.clamp(-self._rnd_obs_clip, self._rnd_obs_clip)
+
+        if update_stats:
+            self._rnd_obs_normalizer.update(tacked_obs)
+
+        return normed_obs
+
+    @torch.no_grad()
+    def _compute_returns_and_advantages(
+        self,
+        v_t: Iterable[np.ndarray],
+        r_t: Iterable[float],
+        v_tp1: Iterable[np.ndarray],
+        done_tp1: Iterable[bool],
+        discount: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Compute returns, GAE estimated advantages"""
+
+        v_t = torch.from_numpy(np.stack(v_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        v_tp1 = torch.from_numpy(np.stack(v_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
+        done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
+
+        discount_tp1 = (~done_tp1).float() * discount
+
+        advantage_t = multistep.truncated_generalized_advantage_estimation(r_t, v_t, v_tp1, discount_tp1, self._gae_lambda)
+
+        return_t = advantage_t + v_t
+
+        # Normalize seems to hurt performance on MontezumaRevenge
+        # advantage_t = (advantage_t - advantage_t.mean()) / (advantage_t.std() + 1e-8)
+
+        advantage_t = advantage_t.cpu().numpy()
+        return_t = return_t.cpu().numpy()
+
+        return (return_t, advantage_t)
+
+    def _normalize_int_rewards(self, int_rewards):
+        """Compute returns then normalize the intrinsic reward based on these returns"""
+
+        # From https://github.com/openai/random-network-distillation/blob/f75c0f1efa473d5109d487062fd8ed49ddce6634/ppo_agent.py#L257
+        intrinsic_returns = []
+        rewems = 0
+        for t in reversed(range(len(int_rewards))):
+            rewems = rewems * self._int_discount + int_rewards[t]
+            intrinsic_returns.insert(0, rewems)
+        self._int_reward_normalizer.update(np.ravel(intrinsic_returns).reshape(-1, 1))
+
+        normed_int_rewards = int_rewards / np.sqrt(self._int_reward_normalizer.var + 1e-8)
+
+        return normed_int_rewards.tolist()
 
     @property
     def clip_epsilon(self):
@@ -508,11 +544,11 @@ class Learner(types_lib.Learner):
         """Returns current agent statistics as a dictionary."""
         return {
             # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
+            # 'discount': self._discount,
             'policy_loss': self._policy_loss_t,
-            'baseline_loss': self._baseline_loss_t,
+            'value_loss': self._value_loss_t,
             'entropy_loss': self._entropy_loss_t,
             'rnd_loss': self._rnd_loss_t,
-            # 'discount': self._discount,
-            # 'updates': self._update_t,
+            'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }

@@ -36,7 +36,7 @@ import deep_rl_zoo.types as types_lib
 from deep_rl_zoo import value_learning
 from deep_rl_zoo import base
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 class Actor(types_lib.Agent):
@@ -51,6 +51,7 @@ class Actor(types_lib.Agent):
         min_replay_size: int,
         action_dim: int,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -61,6 +62,7 @@ class Actor(types_lib.Agent):
             min_replay_size: minimum replay size before do learning.
             action_dim: number of actions for the environment.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
 
         if not 1 <= min_replay_size:
@@ -71,7 +73,13 @@ class Actor(types_lib.Agent):
         self.rank = rank
         self.agent_name = f'SAC-actor{rank}'
         self._policy_network = policy_network.to(device=device)
+        # Disable autograd for actor networks.
+        for p in self._policy_network.parameters():
+            p.requires_grad = False
+
         self._device = device
+
+        self._shared_params = shared_params
 
         self._queue = data_queue
         self._transition_accumulator = transition_accumulator
@@ -96,10 +104,19 @@ class Actor(types_lib.Agent):
         """This method should be called at the beginning of every episode."""
         self._transition_accumulator.reset()
 
+        self._update_actor_network()
+
     def act(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         'Given timestep, return an action.'
         a_t = self._choose_action(timestep)
         return a_t
+
+    def _update_actor_network(self):
+        state_dict = self._shared_params['policy_network']
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._policy_network.load_state_dict(state_dict)
 
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -136,11 +153,12 @@ class Learner(types_lib.Learner):
         batch_size: int,
         action_dim: int,
         min_replay_size: int,
-        learn_frequency: int,
+        learn_interval: int,
         q_target_tau: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -155,11 +173,11 @@ class Learner(types_lib.Learner):
             batch_size: sample batch_size of transitions.
             action_dim: number of actions for the environment.
             min_replay_size: minimum replay size before do learning.
-            learn_frequency: how often should the agent learn.
+            learn_interval: how often should the agent learn.
             q_target_tau: the coefficient of target Q network parameters.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
-            device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
@@ -167,8 +185,8 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 1 <= action_dim:
             raise ValueError(f'Expect action_dim to be integer greater than or equal to 1, got {action_dim}')
-        if not 1 <= learn_frequency:
-            raise ValueError(f'Expect learn_frequency to be positive integer, got {learn_frequency}')
+        if not 1 <= learn_interval:
+            raise ValueError(f'Expect learn_interval to be positive integer, got {learn_interval}')
         if not 1 <= min_replay_size:
             raise ValueError(f'Expect min_replay_size to be positive integer, got {min_replay_size}')
         if not batch_size <= min_replay_size <= replay.capacity:
@@ -193,6 +211,8 @@ class Learner(types_lib.Learner):
             p1.requires_grad = False
             p2.requires_grad = False
 
+        self._shared_params = shared_params
+
         # Entropy temperature parameters is learned
         # Automating Entropy Adjustment for Maximum Entropy RL section of https://arxiv.org/abs/1812.05905
         self._target_entropy = -np.log(1.0 / action_dim) * 0.98
@@ -207,7 +227,7 @@ class Learner(types_lib.Learner):
         self._discount = discount
         self._batch_size = batch_size
         self._min_replay_size = min_replay_size
-        self._learn_frequency = learn_frequency
+        self._learn_interval = learn_interval
         self._action_dim = action_dim
 
         self._clip_grad = clip_grad
@@ -242,16 +262,22 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
         self._replay.add(item)
 
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
+
     def _learn(self) -> None:
         # Note we don't clear old samples since this off-policy learning
         transitions = self._replay.sample(self._batch_size)
         self._update(transitions)
+        self._update_t += 1
+
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
 
     def _update(self, transitions: replay_lib.Transition) -> None:
         self._update_q(transitions)  # Policy evaluation
         self._update_pi(transitions)  # Policy improvement
         self._update_target_q_networks()
-        self._update_t += 1
 
     def _update_q(self, transitions: replay_lib.Transition) -> None:
         self._q1_optimizer.zero_grad()

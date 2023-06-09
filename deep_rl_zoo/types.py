@@ -30,10 +30,12 @@ class TimeStep(NamedTuple):
     """Environment timestep"""
 
     observation: Optional[np.ndarray]
-    reward: Optional[float]  # reward couble be clipped or scaled
-    raw_reward: Optional[float]  # non-clipped/unscaled reward, only used by the trackers
-    done: Optional[bool]  # This may not be the real episode termination, since Atari we often use done-on-loss-life
+    reward: Optional[float]  # reward from the environment, could be clipped or scaled
+    done: Optional[bool]  # termination mark of a episode, could also be loss-of-life for Atari
     first: Optional[bool]  # first step of an episode
+    info: Optional[
+        Mapping[Text, Any]
+    ]  # Info dictionary which contains non-clipped/unscaled reward and other information, only used by the trackers
 
 
 class Agent(abc.ABC):

@@ -31,7 +31,6 @@ from torch import nn
 import torch.nn.functional as F
 
 # pylint: disable=import-error
-import deep_rl_zoo.replay as replay_lib
 import deep_rl_zoo.types as types_lib
 import deep_rl_zoo.policy_gradient as rl
 from deep_rl_zoo.schedule import LinearSchedule
@@ -41,7 +40,7 @@ from deep_rl_zoo import multistep
 from deep_rl_zoo import base
 from deep_rl_zoo import normalizer
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 class IcmModuleOutput(NamedTuple):
@@ -71,6 +70,7 @@ class Actor(types_lib.Agent):
         policy_network: torch.nn.Module,
         unroll_length: int,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -79,6 +79,7 @@ class Actor(types_lib.Agent):
             policy_network: the policy network for worker to make action choice.
             unroll_length: rollout length.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
@@ -87,8 +88,13 @@ class Actor(types_lib.Agent):
         self.agent_name = f'PPO-ICM-actor{rank}'
         self._queue = data_queue
         self._policy_network = policy_network.to(device=device)
-        self._policy_network.eval()
+        # Disable autograd for actor networks.
+        for p in self._policy_network.parameters():
+            p.requires_grad = False
         self._device = device
+
+        self._shared_params = shared_params
+
         self._unroll_length = unroll_length
         self._unroll_sequence = []
 
@@ -120,6 +126,8 @@ class Actor(types_lib.Agent):
                 self._queue.put(self._unroll_sequence)
                 self._unroll_sequence = []
 
+                self._update_actor_network()
+
         self._s_tm1 = timestep.observation
         self._a_tm1 = a_t
         self._logprob_a_tm1 = logprob_a_t
@@ -135,6 +143,13 @@ class Actor(types_lib.Agent):
     def act(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action]:
         'Given timestep, return an action.'
         return self._choose_action(timestep)
+
+    def _update_actor_network(self):
+        state_dict = self._shared_params['policy_network']
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._policy_network.load_state_dict(state_dict)
 
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep) -> Tuple[types_lib.Action]:
@@ -167,16 +182,16 @@ class Learner(types_lib.Learner):
         discount: float,
         gae_lambda: float,
         total_unroll_length: int,
-        batch_size: int,
         update_k: int,
         intrinsic_lambda: float,
         icm_beta: float,
         policy_loss_coef: float,
         entropy_coef: float,
-        baseline_coef: float,
+        value_coef: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -187,29 +202,26 @@ class Learner(types_lib.Learner):
             clip_epsilon: external scheduler to decay clip epsilon.
             discount: the gamma discount for future rewards.
             gae_lambda: lambda for the GAE general advantage estimator.
-            total_unroll_length: wait until collected this many transitions before update parameters.
-            batch_size: sample batch_size of transitions.
+            total_unroll_length: wait until collects this samples before update networks, computed as num_actors x rollout_length.
             update_k: update k times when it's time to do learning.
             unroll_length: worker rollout horizon.
             intrinsic_lambda: scaling factor for intrinsic reward when calculate using equation 6.
             icm_beta: weights inverse model loss against the forward model loss.
             policy_loss_coef: weights policy loss against the importance of learning the intrinsic reward.
             entropy_coef: the coefficient of entropy loss.
-            baseline_coef: the coefficient of state-value loss.
+            value_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
+
+        if not 1 <= total_unroll_length:
+            raise ValueError(f'Expect total_unroll_length to be greater than 1, got {total_unroll_length}')
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
         if not 1 <= update_k:
             raise ValueError(f'Expect update_k to be integer greater than or equal to 1, got {update_k}')
-        if not 1 <= batch_size <= 512:
-            raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
-        if not batch_size <= total_unroll_length:
-            raise ValueError(
-                f'Expect total_unroll_length to be integer greater than or equal to {batch_size}, got {total_unroll_length}'
-            )
         if not 0.0 <= intrinsic_lambda:
             raise ValueError(f'Expect intrinsic_lambda to be greater than or equal to 0.0, got {intrinsic_lambda}')
         if not 0.0 <= icm_beta <= 1.0:
@@ -218,8 +230,8 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect policy_loss_coef to in the range [0.0, 1.0], got {policy_loss_coef}')
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
-        if not 0.0 <= baseline_coef <= 1.0:
-            raise ValueError(f'Expect baseline_coef to [0.0, 1.0], got {baseline_coef}')
+        if not 0.0 <= value_coef <= 1.0:
+            raise ValueError(f'Expect value_coef to [0.0, 1.0], got {value_coef}')
 
         self.agent_name = 'PPO-ICM-learner'
         self._policy_network = policy_network.to(device=device)
@@ -228,9 +240,11 @@ class Learner(types_lib.Learner):
         self._icm_optimizer = icm_optimizer
         self._device = device
 
+        self._shared_params = shared_params
+
         # Accumulate running statistics to calculate mean and std online,
         # this will also clip intrinsic reward values in the range [-10, 10]
-        self._intrinsic_reward_normalizer = normalizer.Normalizer(eps=0.0001, clip_range=(-10, 10), device=self._device)
+        self._int_reward_normalizer = normalizer.TorchRunningMeanStd(shape=(1,), device=self._device)
 
         self._intrinsic_lambda = intrinsic_lambda
         self._icm_beta = icm_beta
@@ -238,23 +252,25 @@ class Learner(types_lib.Learner):
 
         self._storage = []
         self._total_unroll_length = total_unroll_length
-        self._batch_size = batch_size
+        self._batch_size = int(
+            np.ceil(total_unroll_length / 4).item()
+        )  # For each update epoch, try best to process all samples in 4 batches
         self._update_k = update_k
 
         self._entropy_coef = entropy_coef
-        self._baseline_coef = baseline_coef
+        self._value_coef = value_coef
         self._clip_epsilon = clip_epsilon
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
         self._discount = discount
-        self._lambda = gae_lambda
+        self._gae_lambda = gae_lambda
 
         # Counters
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
         self._entropy_loss_t = np.nan
         self._icm_inverse_loss_t = np.nan
         self._icm_forward_loss_t = np.nan
@@ -267,7 +283,7 @@ class Learner(types_lib.Learner):
         """
         self._step_t += 1
 
-        if len(self._storage) < self._batch_size:
+        if len(self._storage) < self._total_unroll_length:
             return
 
         return self._learn()
@@ -289,44 +305,17 @@ class Learner(types_lib.Learner):
 
         self._storage += zipped_sequence
 
-    @torch.no_grad()
-    def _compute_returns_and_advantages(
-        self,
-        s_t: Iterable[np.ndarray],
-        r_t: Iterable[float],
-        s_tp1: Iterable[np.ndarray],
-        done_tp1: Iterable[bool],
-    ):
-        """Compute returns, GAE estimated advantages, and log probabilities for the given action a_t under s_t."""
-        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
-        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
-
-        discount_tp1 = (~stacked_done_tp1).float() * self._discount
-
-        output_t = self._policy_network(stacked_s_t)
-        v_t = output_t.baseline.squeeze(-1)
-
-        v_tp1 = self._policy_network(stacked_s_tp1).baseline.squeeze(-1)
-        advantage_t = multistep.truncated_generalized_advantage_estimation(stacked_r_t, v_t, v_tp1, discount_tp1, self._lambda)
-
-        returns_t = advantage_t + v_t
-
-        # Normalize advantages
-        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
-
-        returns_t = returns_t.cpu().numpy()
-        advantage_t = advantage_t.cpu().numpy()
-
-        return (returns_t, advantage_t)
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
 
     def _learn(self) -> Iterable[Mapping[Text, float]]:
+        num_samples = len(self._storage)
 
-        # Run update for K times
+        # Go over the samples for K epochs
         for _ in range(self._update_k):
             # For each update epoch, split indices into 'bins' with batch_size.
-            binned_indices = utils.split_indices_into_bins(self._batch_size, len(self._storage), shuffle=True)
+            binned_indices = utils.split_indices_into_bins(self._batch_size, num_samples, shuffle=True)
             for indices in binned_indices:
                 transitions = [self._storage[i] for i in indices]
 
@@ -341,14 +330,16 @@ class Learner(types_lib.Learner):
                     s_tp1=np.stack(s_tp1, axis=0),
                 )
 
-                icm_output = self._update_icm(stacked_transitions)
-                self._update_policy(stacked_transitions, icm_output)
+                icm_output = self._update_icm_network(stacked_transitions)
+                self._update_policy_network(stacked_transitions, icm_output)
                 self._update_t += 1
                 yield self.statistics
 
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
+
         del self._storage[:]  # discard old samples after using it
 
-    def _update_icm(self, transitions: Transition) -> None:
+    def _update_icm_network(self, transitions: Transition) -> None:
         self._icm_optimizer.zero_grad()
         loss, icm_output = self._calc_icm_loss(transitions=transitions)
         loss.backward()
@@ -364,7 +355,7 @@ class Learner(types_lib.Learner):
 
         return icm_output
 
-    def _update_policy(self, transitions: Transition, icm_output: IcmModuleOutput) -> None:
+    def _update_policy_network(self, transitions: Transition, icm_output: IcmModuleOutput) -> None:
         self._policy_optimizer.zero_grad()
         loss = self._calc_policy_loss(transitions, icm_output)
         loss.backward()
@@ -407,9 +398,11 @@ class Learner(types_lib.Learner):
         intrinsic_reward = self._intrinsic_lambda * forward_losses.clone().detach()  # eq 6, [batch_size,]
 
         # Update intrinsic reward normalization statistics
-        self._intrinsic_reward_normalizer.update(intrinsic_reward)
+        self._int_reward_normalizer.update(intrinsic_reward)
         # Normalize intrinsic_reward
-        intrinsic_reward = self._intrinsic_reward_normalizer(intrinsic_reward)
+        intrinsic_reward = self._int_reward_normalizer.normalize(intrinsic_reward)
+
+        intrinsic_reward = torch.clamp(intrinsic_reward, -10, 10)
 
         inverse_loss = inverse_losses.mean()
         forward_loss = forward_losses.mean()
@@ -459,10 +452,10 @@ class Learner(types_lib.Learner):
         if icm_inverse_loss.requires_grad or icm_forward_loss.requires_grad or icm_intrinsic_reward.requires_grad:
             raise RuntimeError('Expect tensors from icm module do not require gradients')
 
-        # Get policy action logits and baseline for s_tm1.
+        # Get policy action logits and value for s_tm1.
         policy_output = self._policy_network(s_t)
         pi_logits_t = policy_output.pi_logits
-        v_t = policy_output.baseline.squeeze(-1)  # [batch_size]
+        v_t = policy_output.value.squeeze(-1)  # [batch_size]
 
         pi_dist_t = distributions.categorical_distribution(pi_logits_t)
 
@@ -479,29 +472,63 @@ class Learner(types_lib.Learner):
         # Compute clipped surrogate policy gradient loss.
         policy_loss = rl.clipped_surrogate_gradient_loss(ratio, advantage_t, self.clip_epsilon).loss
 
-        # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns_t, v_t).loss
+        # Compute state-value loss.
+        value_loss = rl.value_loss(returns_t, v_t).loss
 
         # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
-        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
+        entropy_loss = torch.mean(entropy_loss, dim=0)
+        value_loss = torch.mean(value_loss, dim=0)
 
-        # Combine policy loss, baseline loss, entropy loss.
+        # Combine policy loss, value loss, entropy loss.
         # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
-        loss = -(policy_loss + entropy_loss) + baseline_loss
+        loss = -(policy_loss + self._entropy_coef * entropy_loss) + self._value_coef * value_loss
 
         # Re-weight policy loss, add ICM module inverse model loss, forward model loss.
         loss = self._policy_loss_coef * loss + (1.0 - self._icm_beta) * icm_inverse_loss + self._icm_beta * icm_forward_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
         self._entropy_loss_t = entropy_loss.detach().cpu().item()
         self._icm_inverse_loss_t = icm_inverse_loss.detach().cpu().item()
         self._icm_forward_loss_t = icm_forward_loss.detach().cpu().item()
 
         return loss
+
+    @torch.no_grad()
+    def _compute_returns_and_advantages(
+        self,
+        s_t: Iterable[np.ndarray],
+        r_t: Iterable[float],
+        s_tp1: Iterable[np.ndarray],
+        done_tp1: Iterable[bool],
+    ):
+        """Compute returns, GAE estimated advantages"""
+        stacked_s_t = torch.from_numpy(np.stack(s_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_r_t = torch.from_numpy(np.stack(r_t, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_s_tp1 = torch.from_numpy(np.stack(s_tp1, axis=0)).to(device=self._device, dtype=torch.float32)
+        stacked_done_tp1 = torch.from_numpy(np.stack(done_tp1, axis=0)).to(device=self._device, dtype=torch.bool)
+
+        discount_tp1 = (~stacked_done_tp1).float() * self._discount
+
+        output_t = self._policy_network(stacked_s_t)
+        v_t = output_t.value.squeeze(-1)
+
+        v_tp1 = self._policy_network(stacked_s_tp1).value.squeeze(-1)
+        advantage_t = multistep.truncated_generalized_advantage_estimation(
+            stacked_r_t, v_t, v_tp1, discount_tp1, self._gae_lambda
+        )
+
+        return_t = advantage_t + v_t
+
+        # Normalize advantages
+        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
+
+        advantage_t = advantage_t.cpu().numpy()
+        return_t = return_t.cpu().numpy()
+
+        return (return_t, advantage_t)
 
     @property
     def clip_epsilon(self):
@@ -514,12 +541,12 @@ class Learner(types_lib.Learner):
         return {
             # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             # 'icm_learning_rate': self._icm_optimizer.param_groups[0]['lr'],
+            # 'discount': self._discount,
             'policy_loss': self._policy_loss_t,
-            'baseline_loss': self._baseline_loss_t,
+            'value_loss': self._value_loss_t,
             'entropy_loss': self._entropy_loss_t,
             'icm_inverse_loss': self._icm_inverse_loss_t,
             'icm_forward_loss': self._icm_forward_loss_t,
-            # 'discount': self._discount,
-            # 'updates': self._update_t,
+            'updates': self._update_t,
             'clip_epsilon': self.clip_epsilon,
         }

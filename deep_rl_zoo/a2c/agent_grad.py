@@ -18,7 +18,7 @@ Specifically:
     * Actors sample batch of transitions to calculate loss, but not optimization step.
     * Actors collects local gradients, and send to master through multiprocessing.Queue.
     * Learner will aggregates batch of gradients then do the optimization step.
-    * Learner update policy network parameters for workers (shared_memory).
+    * Learner update policy network parameters for actors.
 
 Note only supports training on single machine.
 
@@ -42,7 +42,7 @@ import deep_rl_zoo.policy_gradient as rl
 from deep_rl_zoo import base
 from deep_rl_zoo import distributions
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 def extract_gradients(network: torch.nn.Module, compress: bool):
@@ -65,11 +65,12 @@ class Actor(types_lib.Agent):
         discount: float,
         batch_size: int,
         entropy_coef: float,
-        baseline_coef: float,
+        value_coef: float,
         compress_gradient: bool,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -81,11 +82,12 @@ class Actor(types_lib.Agent):
             discount: the gamma discount for future rewards.
             batch_size: sample batch_size of transitions.
             entropy_coef: the coefficient of entropy loss.
-            baseline_coef: the coefficient of state-value loss.
+            value_coef: the coefficient of state-value loss.
             compress_gradient, if True, compress numpy arrays before put on to multiprocessing.Queue.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
 
         if not 0.0 <= discount <= 1.0:
@@ -94,16 +96,20 @@ class Actor(types_lib.Agent):
             raise ValueError(f'Expect batch_size to be [1, 512], got {batch_size}')
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to be (0.0, 1.0], got {entropy_coef}')
-        if not 0.0 <= baseline_coef <= 1.0:
-            raise ValueError(f'Expect baseline_coef to be (0.0, 1.0], got {baseline_coef}')
+        if not 0.0 <= value_coef <= 1.0:
+            raise ValueError(f'Expect value_coef to be (0.0, 1.0], got {value_coef}')
 
         self.rank = rank
         self.agent_name = f'A2C-GRAD-actor{rank}'
         self._queue = gradient_queue
         self._lock = lock
 
-        self._device = device
         self._policy_network = policy_network.to(device=device)
+
+        self._device = device
+
+        self._shared_params = shared_params
+
         self._compress_gradient = compress_gradient
         self._transition_accumulator = transition_accumulator
         self._discount = discount
@@ -111,14 +117,14 @@ class Actor(types_lib.Agent):
         self._trajectory = collections.deque(maxlen=batch_size)
 
         self._entropy_coef = entropy_coef
-        self._baseline_coef = baseline_coef
+        self._value_coef = value_coef
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
 
         self._step_t = -1
         self._policy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
         self._entropy_loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -151,6 +157,15 @@ class Actor(types_lib.Agent):
     def reset(self):
         """This method should be called at the beginning of every episode."""
         self._transition_accumulator.reset()
+
+        self._update_actor_network()
+
+    def _update_actor_network(self):
+        state_dict = self._shared_params['policy_network']
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._policy_network.load_state_dict(state_dict)
 
     @torch.no_grad()
     def _choose_action(self, timestep: types_lib.TimeStep) -> types_lib.Action:
@@ -202,16 +217,16 @@ class Actor(types_lib.Agent):
 
         discount_t = (~done).float() * self._discount
 
-        # Get policy action logits and baseline for s_tm1.
+        # Get policy action logits and value for s_tm1.
         policy_output = self._policy_network(s_tm1)
         logits_tm1 = policy_output.pi_logits
-        baseline_tm1 = policy_output.baseline.squeeze(1)  # [batch_size]
+        value_tm1 = policy_output.value.squeeze(1)  # [batch_size]
 
         # Calculates TD n-step target and advantages.
         with torch.no_grad():
-            baseline_s_t = self._policy_network(s_t).baseline.squeeze(1)  # [batch_size]
+            baseline_s_t = self._policy_network(s_t).value.squeeze(1)  # [batch_size]
             target_baseline = r_t + discount_t * baseline_s_t
-            advantages = target_baseline - baseline_tm1
+            advantages = target_baseline - value_tm1
 
         # Compute policy gradient a.k.a. log-likelihood loss.
         policy_loss = rl.policy_gradient_loss(logits_tm1, a_tm1, advantages).loss
@@ -219,21 +234,21 @@ class Actor(types_lib.Agent):
         # Compute entropy loss.
         entropy_loss = rl.entropy_loss(logits_tm1).loss
 
-        # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(target_baseline, baseline_tm1).loss
+        # Compute state-value loss.
+        value_loss = rl.value_loss(target_baseline, value_tm1).loss
 
         # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
-        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
+        entropy_loss = torch.mean(entropy_loss, dim=0)
+        value_loss = torch.mean(value_loss, dim=0)
 
-        # Combine policy loss, baseline loss, entropy loss.
+        # Combine policy loss, value loss, entropy loss.
         # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
-        loss = -(policy_loss + entropy_loss) + baseline_loss
+        loss = -(policy_loss + self._entropy_coef * entropy_loss) + self._value_coef * value_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
         self._entropy_loss_t = entropy_loss.detach().cpu().item()
 
         return loss
@@ -243,7 +258,7 @@ class Actor(types_lib.Agent):
         """Returns current agent statistics as a dictionary."""
         return {
             'policy_loss': self._policy_loss_t,
-            'baseline_loss': self._baseline_loss_t,
+            'value_loss': self._value_loss_t,
             'entropy_loss': self._entropy_loss_t,
         }
 
@@ -261,6 +276,7 @@ class Learner(types_lib.Learner):
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -272,6 +288,7 @@ class Learner(types_lib.Learner):
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
 
         self.agent_name = 'A2C-GRAD-learner'
@@ -279,6 +296,8 @@ class Learner(types_lib.Learner):
         self._policy_network = policy_network.to(device=device)
         self._policy_network.train()
         self._policy_optimizer = policy_optimizer
+
+        self._shared_params = shared_params
 
         self._lock = lock
         self._replay = gradient_replay
@@ -314,12 +333,19 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
         self._replay.add(item)
 
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
+
     def _learn(self) -> None:
         # Get aggregate batch gradients
         gradients = self._replay.sample()
         self._update(gradients)
-        self._update_t += 1
+
         assert self._replay.size == 0
+        self._update_t += 1
+
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
 
     def _update(self, gradients: List[np.ndarray]) -> None:
         # Clear out old gradients

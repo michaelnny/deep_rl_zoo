@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""REINFORCE with baseline agent class.
+"""REINFORCE with value agent class.
 
 From the paper "Policy Gradient Methods for Reinforcement Learning with Function Approximation"
 https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf.
@@ -30,18 +30,18 @@ import deep_rl_zoo.policy_gradient as rl
 from deep_rl_zoo import distributions
 from deep_rl_zoo import base
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 class ReinforceBaseline(types_lib.Agent):
-    """Reinforce agent with baseline"""
+    """Reinforce agent with value"""
 
     def __init__(
         self,
         policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
         discount: float,
-        baseline_network: nn.Module,
+        value_network: nn.Module,
         baseline_optimizer: torch.optim.Optimizer,
         transition_accumulator: replay_lib.TransitionAccumulator,
         normalize_returns: bool,
@@ -54,7 +54,7 @@ class ReinforceBaseline(types_lib.Agent):
             policy_network: the policy network we want to train.
             policy_optimizer: the optimizer for policy network.
             discount: the gamma discount for future rewards.
-            baseline_network: the critic state-value network.
+            value_network: the critic state-value network.
             baseline_optimizer: the optimizer for state-value network.
             transition_accumulator: external helper class to build n-step transition.
             normalize_returns: if True, normalize episode returns.
@@ -71,7 +71,7 @@ class ReinforceBaseline(types_lib.Agent):
         self._policy_optimizer = policy_optimizer
         self._discount = discount
 
-        self._baseline_network = baseline_network.to(device=self._device)
+        self._value_network = value_network.to(device=self._device)
         self._baseline_optimizer = baseline_optimizer
 
         self._transition_accumulator = transition_accumulator
@@ -85,7 +85,7 @@ class ReinforceBaseline(types_lib.Agent):
         self._step_t = -1
         self._update_t = 0
         self._policy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
 
     def step(self, timestep: types_lib.TimeStep) -> types_lib.Action:
         """Agent take a step at timestep, return the action a_t,
@@ -132,13 +132,13 @@ class ReinforceBaseline(types_lib.Agent):
         self._baseline_optimizer.zero_grad()
         self._policy_optimizer.zero_grad()
 
-        policy_loss, baseline_loss = self._calc_loss(transitions)
+        policy_loss, value_loss = self._calc_loss(transitions)
 
         # Backpropagate value network
-        baseline_loss.backward()
+        value_loss.backward()
         if self._clip_grad:
             torch.nn.utils.clip_grad_norm_(
-                self._baseline_network.parameters(),
+                self._value_network.parameters(),
                 max_norm=self._max_grad_norm,
                 error_if_nonfinite=True,
             )
@@ -180,28 +180,28 @@ class ReinforceBaseline(types_lib.Agent):
 
         # Get policy action logits for s_tm1.
         logits_tm1 = self._policy_network(s_tm1).pi_logits
-        # Get baseline state-value
-        baseline_tm1 = self._baseline_network(s_tm1).baseline.squeeze(1)  # [batch_size]
+        # Get state-value
+        value_tm1 = self._value_network(s_tm1).value.squeeze(1)  # [batch_size]
 
-        delta = returns - baseline_tm1
+        delta = returns - value_tm1
 
         # Compute policy gradient a.k.a. log-likelihood loss.
         policy_loss = rl.policy_gradient_loss(logits_tm1, a_tm1, delta).loss
 
-        # Compute baseline state-value loss.
-        baseline_loss = rl.baseline_loss(returns, baseline_tm1).loss
+        # Compute state-value loss.
+        value_loss = rl.value_loss(returns, value_tm1).loss
 
         # Averaging over batch dimension.
-        baseline_loss = torch.mean(baseline_loss, dim=0)
+        value_loss = torch.mean(value_loss, dim=0)
 
         # Negative sign to indicate we want to maximize the policy gradient objective function
         policy_loss = -torch.mean(policy_loss, dim=0)
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
 
-        return policy_loss, baseline_loss
+        return policy_loss, value_loss
 
     @property
     def statistics(self):
@@ -209,7 +209,7 @@ class ReinforceBaseline(types_lib.Agent):
         return {
             # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             # 'baseline_learning_rate': self._baseline_optimizer.param_groups[0]['lr'],
-            'baseline_loss': self._baseline_loss_t,
+            'value_loss': self._value_loss_t,
             'policy_loss': self._policy_loss_t,
             # 'discount': self._discount,
             'updates': self._update_t,

@@ -23,10 +23,12 @@ from absl import logging
 import os
 
 os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
 
 import multiprocessing
 import numpy as np
 import torch
+import copy
 
 # pylint: disable=import-error
 from deep_rl_zoo.networks.policy import ImpalaActorCriticMlpNet, ImpalaActorCriticNetworkInputs
@@ -54,22 +56,23 @@ flags.DEFINE_float('rmsprop_eps', 0.01, 'RMSProp epsilon.')
 flags.DEFINE_float('rmsprop_alpha', 0.99, 'RMSProp alpha.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('entropy_coef', 0.025, 'Coefficient for the entropy loss.')
-flags.DEFINE_float('baseline_coef', 0.5, 'Coefficient for the state-value loss.')
+flags.DEFINE_float('value_coef', 0.5, 'Coefficient for the state-value loss.')
 flags.DEFINE_integer('unroll_length', 15, 'How many agent time step to unroll for actor.')
 flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration, per actor.')
-flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training env steps to run per iteration, per actor.')
+flags.DEFINE_integer('num_eval_steps', int(2e4), 'Number of evaluation env steps to run per iteration.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('actors_on_gpu', True, 'Run actors on GPU, default on.')
 flags.DEFINE_integer(
-    'debug_screenshots_frequency',
+    'debug_screenshots_interval',
     0,
     'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
-flags.DEFINE_string('results_csv_path', 'logs/impala_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
+flags.DEFINE_string('results_csv_path', './logs/impala_classic_results.csv', 'Path for CSV log file.')
+flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -77,20 +80,22 @@ def main(argv):
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Runs IMPALA agent on {runtime_device}')
-    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
-    # Listen to signals to exit process.
-    main_loop.handle_exit_signal()
 
+    np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+    # Listen to signals to exit process.
+    main_loop.handle_exit_signal()
+
     # Create environment.
     def environment_builder():
         return gym_env.create_classic_environment(
             env_name=FLAGS.environment_name,
-            seed=random_state.randint(1, 2**32),
+            seed=random_state.randint(1, 2**10),
         )
 
     eval_env = environment_builder()
@@ -101,10 +106,6 @@ def main(argv):
     logging.info('Environment: %s', FLAGS.environment_name)
     logging.info('Action spec: %s', action_dim)
     logging.info('Observation spec: %s', state_dim)
-
-    # Create policy network for actors, learner will copy new weights to this network after batch learning
-    actor_policy_network = ImpalaActorCriticMlpNet(state_dim=state_dim, action_dim=action_dim, use_lstm=FLAGS.use_lstm)
-    actor_policy_network.share_memory()
 
     # Create policy network for leaner to optimize
     policy_network = ImpalaActorCriticMlpNet(state_dim=state_dim, action_dim=action_dim, use_lstm=FLAGS.use_lstm)
@@ -128,44 +129,54 @@ def main(argv):
 
     network_output = policy_network(pi_input)
     assert network_output.pi_logits.shape == (1, 1, action_dim)
-    assert network_output.baseline.shape == (1, 1)
-
-    # Create queue shared between actors and learner
-    data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
+    assert network_output.value.shape == (1, 1)
 
     # Use replay to overcome the problem when using small number of actors.
     replay = replay_lib.UniformReplay(
         capacity=100, structure=agent.TransitionStructure, random_state=random_state, time_major=True
     )
 
+    # Create queue to shared transitions between actors and learner.
+    data_queue = multiprocessing.Queue(maxsize=FLAGS.num_actors)
+
+    # Create shared objects so all actor processes can access them
+    manager = multiprocessing.Manager()
+
+    # Store copy of latest parameters of the neural network in a shared dictionary, so actors can later access it
+    shared_params = manager.dict({'policy_network': None})
+
     # Create IMPALA learner instance
     learner_agent = agent.Learner(
         policy_network=policy_network,
-        actor_policy_network=actor_policy_network,
         policy_optimizer=policy_optimizer,
         replay=replay,
         discount=FLAGS.discount,
         unroll_length=FLAGS.unroll_length,
         batch_size=FLAGS.batch_size,
         entropy_coef=FLAGS.entropy_coef,
-        baseline_coef=FLAGS.baseline_coef,
+        value_coef=FLAGS.value_coef,
         clip_grad=FLAGS.clip_grad,
         max_grad_norm=FLAGS.max_grad_norm,
         device=runtime_device,
+        shared_params=shared_params,
     )
 
     # Create actor environments, runtime devices, and actor instances.
     actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
-    # TODO map to dedicated device if have multiple GPUs
     actor_devices = ['cpu'] * FLAGS.num_actors
+    # Evenly distribute the actors to all available GPUs
+    if torch.cuda.is_available() and FLAGS.actors_on_gpu:
+        num_gpus = torch.cuda.device_count()
+        actor_devices = [torch.device(f'cuda:{i % num_gpus}') for i in range(FLAGS.num_actors)]
 
     actors = [
         agent.Actor(
             rank=i,
             unroll_length=FLAGS.unroll_length,
             data_queue=data_queue,
-            policy_network=actor_policy_network,
+            policy_network=copy.deepcopy(policy_network),
             device=actor_devices[i],
+            shared_params=shared_params,
         )
         for i in range(FLAGS.num_actors)
     ]
@@ -180,9 +191,8 @@ def main(argv):
     # Run parallel training N iterations.
     main_loop.run_parallel_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_frames=FLAGS.num_train_frames,
-        num_eval_frames=FLAGS.num_eval_frames,
-        network=policy_network,
+        num_train_steps=FLAGS.num_train_steps,
+        num_eval_steps=FLAGS.num_eval_steps,
         learner_agent=learner_agent,
         eval_agent=eval_agent,
         eval_env=eval_env,
@@ -191,9 +201,9 @@ def main(argv):
         data_queue=data_queue,
         checkpoint=checkpoint,
         csv_file=FLAGS.results_csv_path,
-        tensorboard=FLAGS.tensorboard,
+        use_tensorboard=FLAGS.use_tensorboard,
         tag=FLAGS.tag,
-        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
+        debug_screenshots_interval=FLAGS.debug_screenshots_interval,
     )
 
 

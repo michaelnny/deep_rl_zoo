@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Policy networks"""
+"""Networks for policy-based learning methods like Actor-Critic and it's variants"""
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -27,17 +28,17 @@ class ActorNetworkOutputs(NamedTuple):
 
 
 class CriticNetworkOutputs(NamedTuple):
-    baseline: torch.Tensor
+    value: torch.Tensor
 
 
 class ActorCriticNetworkOutputs(NamedTuple):
     pi_logits: torch.Tensor
-    baseline: torch.Tensor
+    value: torch.Tensor
 
 
 class ImpalaActorCriticNetworkOutputs(NamedTuple):
     pi_logits: torch.Tensor
-    baseline: torch.Tensor
+    value: torch.Tensor
     hidden_s: torch.Tensor
 
 
@@ -53,8 +54,13 @@ class RndActorCriticNetworkOutputs(NamedTuple):
     """Random Network Distillation"""
 
     pi_logits: torch.Tensor
-    int_baseline: torch.Tensor  # intrinsic baseline head
-    ext_baseline: torch.Tensor  # extrinsic baseline head
+    int_baseline: torch.Tensor  # intrinsic value head
+    ext_baseline: torch.Tensor  # extrinsic value head
+
+
+# =================================================================
+# Fully connected Neural Networks
+# =================================================================
 
 
 class ActorMlpNet(nn.Module):
@@ -93,8 +99,8 @@ class CriticMlpNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> CriticNetworkOutputs:
         """Given raw state x, predict the state-value."""
-        baseline = self.net(x)
-        return CriticNetworkOutputs(baseline=baseline)
+        value = self.net(x)
+        return CriticNetworkOutputs(value=value)
 
 
 class ActorCriticMlpNet(nn.Module):
@@ -124,7 +130,7 @@ class ActorCriticMlpNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
-        and baseline state-value."""
+        and state-value."""
         # Extract features from raw input state
         features = self.body(x)
 
@@ -132,9 +138,9 @@ class ActorCriticMlpNet(nn.Module):
         pi_logits = self.policy_head(features)
 
         # Predict state-value
-        baseline = self.baseline_head(features)
+        value = self.baseline_head(features)
 
-        return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
+        return ActorCriticNetworkOutputs(pi_logits=pi_logits, value=value)
 
 
 class GaussianActorMlpNet(nn.Module):
@@ -167,7 +173,7 @@ class GaussianActorMlpNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor]:
         """Given raw state x, predict the action probability distribution
-        and baseline state-value."""
+        and state-value."""
         features = self.body(x)
 
         # Predict action distributions wrt policy
@@ -194,12 +200,12 @@ class GaussianCriticMlpNet(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Given raw state x, predict the baseline state-value."""
+        """Given raw state x, predict the state-value."""
 
         # Predict state-value
-        baseline = self.net(x)
+        value = self.net(x)
 
-        return baseline
+        return value
 
 
 class ImpalaActorCriticMlpNet(nn.Module):
@@ -270,7 +276,7 @@ class ImpalaActorCriticMlpNet(nn.Module):
         Returns:
             ImpalaActorCriticNetworkOutputs object with the following attributes:
                 pi_logits: action probability logits.
-                baseline: baseline state-value.
+                value: state-value.
                 hidden_s: (optional) hidden state from LSTM layer output.
         """
         s_t = input_.s_t
@@ -318,17 +324,17 @@ class ImpalaActorCriticMlpNet(nn.Module):
         # Predict action distributions wrt policy
         pi_logits = self.policy_head(core_output)
 
-        # Predict state-value baseline
-        baseline = self.baseline_head(core_output)
+        # Predict state-value value
+        value = self.baseline_head(core_output)
 
         # Reshape to matching original shape
         pi_logits = pi_logits.view(T, B, self.action_dim)
-        baseline = baseline.view(T, B)
-        return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline, hidden_s=hidden_s)
+        value = value.view(T, B)
+        return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, value=value, hidden_s=hidden_s)
 
 
 class RndActorCriticMlpNet(nn.Module):
-    """Actor-Critic MLP network with two baseline heads.
+    """Actor-Critic MLP network with two value heads.
 
     From the paper "Exploration by Random Network Distillation"
     https://arxiv.org/abs/1810.12894
@@ -364,7 +370,7 @@ class RndActorCriticMlpNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,
-        and extrinsic and intrinsic baseline values."""
+        and extrinsic and intrinsic value values."""
         # Extract features from raw input state
         features = self.body(x)
 
@@ -376,6 +382,11 @@ class RndActorCriticMlpNet(nn.Module):
         int_baseline = self.int_baseline_head(features)
 
         return RndActorCriticNetworkOutputs(pi_logits=pi_logits, ext_baseline=ext_baseline, int_baseline=int_baseline)
+
+
+# =================================================================
+# Convolutional Neural Networks
+# =================================================================
 
 
 class ActorConvNet(nn.Module):
@@ -430,8 +441,8 @@ class CriticConvNet(nn.Module):
         features = self.body(x)
 
         # Predict state-value
-        baseline = self.baseline_head(features)
-        return CriticNetworkOutputs(baseline=baseline)
+        value = self.baseline_head(features)
+        return CriticNetworkOutputs(value=value)
 
 
 class ActorCriticConvNet(nn.Module):
@@ -459,7 +470,7 @@ class ActorCriticConvNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> ActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution
-        and baseline state-value."""
+        and state-value."""
         # Extract features from raw input state
         x = x.float() / 255.0
         features = self.body(x)
@@ -468,9 +479,9 @@ class ActorCriticConvNet(nn.Module):
         pi_logits = self.policy_head(features)
 
         # Predict state-value
-        baseline = self.baseline_head(features)
+        value = self.baseline_head(features)
 
-        return ActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline)
+        return ActorCriticNetworkOutputs(pi_logits=pi_logits, value=value)
 
 
 class ImpalaActorCriticConvNet(nn.Module):
@@ -564,18 +575,6 @@ class ImpalaActorCriticConvNet(nn.Module):
         # Things tried so far:
         #   - using two linear layers (with relu activation function) for the model's output heads, the model still act randomly after 4*5 millions frames on Pong.
 
-        # self.policy_head = nn.Sequential(
-        #     nn.Linear(core_output_size, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, action_dim),
-        # )
-
-        # self.baseline_head = nn.Sequential(
-        #     nn.Linear(core_output_size, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, 1),
-        # )
-
     def get_initial_hidden_state(self, batch_size: int) -> Tuple[torch.Tensor]:
         """Get initial LSTM hidden state, which is all zeros,
         shoul call at the beginning of new episode.
@@ -604,7 +603,7 @@ class ImpalaActorCriticConvNet(nn.Module):
         Returns:
             ImpalaActorCriticNetworkOutputs object with the following attributes:
                 pi_logits: action probability logits.
-                baseline: baseline state-value.
+                value: state-value.
                 hidden_s: (optional) hidden state from LSTM layer output.
         """
         s_t = input_.s_t
@@ -666,17 +665,17 @@ class ImpalaActorCriticConvNet(nn.Module):
         # Predict action distributions wrt policy
         pi_logits = self.policy_head(core_output)
 
-        # Predict state-value baseline
-        baseline = self.baseline_head(core_output)
+        # Predict state-value value
+        value = self.baseline_head(core_output)
 
         # Reshape to matching original shape
         pi_logits = pi_logits.view(T, B, self.action_dim)
-        baseline = baseline.view(T, B)
-        return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, baseline=baseline, hidden_s=hidden_s)
+        value = value.view(T, B)
+        return ImpalaActorCriticNetworkOutputs(pi_logits=pi_logits, value=value, hidden_s=hidden_s)
 
 
 class RndActorCriticConvNet(nn.Module):
-    """Actor-Critic Conv2d network with two baseline heads.
+    """Actor-Critic Conv2d network with two value heads.
 
     From the paper "Exploration by Random Network Distillation"
     https://arxiv.org/abs/1810.12894
@@ -684,42 +683,60 @@ class RndActorCriticConvNet(nn.Module):
 
     def __init__(self, state_dim: tuple, action_dim: int) -> None:
         super().__init__()
+        c, h, w = state_dim
+        h, w = common.calc_conv2d_output((h, w), 8, 4)
+        h, w = common.calc_conv2d_output((h, w), 4, 2)
+        h, w = common.calc_conv2d_output((h, w), 3, 1)
+        conv2d_out_size = 64 * h * w
 
-        self.body = common.NatureCnnBackboneNet(state_dim)
-
-        self.policy_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
+        self.body = nn.Sequential(
+            nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4),
             nn.ReLU(),
-            nn.Linear(512, action_dim),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(conv2d_out_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 448),
+            nn.ReLU(),
         )
 
-        self.ext_baseline_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        self.extra_policy_fc = nn.Linear(448, 448)
+        self.extra_value_fc = nn.Linear(448, 448)
 
-        self.int_baseline_head = nn.Sequential(
-            nn.Linear(self.body.out_features, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        self.policy_head = nn.Linear(448, action_dim)
+        self.ext_value_head = nn.Linear(448, 1)
+        self.int_value_head = nn.Linear(448, 1)
 
-        # Initialize weights
-        common.initialize_weights(self)
+        for layer in self.body.modules():
+            if isinstance(layer, (nn.Conv2d, nn.Linear)):
+                nn.init.orthogonal_(layer.weight, gain=np.sqrt(2))
+                layer.bias.data.zero_()
+
+        for layer in [self.extra_policy_fc, self.extra_value_fc]:
+            nn.init.orthogonal_(layer.weight, gain=np.sqrt(0.1))
+            layer.bias.data.zero_()
+
+        for layer in [self.policy_head, self.ext_value_head, self.int_value_head]:
+            nn.init.orthogonal_(layer.weight, gain=np.sqrt(0.01))
+            layer.bias.data.zero_()
 
     def forward(self, x: torch.Tensor) -> RndActorCriticNetworkOutputs:
         """Given raw state x, predict the action probability distribution,
-        and extrinsic and intrinsic baseline values."""
+        and extrinsic and intrinsic value values."""
         # Extract features from raw input state
         x = x.float() / 255.0
         features = self.body(x)
 
         # Predict action distributions wrt policy
-        pi_logits = self.policy_head(features)
+        pi_features = features + F.relu(self.extra_policy_fc(features))
+        pi_logits = self.policy_head(pi_features)
 
         # Predict state-value
-        ext_baseline = self.ext_baseline_head(features)
-        int_baseline = self.int_baseline_head(features)
+        value_features = features + F.relu(self.extra_value_fc(features))
+        ext_baseline = self.ext_value_head(value_features)
+        int_baseline = self.int_value_head(value_features)
 
         return RndActorCriticNetworkOutputs(pi_logits=pi_logits, ext_baseline=ext_baseline, int_baseline=int_baseline)

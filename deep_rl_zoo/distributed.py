@@ -28,9 +28,11 @@ def get_actor_exploration_epsilon(n: int) -> List[float]:
     return np.power(0.4, np.linspace(1.0, 8.0, num=n)).flatten().tolist()
 
 
-def calculate_dist_priorities_from_td_error(td_error: torch.Tensor, eta: float) -> np.ndarray:
+def calculate_dist_priorities_from_td_error(td_errors: torch.Tensor, eta: float) -> np.ndarray:
     """Calculate priorities for distributed experience replay, follows Ape-x and R2D2 papers."""
-    abs_td_errors = torch.abs(td_error).detach()
+
+    td_errors = torch.clone(td_errors).detach()
+    abs_td_errors = torch.abs(td_errors)
 
     priorities = eta * torch.max(abs_td_errors, dim=0)[0] + (1 - eta) * torch.mean(abs_td_errors, dim=0)
     priorities = torch.clamp(priorities, min=0.0001, max=1000)  # Avoid NaNs

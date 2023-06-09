@@ -31,7 +31,7 @@ class EntropyExtra(NamedTuple):
     entropy: Optional[torch.Tensor]
 
 
-def baseline_loss(target: torch.Tensor, predict: torch.Tensor) -> base.LossOutput:
+def value_loss(target: torch.Tensor, predict: torch.Tensor) -> base.LossOutput:
     """Calculates the squared error loss.
 
     Args:

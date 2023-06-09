@@ -38,9 +38,9 @@ from deep_rl_zoo import base
 from deep_rl_zoo import multistep
 from deep_rl_zoo import distributed
 from deep_rl_zoo import transforms
-from deep_rl_zoo.networks.dqn import RnnDqnNetworkInputs
+from deep_rl_zoo.networks.value import RnnDqnNetworkInputs
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 HiddenState = Tuple[torch.Tensor, torch.Tensor]
 
@@ -161,28 +161,28 @@ class Actor(types_lib.Agent):
         rank: int,
         data_queue: multiprocessing.Queue,
         network: torch.nn.Module,
-        learner_network: torch.nn.Module,
         random_state: np.random.RandomState,  # pylint: disable=no-member
         num_actors: int,
         action_dim: int,
         unroll_length: int,
         burn_in: int,
-        actor_update_frequency: int,
+        actor_update_interval: int,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
             rank: the rank number for the actor.
             data_queue: a multiprocessing.Queue to send collected transitions to learner process.
             network: the Q network for actor to make action choice.
-            learner_network: the Q network with the updated weights.
             random_state: used to sample random actions for e-greedy policy.
             num_actors: the number actors for calculating e-greedy epsilon.
             action_dim: the number of valid actions in the environment.
             unroll_length: how many agent time step to unroll transitions before put on to queue.
             burn_in: two consecutive unrolls will overlap on burn_in+1 steps.
-            actor_update_frequency: the frequency to update actor local Q network.
+            actor_update_interval: the frequency to update actor local Q network.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 0 < num_actors:
             raise ValueError(f'Expect num_actors to be positive integer, got {num_actors}')
@@ -192,27 +192,27 @@ class Actor(types_lib.Agent):
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
         if not 0 <= burn_in < unroll_length:
             raise ValueError(f'Expect burn_in to be integer between [0, {unroll_length}), got {burn_in}')
-        if not 1 <= actor_update_frequency:
+        if not 1 <= actor_update_interval:
             raise ValueError(
-                f'Expect actor_update_frequency to be integer greater than or equal to 1, got {actor_update_frequency}'
+                f'Expect actor_update_interval to be integer greater than or equal to 1, got {actor_update_interval}'
             )
 
         self.rank = rank
         self.agent_name = f'R2D2-actor{rank}'
 
         self._network = network.to(device=device)
-        self._learner_network = learner_network.to(device=device)
-        self._update_actor_q_network()
 
         # Disable autograd for actor's network
         no_autograd(self._network)
+
+        self._shared_params = shared_params
 
         self._queue = data_queue
 
         self._device = device
         self._random_state = random_state
         self._action_dim = action_dim
-        self._actor_update_frequency = actor_update_frequency
+        self._actor_update_interval = actor_update_interval
 
         self._unroll = replay_lib.Unroll(
             unroll_length=unroll_length,
@@ -234,8 +234,8 @@ class Actor(types_lib.Agent):
         """Given timestep, return action a_t, and push transition into global queue"""
         self._step_t += 1
 
-        if self._step_t % self._actor_update_frequency == 0:
-            self._update_actor_q_network()
+        if self._step_t % self._actor_update_interval == 0:
+            self._update_actor_network()
 
         q_t, a_t, hidden_s = self.act(timestep)
 
@@ -290,15 +290,15 @@ class Actor(types_lib.Agent):
     def _prepare_network_input(self, timestep: types_lib.TimeStep) -> RnnDqnNetworkInputs:
         # R2D2 network expect input shape [T, B, state_shape],
         # and additionally 'last action', 'reward for last action', and hidden state from previous timestep.
-        s_t = torch.tensor(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
-        a_tm1 = torch.tensor(self._last_action).to(device=self._device, dtype=torch.int64)
-        r_t = torch.tensor(timestep.reward).to(device=self._device, dtype=torch.float32)
+        s_t = torch.from_numpy(timestep.observation[None, ...]).to(device=self._device, dtype=torch.float32)
+        a_tm1 = torch.tensor(self._last_action, device=self._device, dtype=torch.int64)
+        r_t = torch.tensor(timestep.reward, device=self._device, dtype=torch.float32)
         hidden_s = tuple(s.to(device=self._device) for s in self._lstm_state)
 
         return RnnDqnNetworkInputs(
-            s_t=s_t[None, ...],  # [T, B, state_shape]
-            a_tm1=a_tm1[None, ...],  # [T, B]
-            r_t=r_t[None, ...],  # [T, B]
+            s_t=s_t.unsqueeze(0),  # [T, B, state_shape]
+            a_tm1=a_tm1.unsqueeze(0),  # [T, B]
+            r_t=r_t.unsqueeze(0),  # [T, B]
             hidden_s=hidden_s,
         )
 
@@ -306,8 +306,13 @@ class Actor(types_lib.Agent):
         # Important note, store hidden states for every step in the unroll will consume HUGE memory.
         self._queue.put(unrolled_transition)
 
-    def _update_actor_q_network(self):
-        self._network.load_state_dict(self._learner_network.state_dict())
+    def _update_actor_network(self):
+        state_dict = self._shared_params['network']
+
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._network.load_state_dict(state_dict)
 
     @property
     def statistics(self) -> Mapping[Text, float]:
@@ -323,7 +328,7 @@ class Learner(types_lib.Learner):
         network: nn.Module,
         optimizer: torch.optim.Optimizer,
         replay: replay_lib.PrioritizedReplay,
-        target_network_update_frequency: int,
+        target_net_update_interval: int,
         min_replay_size: int,
         batch_size: int,
         n_step: int,
@@ -334,13 +339,14 @@ class Learner(types_lib.Learner):
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
             network: the Q network we want to train and optimize.
             optimizer: the optimizer for Q network.
             replay: prioritized recurrent experience replay.
-            target_network_update_frequency: how often to copy online network parameters to target.
+            target_net_update_interval: how often to copy online network parameters to target.
             min_replay_size: wait till experience replay buffer this number before start to learn.
             batch_size: sample batch_size of transitions.
             n_step: TD n-step bootstrap.
@@ -351,11 +357,10 @@ class Learner(types_lib.Learner):
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
-        if not 1 <= target_network_update_frequency:
-            raise ValueError(
-                f'Expect target_network_update_frequency to be positive integer, got {target_network_update_frequency}'
-            )
+        if not 1 <= target_net_update_interval:
+            raise ValueError(f'Expect target_net_update_interval to be positive integer, got {target_net_update_interval}')
         if not 1 <= min_replay_size:
             raise ValueError(f'Expect min_replay_size to be integer greater than or equal to 1, got {min_replay_size}')
         if not 1 <= batch_size <= 512:
@@ -371,18 +376,20 @@ class Learner(types_lib.Learner):
 
         self.agent_name = 'R2D2-learner'
         self._device = device
-        self._online_network = network.to(device=device)
+        self._network = network.to(device=device)
         self._optimizer = optimizer
         # Lazy way to create target Q network
-        self._target_network = copy.deepcopy(self._online_network).to(device=self._device)
+        self._target_network = copy.deepcopy(self._network).to(device=self._device)
 
         # Disable autograd for target network
         no_autograd(self._target_network)
 
+        self._shared_params = shared_params
+
         self._batch_size = batch_size
         self._n_step = n_step
         self._burn_in = burn_in
-        self._target_network_update_frequency = target_network_update_frequency
+        self._target_net_update_interval = target_net_update_interval
         self._discount = discount
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
@@ -391,6 +398,8 @@ class Learner(types_lib.Learner):
         self._replay = replay
         self._min_replay_size = min_replay_size
         self._priority_eta = priority_eta
+
+        self._max_seen_priority = 1.0  # New unroll will use this as priority
 
         # Counters
         self._step_t = -1
@@ -406,7 +415,7 @@ class Learner(types_lib.Learner):
         """
         self._step_t += 1
 
-        if self._replay.size < self._batch_size or self._step_t % self._batch_size != 0:
+        if self._replay.size < self._min_replay_size or self._step_t % max(4, int(self._batch_size * 0.25)) != 0:
             return
 
         self._learn()
@@ -417,21 +426,27 @@ class Learner(types_lib.Learner):
 
     def received_item_from_queue(self, item) -> None:
         """Received item send by actors through multiprocessing queue."""
-        # Use the unrolled sequence to calculate priority
-        priority = self._compute_priority_for_unroll(item)
-        self._replay.add(item, priority)
+        self._replay.add(item, self._max_seen_priority)
+
+    def get_network_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._network.state_dict().items()}
 
     def _learn(self) -> None:
         transitions, indices, weights = self._replay.sample(self._batch_size)
         priorities = self._update(transitions, weights)
+        self._update_t += 1
 
         if priorities.shape != (self._batch_size,):
             raise RuntimeError(f'Expect priorities has shape ({self._batch_size},), got {priorities.shape}')
         priorities = np.abs(priorities)
+        self._max_seen_priority = np.max([self._max_seen_priority, np.max(priorities)])
         self._replay.update_priorities(indices, priorities)
 
+        self._shared_params['network'] = self.get_network_state_dict()
+
         # Copy online Q network parameters to target Q network, every m updates
-        if self._update_t > 1 and self._update_t % self._target_network_update_frequency == 0:
+        if self._update_t > 1 and self._update_t % self._target_net_update_interval == 0:
             self._update_target_network()
 
     def _update(self, transitions: R2d2Transition, weights: np.ndarray) -> np.ndarray:
@@ -440,27 +455,26 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(weights, 1, torch.float32)
 
         # Get initial hidden state, handle possible burn in.
-        init_hidden_state = self._extract_first_step_hidden_state(transitions)
+        init_hidden_s = self._extract_first_step_hidden_state(transitions)
         burn_transitions, learn_transitions = replay_lib.split_structure(transitions, TransitionStructure, self._burn_in)
         if burn_transitions is not None:
-            hidden_online_q, hidden_target_q = self._burn_in_unroll_q_networks(burn_transitions, init_hidden_state)
+            hidden_s, target_hidden_s = self._burn_in_unroll_q_networks(burn_transitions, init_hidden_s)
         else:
-            hidden_online_q = tuple(s.clone().to(device=self._device) for s in init_hidden_state)
-            hidden_target_q = tuple(s.clone().to(device=self._device) for s in init_hidden_state)
+            hidden_s = tuple(s.clone().to(device=self._device) for s in init_hidden_s)
+            target_hidden_s = tuple(s.clone().to(device=self._device) for s in init_hidden_s)
 
         self._optimizer.zero_grad()
         # [batch_size]
-        loss, priorities = self._calc_loss(learn_transitions, hidden_online_q, hidden_target_q)
+        loss, priorities = self._calc_loss(learn_transitions, hidden_s, target_hidden_s)
 
         # Multiply loss by sampling weights, averaging over batch dimension
         loss = torch.mean(loss * weights.detach())
         loss.backward()
 
         if self._clip_grad:
-            torch.nn.utils.clip_grad_norm_(self._online_network.parameters(), self._max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(self._network.parameters(), self._max_grad_norm)
 
         self._optimizer.step()
-        self._update_t += 1
 
         # For logging only.
         self._loss_t = loss.detach().cpu().item()
@@ -469,8 +483,8 @@ class Learner(types_lib.Learner):
     def _calc_loss(
         self,
         transitions: R2d2Transition,
-        hidden_online_q: HiddenState,
-        hidden_target_q: HiddenState,
+        hidden_s: HiddenState,
+        target_hidden_s: HiddenState,
     ) -> Tuple[torch.Tensor, np.ndarray]:
         """Calculate loss and priorities for given unroll sequence transitions."""
         s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [T+1, B, state_shape]
@@ -487,7 +501,7 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(done, 2, torch.bool)
 
         # Get q values from online Q network
-        q_t = self._online_network(RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_online_q)).q_values
+        q_t = self._network(RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_s)).q_values
 
         # Computes raw target q values, use double Q
         with torch.no_grad():
@@ -496,7 +510,7 @@ class Learner(types_lib.Learner):
 
             # Get estimated q values for 's_t' from target Q network, using above best action a*.
             target_q_t = self._target_network(
-                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_target_q)
+                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=target_hidden_s)
             ).q_values
 
         losses, priorities = calculate_losses_and_priorities(
@@ -514,8 +528,9 @@ class Learner(types_lib.Learner):
 
         return (losses, priorities)
 
+    @torch.no_grad()
     def _burn_in_unroll_q_networks(
-        self, transitions: R2d2Transition, init_hidden_state: HiddenState
+        self, transitions: R2d2Transition, init_hidden_s: HiddenState
     ) -> Tuple[HiddenState, HiddenState]:
         """Unroll both online and target q networks to generate hidden states for LSTM."""
         s_t = torch.from_numpy(transitions.s_t).to(device=self._device, dtype=torch.float32)  # [burn_in, B, state_shape]
@@ -527,19 +542,16 @@ class Learner(types_lib.Learner):
         base.assert_rank_and_dtype(last_action, 2, torch.long)
         base.assert_rank_and_dtype(r_t, 2, torch.float32)
 
-        hidden_online = tuple(s.clone().to(device=self._device) for s in init_hidden_state)
-        hidden_target = tuple(s.clone().to(device=self._device) for s in init_hidden_state)
+        _hidden_s = tuple(s.clone().to(device=self._device) for s in init_hidden_s)
+        _target_hidden_s = tuple(s.clone().to(device=self._device) for s in init_hidden_s)
 
         # Burn in to generate hidden states for LSTM, we unroll both online and target Q networks
-        with torch.no_grad():
-            hidden_online_q = self._online_network(
-                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_online)
-            ).hidden_s
-            hidden_target_q = self._target_network(
-                RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=hidden_target)
-            ).hidden_s
+        hidden_s = self._network(RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=_hidden_s)).hidden_s
+        target_hidden_s = self._target_network(
+            RnnDqnNetworkInputs(s_t=s_t, a_tm1=last_action, r_t=r_t, hidden_s=_target_hidden_s)
+        ).hidden_s
 
-        return (hidden_online_q, hidden_target_q)
+        return (hidden_s, target_hidden_s)
 
     def _extract_first_step_hidden_state(self, transitions: R2d2Transition) -> HiddenState:
         # We only need the first step hidden states in replay, shape [batch_size, num_lstm_layers, lstm_hidden_size]
@@ -560,41 +572,8 @@ class Learner(types_lib.Learner):
 
         return (init_h, init_c)
 
-    @torch.no_grad()
-    def _compute_priority_for_unroll(self, transitions: R2d2Transition) -> float:
-        """Returns priority for a single unroll, no network pass and gradients are required."""
-        # Note we skip the burn in part, and use the same q values for target.
-        _, learn_transition = replay_lib.split_structure(transitions, TransitionStructure, self._burn_in)
-
-        a_t = torch.from_numpy(learn_transition.a_t).to(device=self._device, dtype=torch.int64)  # [T+1, ]
-        q_t = torch.from_numpy(learn_transition.q_t).to(device=self._device, dtype=torch.float32)  # [T+1, ]
-        r_t = torch.from_numpy(learn_transition.r_t).to(device=self._device, dtype=torch.float32)  # [T+1, ]
-        done = torch.from_numpy(learn_transition.done).to(device=self._device, dtype=torch.bool)  # [T+1, ]
-
-        # Rank and dtype checks, single unroll should not have batch dimension.
-        base.assert_rank_and_dtype(q_t, 2, torch.float32)
-        base.assert_rank_and_dtype(a_t, 1, torch.long)
-        base.assert_rank_and_dtype(r_t, 1, torch.float32)
-        base.assert_rank_and_dtype(done, 1, torch.bool)
-
-        # Calculate loss and priority, needs to add a batch dimension.
-        _, priority = calculate_losses_and_priorities(
-            q_value=q_t.unsqueeze(1),
-            action=a_t.unsqueeze(1),
-            reward=r_t.unsqueeze(1),
-            done=done.unsqueeze(1),
-            target_qvalue=q_t.unsqueeze(1),
-            target_action=q_t.argmax(-1).long().unsqueeze(1),
-            gamma=self._discount,
-            n_step=self._n_step,
-            eps=self._rescale_epsilon,
-            eta=self._priority_eta,
-        )
-
-        return priority.item()
-
     def _update_target_network(self):
-        self._target_network.load_state_dict(self._online_network.state_dict())
+        self._target_network.load_state_dict(self._network.state_dict())
         self._target_update_t += 1
 
     @property

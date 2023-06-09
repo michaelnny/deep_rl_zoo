@@ -38,8 +38,6 @@ def initialize_weights(net: nn.Module) -> None:
     for module in net.modules():
         if isinstance(module, (nn.Conv2d, nn.Linear)):
             nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
-            # nn.init.kaiming_uniform_(module.weight, mode='fan_out', nonlinearity='relu')
-
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
 
@@ -117,7 +115,9 @@ class ResNetBlock(nn.Module):
 
 
 class NoisyLinear(nn.Module):
-    """Factorised NoisyLinear layer with bias.
+    """Factorized NoisyLinear layer with bias.
+
+    Code adapted from:
     https://github.com/Kaixhin/Rainbow/blob/master/model.py
     """
 

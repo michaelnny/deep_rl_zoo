@@ -27,7 +27,6 @@ import multiprocessing
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 # pylint: disable=import-error
 from deep_rl_zoo import vtrace
@@ -38,7 +37,7 @@ import deep_rl_zoo.replay as replay_lib
 import deep_rl_zoo.types as types_lib
 import deep_rl_zoo.policy_gradient as rl
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 HiddenState = Tuple[torch.Tensor, torch.Tensor]
 
@@ -84,6 +83,7 @@ class Actor(types_lib.Agent):
         data_queue: multiprocessing.Queue,
         policy_network: torch.nn.Module,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
@@ -92,6 +92,7 @@ class Actor(types_lib.Agent):
             data_queue: a multiprocessing.Queue to send collected transitions to learner process.
             policy_network: the policy network for worker to make action choice.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 1 <= unroll_length:
             raise ValueError(f'Expect unroll_length to be integer greater than or equal to 1, got {unroll_length}')
@@ -100,8 +101,14 @@ class Actor(types_lib.Agent):
         self.agent_name = f'IMPALA-actor{rank}'
 
         self._policy_network = policy_network.to(device=device)
+
+        # Disable autograd for actor networks.
+        for p in self._policy_network.parameters():
+            p.requires_grad = False
+
         self._device = device
-        self._policy_network.eval()
+
+        self._shared_params = shared_params
 
         self._queue = data_queue
 
@@ -134,8 +141,8 @@ class Actor(types_lib.Agent):
             a_t=a_t,
             logits_t=logits_t,
             last_action=self._last_action,
-            init_h=False if not self._lstm_state else self._lstm_state[0].squeeze(1).numpy(),  # remove batch dimension
-            init_c=False if not self._lstm_state else self._lstm_state[1].squeeze(1).numpy(),
+            init_h=False if not self._lstm_state else self._lstm_state[0].squeeze(1).cpu().numpy(),  # remove batch dimension
+            init_c=False if not self._lstm_state else self._lstm_state[1].squeeze(1).cpu().numpy(),
         )
         unrolled_transition = self._unroll.add(transition, timestep.done)
         self._last_action, self._lstm_state = a_t, hidden_s
@@ -150,6 +157,8 @@ class Actor(types_lib.Agent):
                 )
 
             self._queue.put(unrolled_transition)
+
+            self._update_actor_network()
 
         return a_t
 
@@ -192,6 +201,13 @@ class Actor(types_lib.Agent):
             hidden_s=hidden_s,
         )
 
+    def _update_actor_network(self):
+        state_dict = self._shared_params['policy_network']
+        if state_dict is not None:
+            if self._device != 'cpu':
+                state_dict = {k: v.to(device=self._device) for k, v in state_dict.items()}
+            self._policy_network.load_state_dict(state_dict)
+
     @property
     def statistics(self) -> Mapping[Text, float]:
         """Returns current actor's statistics as a dictionary."""
@@ -204,31 +220,31 @@ class Learner(types_lib.Learner):
     def __init__(
         self,
         policy_network: nn.Module,
-        actor_policy_network: nn.Module,
         policy_optimizer: torch.optim.Optimizer,
         replay: replay_lib.UniformReplay,
         discount: float,
         unroll_length: int,
         batch_size: int,
         entropy_coef: float,
-        baseline_coef: float,
+        value_coef: float,
         clip_grad: bool,
         max_grad_norm: float,
         device: torch.device,
+        shared_params: dict,
     ) -> None:
         """
         Args:
             policy_network: the policy network we want to train.
-            actor_policy_network: the policy network shared with actors.
             policy_optimizer: the optimizer for policy network.
             discount: the gamma discount for future rewards.
             unroll_length: actor unroll time step.
             batch_size: sample batch_size of transitions.
             entropy_coef: the coefficient of entropy loss.
-            baseline_coef: the coefficient of state-value loss.
+            value_coef: the coefficient of state-value loss.
             clip_grad: if True, clip gradients norm.
             max_grad_norm: the maximum gradient norm for clip grad, only works if clip_grad is True.
             device: PyTorch runtime device.
+            shared_params: a shared dict, so we can later update the parameters for actors.
         """
         if not 0.0 <= discount <= 1.0:
             raise ValueError(f'Expect discount to in the range [0.0, 1.0], got {discount}')
@@ -238,15 +254,16 @@ class Learner(types_lib.Learner):
             raise ValueError(f'Expect batch_size to in the range [1, 512], got {batch_size}')
         if not 0.0 <= entropy_coef <= 1.0:
             raise ValueError(f'Expect entropy_coef to [0.0, 1.0], got {entropy_coef}')
-        if not 0.0 <= baseline_coef <= 1.0:
-            raise ValueError(f'Expect baseline_coef to [0.0, 1.0], got {baseline_coef}')
+        if not 0.0 <= value_coef <= 1.0:
+            raise ValueError(f'Expect value_coef to [0.0, 1.0], got {value_coef}')
 
         self.agent_name = 'IMPALA-learner'
         self._device = device
-        self.actor_policy_network = actor_policy_network
         self._policy_network = policy_network.to(device=device)
         self._policy_network.train()
         self._policy_optimizer = policy_optimizer
+
+        self._shared_params = shared_params
 
         self._discount = discount
         self._unroll_length = unroll_length
@@ -255,7 +272,7 @@ class Learner(types_lib.Learner):
         self._replay = replay
 
         self._entropy_coef = entropy_coef
-        self._baseline_coef = baseline_coef
+        self._value_coef = value_coef
 
         self._clip_grad = clip_grad
         self._max_grad_norm = max_grad_norm
@@ -265,7 +282,7 @@ class Learner(types_lib.Learner):
         self._update_t = 0
         self._policy_loss_t = np.nan
         self._entropy_loss_t = np.nan
-        self._baseline_loss_t = np.nan
+        self._value_loss_t = np.nan
 
     def step(self) -> Iterable[Mapping[Text, float]]:
         """Increment learner step, and potentially do a update when called.
@@ -289,10 +306,18 @@ class Learner(types_lib.Learner):
         """Received item send by actors through multiprocessing queue."""
         self._replay.add(item)
 
+    def get_policy_state_dict(self):
+        # To keep things consistent, we move the parameters to CPU
+        return {k: v.cpu() for k, v in self._policy_network.state_dict().items()}
+
     def _learn(self) -> None:
         transitions = self._replay.sample(self._batch_size)
         self._update(transitions)
         self._replay.reset()
+
+        self._update_t += 1
+
+        self._shared_params['policy_network'] = self.get_policy_state_dict()
 
     def _update(self, transitions: ImpalaTransition) -> torch.Tensor:
         self._policy_optimizer.zero_grad()
@@ -303,9 +328,6 @@ class Learner(types_lib.Learner):
             torch.nn.utils.clip_grad_norm_(self._policy_network.parameters(), self._max_grad_norm)
 
         self._policy_optimizer.step()
-
-        self._update_t += 1
-        self.actor_policy_network.load_state_dict(self._policy_network.state_dict())
 
     def _calc_loss(self, transitions: ImpalaTransition) -> torch.Tensor:
         """Calculate loss for a batch transitions"""
@@ -348,14 +370,14 @@ class Learner(types_lib.Learner):
             )
         )
 
-        # Use last baseline value (from the value function) to bootstrap.
-        bootstrap_value = network_output.baseline[-1]
+        # Use last value value (from the value function) to bootstrap.
+        bootstrap_value = network_output.value[-1]
 
         # At this point, the environment outputs at time step `t` are the inputs that
         # lead to the learner_outputs at time step `t`. After the following shifting,
         # the actions in agent_outputs and learner_outputs at time step `t` is what
         # leads to the environment outputs at time step `t`.
-        target_logits, baseline = network_output.pi_logits[:-1], network_output.baseline[:-1]
+        target_logits, value = network_output.pi_logits[:-1], network_output.value[:-1]
         action, behavior_logits = a_t[:-1], behavior_logits_t[:-1]
         reward, done = r_t[1:], done[1:]
 
@@ -368,27 +390,27 @@ class Learner(types_lib.Learner):
             actions=action,
             discounts=discount,
             rewards=reward,
-            values=baseline,
+            values=value,
             bootstrap_value=bootstrap_value,
         )
 
         policy_loss = rl.policy_gradient_loss(target_logits, action, vtrace_returns.pg_advantages).loss
         entropy_loss = rl.entropy_loss(target_logits).loss
-        baseline_loss = rl.baseline_loss(vtrace_returns.vs, baseline).loss
+        value_loss = rl.value_loss(vtrace_returns.vs, value).loss
 
         # Averaging over batch dimension.
         policy_loss = torch.mean(policy_loss, dim=0)
-        entropy_loss = self._entropy_coef * torch.mean(entropy_loss, dim=0)
-        baseline_loss = self._baseline_coef * torch.mean(baseline_loss, dim=0)
+        entropy_loss = torch.mean(entropy_loss, dim=0)
+        value_loss = torch.mean(value_loss, dim=0)
 
-        # Combine policy loss, baseline loss, entropy loss.
+        # Combine policy loss, value loss, entropy loss.
         # Negative sign to indicate we want to maximize the policy gradient objective function and entropy to encourage exploration
-        loss = -(policy_loss + entropy_loss) + baseline_loss
+        loss = -(policy_loss + self._entropy_coef * entropy_loss) + self._value_coef * value_loss
 
         # For logging only.
         self._policy_loss_t = policy_loss.detach().cpu().item()
         self._entropy_loss_t = entropy_loss.detach().cpu().item()
-        self._baseline_loss_t = baseline_loss.detach().cpu().item()
+        self._value_loss_t = value_loss.detach().cpu().item()
 
         return loss
 
@@ -399,7 +421,7 @@ class Learner(types_lib.Learner):
             # 'learning_rate': self._policy_optimizer.param_groups[0]['lr'],
             'policy_loss': self._policy_loss_t,
             'entropy_loss': self._entropy_loss_t,
-            'baseline_loss': self._baseline_loss_t,
+            'value_loss': self._value_loss_t,
             # 'discount': self._discount,
             'updates': self._update_t,
         }

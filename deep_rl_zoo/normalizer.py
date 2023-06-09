@@ -22,99 +22,82 @@ import torch
 import numpy as np
 
 
-class Normalizer:
+class TorchRunningMeanStd:
+    """For RND networks"""
 
-    """Normalizes tensors by tracking their element-wise mean and variance.
-    code adapted from https://github.com/google-research/seed_rl/blob/master/common/normalizer.py
-    """
-
-    def __init__(self, eps: float = 0.001, clip_range: tuple = (-5, 5), device: str = 'cpu') -> None:
-        """Initialize the normalizer.
-        Args:
-            eps: A constant added to the standard deviation of data beforenormalization.
-            clip_range: Normalized values are clipped to this range.
-        """
-        super().__init__()
-        self.eps = eps
-        self.clip_range = clip_range
-        self.initialized = False
+    def __init__(self, shape=(), device='cpu'):
         self.device = device
+        self.mean = torch.zeros(shape, dtype=torch.float32, device=self.device)
+        self.var = torch.ones(shape, dtype=torch.float32, device=self.device)
+        self.count = 0
 
-    def _build(self, state_dim: tuple) -> None:
-        assert not self.initialized
-        self.initialized = True
+        self.deltas = []
+        self.min_size = 10
 
-        size = state_dim[-1]
+    @torch.no_grad()
+    def update(self, x):
+        x = x.to(self.device)
+        batch_mean = torch.mean(x, dim=0)
+        batch_var = torch.var(x, dim=0)
 
-        # Statistics accumulators
-        self.steps = torch.zeros(1, dtype=torch.float32, device=self.device).requires_grad_(False)
-        self.sum = torch.zeros(size, dtype=torch.float32, device=self.device).requires_grad_(False)
-        self.sumsq = torch.zeros(size, dtype=torch.float32, device=self.device).requires_grad_(False)
-        self.mean = torch.zeros(size, dtype=torch.float32, device=self.device).requires_grad_(False)
-        self.std = torch.zeros(size, dtype=torch.float32, device=self.device).requires_grad_(False)
+        # update count and moments
+        n = x.shape[0]
+        self.count += n
+        delta = batch_mean - self.mean
+        self.mean += delta * n / self.count
+        m_a = self.var * (self.count - n)
+        m_b = batch_var * n
+        M2 = m_a + m_b + torch.square(delta) * self.count * n / self.count
+        self.var = M2 / self.count
 
-    def update(self, input_: torch.Tensor) -> None:
-        """Update normalization statistics.
-        Args:
-            input_: A tensor. All dimensions apart from the last one are treated
-            as batch dimensions.
-        """
-        assert len(input_.shape) >= 1
+    @torch.no_grad()
+    def update_single(self, x):
+        self.deltas.append(x)
 
-        # Add a new dimension if input is a 1d vector
-        if len(input_.shape) == 1:
-            input_ = input_[:, None]
+        if len(self.deltas) >= self.min_size:
+            batched_x = torch.concat(self.deltas, dim=0)
+            self.update(batched_x)
 
-        if not self.initialized:
-            self._build(input_.shape)
+            del self.deltas[:]
 
-        # Reshape to 2 dimensions
-        shape = input_.shape
-        input_ = torch.reshape(input_, (np.prod(shape[:-1]), shape[-1]))
+    @torch.no_grad()
+    def normalize(self, x):
+        return (x.to(self.device) - self.mean) / torch.sqrt(self.var + 1e-8)
 
-        assert len(input_.shape) == 2
 
-        # Update statistics accumulators
-        self.steps += float(input_.shape[0])
-        self.sum += torch.sum(input_, dim=0)
-        self.sumsq += torch.sum(torch.square(input_), dim=0)
-        self.mean = self.sum / self.steps
-        self.std = torch.sqrt(torch.maximum(torch.tensor(0.0), (self.sumsq / self.steps) - torch.square(self.mean)))
+class RunningMeanStd:
+    """For RND networks"""
 
-    def __call__(self, input_: torch.Tensor) -> torch.Tensor:
-        """Update normalization statistics and return normalized tensor.
-        Args:
-            input_: A tensor. All dimensions apart from the last one are treated
-            as batch dimensions.
-        Returns:
-            a nomalized tensor with zero mean, unit deviation of the same shape and dtype as input_.
-        """
-        if not self.initialized:
-            return input_
+    def __init__(self, shape=()):
+        self.mean = np.zeros(shape, 'float32')
+        self.var = np.ones(shape, 'float32')
+        self.count = 0
 
-        # Don't want to do it in place
-        copy_input_ = input_.clone()
+        self.deltas = []
+        self.min_size = 10
 
-        # Rember original shape
-        orig_shape = copy_input_.shape
+    def update(self, x):
+        batch_mean = np.mean(x, axis=0)
+        batch_var = np.var(x, axis=0)
 
-        # Add a new dimension if input is a 1d vector
-        if len(input_.shape) == 1:
-            copy_input_ = copy_input_[:, None]
+        # update count and moments
+        n = x.shape[0]
+        self.count += n
+        delta = batch_mean - self.mean
+        self.mean += delta * n / self.count
+        m_a = self.var * (self.count - n)
+        m_b = batch_var * n
+        M2 = m_a + m_b + np.square(delta) * self.count * n / self.count
+        self.var = M2 / self.count
 
-        # Reshape to 2 dimensions
-        shape = copy_input_.shape
+    def update_single(self, x):
+        self.deltas.append(x)
 
-        copy_input_ = torch.reshape(copy_input_, (np.prod(shape[:-1]), shape[-1]))
+        if len(self.deltas) >= self.min_size:
+            batched_x = np.stack(self.deltas, axis=0)
+            self.update(batched_x)
 
-        assert len(copy_input_.shape) == 2
+            del self.deltas[:]
 
-        # Normalize to mean 0, unit deviation
-        copy_input_ -= self.mean[None, :]
-        copy_input_ /= self.std[None, :] + self.eps
-
-        # Clip value range
-        copy_input_ = torch.clamp(copy_input_, *self.clip_range)
-
-        # Reshape to the original shape
-        return torch.reshape(copy_input_, orig_shape)
+    def normalize(self, x):
+        return (x - self.mean) / np.sqrt(self.var + 1e-8)

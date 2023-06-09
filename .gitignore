@@ -10,10 +10,3 @@ __pycache__/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-
-
-# logs and big files
-runs/*
-logs/*
-recordings/*
-checkpoints/*

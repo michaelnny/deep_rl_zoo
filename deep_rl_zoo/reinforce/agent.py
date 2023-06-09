@@ -29,7 +29,7 @@ import deep_rl_zoo.policy_gradient as rl
 from deep_rl_zoo import base
 from deep_rl_zoo import distributions
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 class Reinforce(types_lib.Agent):

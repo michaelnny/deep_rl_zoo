@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests trained NGU agent from checkpoint with a e-greedy actor.
-on classic control tasks like CartPole, MountainCar, or LunarLander, and on Atari."""
+"""Tests trained NGU agent from checkpoint with a e-greedy actor on Atari."""
 from absl import app
 from absl import flags
 from absl import logging
@@ -21,8 +20,8 @@ import numpy as np
 import torch
 
 # pylint: disable=import-error
-from deep_rl_zoo.networks.dqn import NguDqnMlpNet, NguDqnConvNet
-from deep_rl_zoo.networks.curiosity import RndMlpNet, NguEmbeddingMlpNet, RndConvNet, NguEmbeddingConvNet
+from deep_rl_zoo.networks.value import NguDqnConvNet
+from deep_rl_zoo.networks.curiosity import RndConvNet, NguEmbeddingConvNet
 from deep_rl_zoo import main_loop
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo import gym_env
@@ -31,14 +30,12 @@ from deep_rl_zoo import greedy_actors
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
-    'environment_name',
-    'CartPole-v1',
-    'Both Classic control tasks name like CartPole-v1, LunarLander-v2, MountainCar-v0, Acrobot-v1. and Atari game like Pong, Breakout.',
-)
-flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height, for atari only.')
-flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width, for atari only.')
-flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip, for atari only.')
-flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack, for atari only.')
+    'environment_name', 'Pong', 'Atari name without NoFrameskip and version, like Breakout, Pong, Seaquest.'
+)  # MontezumaRevenge, Pitfall
+flags.DEFINE_integer('environment_height', 84, 'Environment frame screen height.')
+flags.DEFINE_integer('environment_width', 84, 'Environment frame screen width.')
+flags.DEFINE_integer('environment_frame_skip', 4, 'Number of frames to skip.')
+flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 
 flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
@@ -50,10 +47,12 @@ flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distan
 flags.DEFINE_float('max_similarity', 8.0, 'K-nearest neighbors custer distance.')
 
 flags.DEFINE_integer('num_iterations', 1, 'Number of evaluation iterations to run.')
-flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer(
+    'num_eval_steps', int(2e4), 'Number of evaluation steps (environment steps or frames) to run per iteration.'
+)
 flags.DEFINE_integer('max_episode_steps', 58000, 'Maximum steps (before frame skip) per episode, for atari only.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_string('load_checkpoint_file', '', 'Load a specific checkpoint file.')
 flags.DEFINE_string(
     'recording_video_dir',
@@ -61,45 +60,42 @@ flags.DEFINE_string(
     'Path for recording a video of agent self-play.',
 )
 
+flags.register_validator('environment_frame_stack', lambda x: x == 1)
+
 
 def main(argv):
     """Tests NGU agent."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+    np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-    # Create evaluation environments
-    if FLAGS.environment_name in gym_env.CLASSIC_ENV_NAMES:
-        eval_env = gym_env.create_classic_environment(env_name=FLAGS.environment_name, seed=random_state.randint(1, 2**32))
-        state_dim = eval_env.observation_space.shape[0]
-        action_dim = eval_env.action_space.n
-        network = NguDqnMlpNet(state_dim=state_dim, action_dim=action_dim, num_policies=FLAGS.num_policies)
-        rnd_target_network = RndMlpNet(state_dim=state_dim)
-        rnd_predictor_network = RndMlpNet(state_dim=state_dim)
-        embedding_network = NguEmbeddingMlpNet(state_dim=state_dim, action_dim=action_dim)
-    else:
-        eval_env = gym_env.create_atari_environment(
-            env_name=FLAGS.environment_name,
-            frame_height=FLAGS.environment_height,
-            frame_width=FLAGS.environment_width,
-            frame_skip=FLAGS.environment_frame_skip,
-            frame_stack=FLAGS.environment_frame_stack,
-            max_episode_steps=FLAGS.max_episode_steps,
-            seed=random_state.randint(1, 2**32),
-            noop_max=30,
-            terminal_on_life_loss=False,
-            clip_reward=False,
-        )
-        state_dim = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
-        action_dim = eval_env.action_space.n
-        network = NguDqnConvNet(state_dim=state_dim, action_dim=action_dim, num_policies=FLAGS.num_policies)
-        rnd_target_network = RndConvNet(state_dim=state_dim)
-        rnd_predictor_network = RndConvNet(state_dim=state_dim)
-        embedding_network = NguEmbeddingConvNet(state_dim=state_dim, action_dim=action_dim)
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+
+    # Create evaluation environment
+    eval_env = gym_env.create_atari_environment(
+        env_name=FLAGS.environment_name,
+        frame_height=FLAGS.environment_height,
+        frame_width=FLAGS.environment_width,
+        frame_skip=FLAGS.environment_frame_skip,
+        frame_stack=FLAGS.environment_frame_stack,
+        max_episode_steps=FLAGS.max_episode_steps,
+        seed=random_state.randint(1, 2**10),
+        noop_max=30,
+        terminal_on_life_loss=False,
+        sticky_action=False,
+        clip_reward=False,
+    )
+
+    state_dim = (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
+    action_dim = eval_env.action_space.n
+    network = NguDqnConvNet(state_dim=state_dim, action_dim=action_dim, num_policies=FLAGS.num_policies)
+    rnd_target_network = RndConvNet(state_dim=state_dim)
+    rnd_predictor_network = RndConvNet(state_dim=state_dim)
+    embedding_network = NguEmbeddingConvNet(state_dim=state_dim, action_dim=action_dim)
 
     logging.info('Environment: %s', FLAGS.environment_name)
     logging.info('Action spec: %s', action_dim)
@@ -139,10 +135,10 @@ def main(argv):
     # Run test N iterations.
     main_loop.run_evaluation_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_eval_frames=FLAGS.num_eval_frames,
+        num_eval_steps=FLAGS.num_eval_steps,
         eval_agent=eval_agent,
         eval_env=eval_env,
-        tensorboard=FLAGS.tensorboard,
+        use_tensorboard=FLAGS.use_tensorboard,
         recording_video_dir=FLAGS.recording_video_dir,
     )
 

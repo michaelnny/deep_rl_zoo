@@ -44,19 +44,24 @@ flags.DEFINE_float('max_grad_norm', 40.0, 'Max gradients norm when do gradients 
 flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer(
+    'num_train_steps', int(5e5), 'Number of training steps (environment steps or frames) to run per iteration.'
+)
+flags.DEFINE_integer(
+    'num_eval_steps', int(2e4), 'Number of evaluation steps (environment steps or frames) to run per iteration.'
+)
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('actors_on_gpu', True, 'Run actors on GPU, default on.')
 flags.DEFINE_integer(
-    'debug_screenshots_frequency',
+    'debug_screenshots_interval',
     0,
     'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
-flags.DEFINE_string('results_csv_path', 'logs/reinforcee_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
+flags.DEFINE_string('results_csv_path', './logs/reinforcee_atari_results.csv', 'Path for CSV log file.')
+flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -64,11 +69,13 @@ def main(argv):
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Runs REINFORCE agent on {runtime_device}')
-    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+    np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
+
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Create environment.
     def environment_builder():
@@ -79,7 +86,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=random_state.randint(1, 2**32),
+            seed=random_state.randint(1, 2**10),
             noop_max=30,
             terminal_on_life_loss=True,
         )
@@ -135,18 +142,17 @@ def main(argv):
     # Run the training and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_frames=FLAGS.num_train_frames,
-        num_eval_frames=FLAGS.num_eval_frames,
-        network=policy_network,
+        num_train_steps=FLAGS.num_train_steps,
+        num_eval_steps=FLAGS.num_eval_steps,
         train_agent=train_agent,
         train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,
         csv_file=FLAGS.results_csv_path,
-        tensorboard=FLAGS.tensorboard,
+        use_tensorboard=FLAGS.use_tensorboard,
         tag=FLAGS.tag,
-        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
+        debug_screenshots_interval=FLAGS.debug_screenshots_interval,
     )
 
 

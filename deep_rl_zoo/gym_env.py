@@ -27,24 +27,32 @@
 # ==============================================================================
 """gym environment processing components."""
 
-# Temporally suppress annoy DeprecationWarning from gym.
-import warnings
-
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-
-from collections import deque
+import os
 import datetime
-import gym
-from gym.spaces import Box
 import numpy as np
 import cv2
-from absl import logging
+import logging
+import gym
+from gym.spaces import Box
+from collections import deque
+from pathlib import Path
 
 # pylint: disable=import-error
 import deep_rl_zoo.types as types_lib
 
-# Not so complete classic env name lists.
+# A simple list of classic env names.
 CLASSIC_ENV_NAMES = ['CartPole-v1', 'LunarLander-v2', 'MountainCar-v0', 'Acrobot-v1']
+
+
+def unwrap(env):
+    if hasattr(env, 'unwrapped'):
+        return env.unwrapped
+    elif hasattr(env, 'env'):
+        return unwrap(env.env)
+    elif hasattr(env, 'leg_env'):
+        return unwrap(env.leg_env)
+    else:
+        return env
 
 
 class NoopReset(gym.Wrapper):
@@ -53,7 +61,6 @@ class NoopReset(gym.Wrapper):
     """
 
     def __init__(self, env, noop_max=30):
-
         gym.Wrapper.__init__(self, env)
         self.noop_max = noop_max
         self.override_num_noops = None
@@ -83,7 +90,6 @@ class FireOnReset(gym.Wrapper):
     """Take fire action on reset for environments like Breakout."""
 
     def __init__(self, env):
-
         gym.Wrapper.__init__(self, env)
         assert env.unwrapped.get_action_meanings()[1] == 'FIRE'
         assert len(env.unwrapped.get_action_meanings()) >= 3
@@ -102,11 +108,30 @@ class FireOnReset(gym.Wrapper):
         return self.env.step(action)
 
 
-class LifeLossWrapper(gym.Wrapper):
+class StickyAction(gym.Wrapper):
+    """Repeats the last action with epsilon (default 0.25) probability."""
+
+    def __init__(self, env, eps=0.25):
+        gym.Wrapper.__init__(self, env)
+        self.eps = eps
+        self.last_action = 0
+
+    def step(self, action):
+        if np.random.uniform() < self.eps:
+            action = self.last_action
+
+        self.last_action = action
+        return self.env.step(action)
+
+    def reset(self, **kwargs):
+        self.last_action = 0
+        return self.env.reset(**kwargs)
+
+
+class LifeLoss(gym.Wrapper):
     """Adds boolean key 'loss_life' into the info dict, but only reset on true game over."""
 
     def __init__(self, env):
-
         gym.Wrapper.__init__(self, env)
         self.lives = 0
         self.was_real_terminated = True
@@ -146,7 +171,6 @@ class MaxAndSkip(gym.Wrapper):
     """Return only every `skip`-th frame"""
 
     def __init__(self, env, skip=4):
-
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
         self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
@@ -178,56 +202,38 @@ class MaxAndSkip(gym.Wrapper):
 class ResizeAndGrayscaleFrame(gym.ObservationWrapper):
     """
     Resize frames to 84x84, and grascale image as done in the Nature paper.
-    If the environment uses dictionary observations, `dict_space_key` can be specified which indicates which
-    observation should be warped.
     """
 
-    def __init__(self, env, width=84, height=84, grayscale=True, dict_space_key=None):
-
+    def __init__(self, env, width=84, height=84, grayscale=True):
         super().__init__(env)
-        self._width = width
-        self._height = height
-        self._grayscale = grayscale
-        self._key = dict_space_key
-        if self._grayscale:
-            num_colors = 1
-        else:
-            num_colors = 3
 
-        new_space = Box(
+        assert self.observation_space.dtype == np.uint8 and len(self.observation_space.shape) == 3
+
+        self.frame_width = width
+        self.frame_height = height
+        self.grayscale = grayscale
+        num_channels = 1 if self.grayscale else 3
+
+        self.observation_space = Box(
             low=0,
             high=255,
-            shape=(self._height, self._width, num_colors),
+            shape=(self.frame_height, self.frame_width, num_channels),
             dtype=np.uint8,
         )
-        if self._key is None:
-            original_space = self.observation_space
-            self.observation_space = new_space
-        else:
-            original_space = self.observation_space.spaces[self._key]  # pylint: disable=no-member
-            self.observation_space.spaces[self._key] = new_space  # pylint: disable=no-member
-        assert original_space.dtype == np.uint8 and len(original_space.shape) == 3
 
     def observation(self, observation):
-        if self._key is None:
-            frame = observation
-        else:
-            frame = observation[self._key]
+        frame = observation
 
         # pylint: disable=no-member
-        if self._grayscale:
+        if self.grayscale:
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(frame, (self._width, self._height), interpolation=cv2.INTER_AREA)
+        frame = cv2.resize(frame, (self.frame_width, self.frame_height), interpolation=cv2.INTER_AREA)
         # pylint: disable=no-member
 
-        if self._grayscale:
+        if self.grayscale:
             frame = np.expand_dims(frame, -1)
 
-        if self._key is None:
-            obs = frame
-        else:
-            obs = obs.copy()
-            obs[self._key] = frame
+        obs = frame
         return obs
 
 
@@ -240,7 +246,6 @@ class FrameStack(gym.Wrapper):
     """
 
     def __init__(self, env, k):
-
         gym.Wrapper.__init__(self, env)
         self.k = k
         self.frames = deque([], maxlen=k)
@@ -302,7 +307,7 @@ class LazyFrames(object):
         return self._force()[..., i]
 
 
-class ScaledFloatFrame(gym.ObservationWrapper):
+class ScaleFrame(gym.ObservationWrapper):
     """Scale frame by divide 255."""
 
     def __init__(self, env):
@@ -313,6 +318,30 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         # careful! This undoes the memory optimization, use
         # with smaller replay buffers only.
         return np.array(observation).astype(np.float32) / 255.0
+
+
+class VisitedRoomInfo(gym.Wrapper):
+    """Add number of unique visited rooms to the info dictionary.
+    For Atari games like MontezumaRevenge and Pitfall.
+    """
+
+    def __init__(self, env, room_address):
+        gym.Wrapper.__init__(self, env)
+        self.room_address = room_address
+        self.visited_rooms = set()
+
+    def get_current_room(self):
+        ram = unwrap(self.env).ale.getRAM()
+        assert len(ram) == 128
+        return int(ram[self.room_address])
+
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        self.visited_rooms.add(self.get_current_room())
+        if done:
+            info['episode_visited_rooms'] = len(self.visited_rooms)
+            self.visited_rooms.clear()
+        return obs, rew, done, info
 
 
 class ObscureObservation(gym.ObservationWrapper):
@@ -336,17 +365,10 @@ class ClipRewardWithBound(gym.RewardWrapper):
 
     def __init__(self, env, bound):
         super().__init__(env)
-        self._bound = bound
+        self.bound = bound
 
     def reward(self, reward):
-        return None if reward is None else max(min(reward, self._bound), -self._bound)
-
-
-class ClipRewardWithSign(gym.RewardWrapper):
-    """Clip reward to {+1, 0, -1} by using np.sign() function."""
-
-    def reward(self, reward):
-        return np.sign(reward)
+        return None if reward is None else max(min(reward, self.bound), -self.bound)
 
 
 class ObservationChannelFirst(gym.ObservationWrapper):
@@ -410,6 +432,7 @@ def create_atari_environment(
     obscure_epsilon: float = 0.0,
     terminal_on_life_loss: bool = False,
     clip_reward: bool = True,
+    sticky_action: bool = True,
     scale_obs: bool = False,
     channel_first: bool = True,
 ) -> gym.Env:
@@ -431,6 +454,7 @@ def create_atari_environment(
         obscure_epsilon: with epsilon probability [0.0, 1.0), obscure the state to make it POMDP.
         terminal_on_life_loss: if True, mark end of game when loss a life, default off.
         clip_reward: clip reward in the range of [-1, 1], default on.
+        sticky_action: if True, randomly re-use last action with 0.25 probability, default on.
         scale_obs: scale the frame by divide 255, turn this on may require 4-5x more RAM when using experience replay, default off.
         channel_first: if True, change observation image from shape [H, W, C] to in the range [C, H, W], this is for PyTorch only, default on.
 
@@ -442,26 +466,33 @@ def create_atari_environment(
 
     env = gym.make(f'{env_name}NoFrameskip-v4')
     env.seed(seed)
-    # env.reset(seed=seed)
 
     # Change TimeLimit wrapper to 108,000 steps (30 min) as default in the
     # literature instead of OpenAI Gym's default of 100,000 steps.
     env = gym.wrappers.TimeLimit(env.env, max_episode_steps=None if max_episode_steps <= 0 else max_episode_steps)
 
-    env = NoopReset(env, noop_max=noop_max)
-    env = MaxAndSkip(env, skip=frame_skip)
+    if noop_max > 0:
+        env = NoopReset(env, noop_max=noop_max)
+    if sticky_action:
+        env = StickyAction(env)
+    if frame_skip > 0:
+        env = MaxAndSkip(env, skip=frame_skip)
 
     # Obscure observation with obscure_epsilon probability
     if obscure_epsilon > 0.0:
         env = ObscureObservation(env, obscure_epsilon)
     if terminal_on_life_loss:
-        env = LifeLossWrapper(env)
+        env = LifeLoss(env)
+
     env = ResizeAndGrayscaleFrame(env, width=frame_width, height=frame_height)
+
     if scale_obs:
-        env = ScaledFloatFrame(env)
+        env = ScaleFrame(env)
+
     if clip_reward:
         env = RecordRawReward(env)
         env = ClipRewardWithBound(env, 1.0)
+
     if frame_stack > 1:
         env = FrameStack(env, frame_stack)
     if channel_first:
@@ -469,6 +500,10 @@ def create_atari_environment(
     else:
         # This is required as LazeFrame object is not numpy.array.
         env = ObservationToNumpy(env)
+
+    if 'Montezuma' in env_name or 'Pitfall' in env_name:
+        env = VisitedRoomInfo(env, room_address=3 if 'Montezuma' in env_name else 1)
+
     return env
 
 
@@ -492,9 +527,15 @@ def create_classic_environment(
     """
 
     env = gym.make(env_name)
-    env.seed(seed)
-    env.action_space.seed(seed)
-    env.observation_space.seed(seed)
+    # BUG
+    # when using distributed RL with multiprocessing, and we try to seed for classic control environments, we get the following error:
+    # File "/usr/lib/python3.10/multiprocessing/spawn.py", line 126, in _main
+    #     self = reduction.pickle.load(from_parent)
+    # TypeError: RandomNumberGenerator._generator_ctor() takes from 0 to 1 positional arguments but 2 were given
+    #
+    # Seems like this issue only affects classic control tasks like Cart Pole etc., we don't have this problem on Atari
+
+    # env.seed(seed)
 
     # Clip reward to max absolute reward bound
     if max_abs_reward is not None:
@@ -528,10 +569,12 @@ def create_continuous_environment(
     """
 
     env = gym.make(env_name)
+
     env = gym.wrappers.ClipAction(env)
     env = gym.wrappers.NormalizeObservation(env)
 
     env = RecordRawReward(env)
+
     env = gym.wrappers.NormalizeReward(env)
 
     # Optionally clipping the observation and rewards.
@@ -550,7 +593,7 @@ def create_continuous_environment(
 def play_and_record_video(
     agent: types_lib.Agent,
     env: gym.Env,
-    save_dir: str = 'recordings',
+    save_dir: str = './recordings',
 ) -> None:
     """Self-play and record a video for a single game.
 
@@ -566,9 +609,16 @@ def play_and_record_video(
     if not isinstance(agent, types_lib.Agent):
         raise RuntimeError('Expect agent to have a callable step() method.')
 
+    # Create dir if needed
+    if save_dir is not None and save_dir != '' and not os.path.exists(save_dir):
+        _dir = Path(save_dir)
+        _dir.mkdir(parents=True, exist_ok=False)
+
+    assert os.path.exists(save_dir) and os.path.isdir(save_dir)
+
     # Create a sub folder with name env.id + timestamp
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    full_save_dir = f'{save_dir}/{agent.agent_name}_{env.spec.id}_{ts}'
+    full_save_dir = os.path.join(save_dir, f'{agent.agent_name}_{env.spec.id}_{ts}')
     logging.info(f'Recording self-play video at "{full_save_dir}"')
 
     env = gym.wrappers.RecordVideo(env, full_save_dir)
@@ -586,12 +636,12 @@ def play_and_record_video(
         timestep_t = types_lib.TimeStep(
             observation=observation,
             reward=reward,
-            raw_reward=reward,  # no tracking here
             done=done,
             first=first_step,
+            info=None,  # No tracking here
         )
         a_t = agent.step(timestep_t)
-        observation, reward, done, info = env.step(a_t)
+        observation, reward, done, _ = env.step(a_t)
         t += 1
 
         first_step = False

@@ -17,11 +17,7 @@
 # to add tensorboard support, and tracking additional agent statistics.
 #
 # ==============================================================================
-"""Components for statistics and tensorboard monitoring."""
-# Temporally suppress annoy DeprecationWarning from torch tensorboard.
-import warnings
-
-warnings.filterwarnings('ignore', category=DeprecationWarning)
+"""Components for statistics and Tensorboard monitoring."""
 
 import timeit
 from pathlib import Path
@@ -42,6 +38,7 @@ class EpisodeTracker:
         self._num_steps_since_reset = None
         self._episode_returns = None
         self._episode_steps = None
+        self._episode_visited_rooms = None
         self._current_episode_rewards = None
         self._current_episode_step = None
 
@@ -56,8 +53,13 @@ class EpisodeTracker:
             if self._current_episode_step != 0:
                 raise ValueError('Current episode step should be zero.')
         else:
-            # Notice we only use the non-clipped/unscaled raw reward when collecting statistics
-            self._current_episode_rewards.append(timestep_t.raw_reward)
+            reward = timestep_t.reward
+
+            # Try to use the non-clipped/unscaled raw reward when collecting statistics
+            if isinstance(timestep_t.info, dict) and 'raw_reward' in timestep_t.info:
+                reward = timestep_t.info['raw_reward']
+
+            self._current_episode_rewards.append(reward)
 
         self._num_steps_since_reset += 1
         self._current_episode_step += 1
@@ -68,11 +70,16 @@ class EpisodeTracker:
             self._current_episode_rewards = []
             self._current_episode_step = 0
 
+            # For Atari games like MontezumaRevenge and Pitfall
+            if isinstance(timestep_t.info, dict) and 'episode_visited_rooms' in timestep_t.info:
+                self._episode_visited_rooms.append(timestep_t.info['episode_visited_rooms'])
+
     def reset(self) -> None:
         """Resets all gathered statistics, not to be called between episodes."""
         self._num_steps_since_reset = 0
         self._episode_returns = []
         self._episode_steps = []
+        self._episode_visited_rooms = []
         self._current_episode_step = 0
         self._current_episode_rewards = []
 
@@ -88,22 +95,20 @@ class EpisodeTracker:
           A dictionary of aggregated statistics.
         """
 
-        if self._episode_returns:
+        # Note most games don't have visited rooms info
+        mean_episode_visited_rooms = 0
+
+        if len(self._episode_returns) > 0:
             mean_episode_return = np.array(self._episode_returns).mean()
-            current_episode_return = sum(self._current_episode_rewards)
-            episode_return = mean_episode_return
+
+            if len(self._episode_visited_rooms) > 0:
+                mean_episode_visited_rooms = np.array(self._episode_visited_rooms).mean()
         else:
-            mean_episode_return = np.nan
-            if self._num_steps_since_reset > 0:
-                current_episode_return = sum(self._current_episode_rewards)
-            else:
-                current_episode_return = np.nan
-            episode_return = current_episode_return
+            mean_episode_return = sum(self._current_episode_rewards)
 
         return {
             'mean_episode_return': mean_episode_return,
-            'current_episode_return': current_episode_return,
-            'episode_return': episode_return,
+            'mean_episode_visited_rooms': mean_episode_visited_rooms,
             'num_episodes': len(self._episode_returns),
             'current_episode_step': self._current_episode_step,
             'num_steps_since_reset': self._num_steps_since_reset,
@@ -170,6 +175,11 @@ class TensorboardEpisodeTracker(EpisodeTracker):
             self._writer.add_scalar('performance(env_steps)/episode_return', episode_return, tb_steps)
             self._writer.add_scalar('performance(env_steps)/episode_steps', episode_step, tb_steps)
 
+            # For Atari games like MontezumaRevenge and Pitfall
+            if isinstance(timestep_t.info, dict) and 'episode_visited_rooms' in timestep_t.info:
+                episode_visited_rooms = self._episode_visited_rooms[-1]
+                self._writer.add_scalar('performance(env_steps)/episode_visited_rooms', episode_visited_rooms, tb_steps)
+
 
 class TensorboardStepRateTracker(StepRateTracker):
     """Extend StepRateTracker to write to tensorboard, for single thread training agent only."""
@@ -218,6 +228,7 @@ class TensorboardAgentStatisticsTracker:
 
     def reset(self) -> None:
         """Reset statistics."""
+        pass
 
     def get(self) -> Mapping[Text, float]:
         """Returns statistics as a dictionary."""
@@ -229,6 +240,7 @@ class TensorboardScreenshotTracker:
     This should be used for debugging only."""
 
     def __init__(self, writer: SummaryWriter, log_interval: int = 100):
+        self._total_steps = 0  # keep track total number of steps, does not reset
         self._total_episodes = 0  # keep track total number of episodes, does not reset
         self._log_interval = log_interval
         self._writer = writer
@@ -237,6 +249,8 @@ class TensorboardScreenshotTracker:
         """Accumulates statistics from timestep."""
         del (agent, a_t)
 
+        self._total_steps += 1
+
         if timestep_t.done:
             self._total_episodes += 1
 
@@ -244,9 +258,9 @@ class TensorboardScreenshotTracker:
                 try:
                     img = env.render(mode='rgb_array')
                     self._writer.add_image(
-                        f'debug(episode)/done_episode_{self._total_episodes}',
+                        f'debug(episode)/episode_{self._total_episodes}',
                         img,
-                        self._total_episodes,
+                        self._total_steps,
                         dataformats='HWC',
                     )
                 except Exception:
@@ -254,6 +268,7 @@ class TensorboardScreenshotTracker:
 
     def reset(self) -> None:
         """Reset statistics."""
+        pass
 
     def get(self) -> Mapping[Text, float]:
         """Returns statistics as a dictionary."""
@@ -264,7 +279,6 @@ class TensorboardLearnerStatisticsTracker:
     """Write learner statistics to tensorboard, for parallel training agents with actor-learner scheme"""
 
     def __init__(self, writer: SummaryWriter):
-
         self._total_steps = 0  # keep track total number of steps, does not reset
         self._num_steps_since_reset = 0
         self._start = timeit.default_timer()
@@ -309,13 +323,13 @@ class TensorboardLearnerStatisticsTracker:
         }
 
 
-def make_default_trackers(log_dir=None, debug_screenshots_frequency=0):
+def make_default_trackers(log_dir=None, debug_screenshots_interval=0):
     """
     Create trackers for the training/evaluation run.
 
     Args:
         log_dir: tensorboard runtime log directory.
-        debug_screenshots_frequency: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
+        debug_screenshots_interval: the frequency to take screenshots and add to tensorboard, default 0 no screenshots.
     """
 
     if log_dir:
@@ -333,8 +347,8 @@ def make_default_trackers(log_dir=None, debug_screenshots_frequency=0):
             TensorboardAgentStatisticsTracker(writer),
         ]
 
-        if debug_screenshots_frequency > 0:
-            trackers.append(TensorboardScreenshotTracker(writer, debug_screenshots_frequency))
+        if debug_screenshots_interval > 0:
+            trackers.append(TensorboardScreenshotTracker(writer, debug_screenshots_interval))
 
         return trackers
 

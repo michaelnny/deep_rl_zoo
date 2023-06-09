@@ -23,7 +23,7 @@ import numpy as np
 import torch
 
 # pylint: disable=import-error
-from deep_rl_zoo.networks.dqn import DrqnMlpNet
+from deep_rl_zoo.networks.value import DrqnMlpNet
 from deep_rl_zoo.drqn import agent
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
 from deep_rl_zoo.schedule import LinearSchedule
@@ -41,7 +41,7 @@ flags.DEFINE_string(
 )
 flags.DEFINE_integer('replay_capacity', 100000, 'Maximum replay size.')
 flags.DEFINE_integer('min_replay_size', 1000, 'Minimum replay size before learning starts.')
-flags.DEFINE_integer('batch_size', 8, 'Sample batch size when do learning.')
+flags.DEFINE_integer('batch_size', 8, 'Sample batch size when updating the neural network.')
 flags.DEFINE_integer('unroll_length', 10, 'The number of agent steps to rollout.')
 flags.DEFINE_bool('clip_grad', True, 'Clip gradients, default on.')
 flags.DEFINE_float('max_grad_norm', 0.5, 'Max gradients norm when do gradients clip.')
@@ -53,24 +53,25 @@ flags.DEFINE_float('learning_rate', 0.0005, 'Learning rate.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('obscure_epsilon', 0.5, 'Make the problem POMDP by obsecure environment state with probability epsilon.')
 flags.DEFINE_integer('num_iterations', 2, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(5e5), 'Number of training env steps to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation env steps to run per iteration.')
-flags.DEFINE_integer('learn_frequency', 2, 'The frequency (measured in agent steps) to update parameters.')
+flags.DEFINE_integer('num_train_steps', int(5e5), 'Number of training env steps to run per iteration.')
+flags.DEFINE_integer('num_eval_steps', int(2e4), 'Number of evaluation env steps to run per iteration.')
+flags.DEFINE_integer('learn_interval', 2, 'The frequency (measured in agent steps) to update parameters.')
 flags.DEFINE_integer(
-    'target_network_update_frequency',
+    'target_net_update_interval',
     100,
     'The frequency (measured in number of online Q parameter updates) to update target Q networks.',
 )
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('actors_on_gpu', True, 'Run actors on GPU, default on.')
 flags.DEFINE_integer(
-    'debug_screenshots_frequency',
+    'debug_screenshots_interval',
     0,
     'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
-flags.DEFINE_string('results_csv_path', 'logs/drqn_classic_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
+flags.DEFINE_string('results_csv_path', './logs/drqn_classic_results.csv', 'Path for CSV log file.')
+flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
@@ -78,18 +79,20 @@ def main(argv):
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Runs DRQN agent on {runtime_device}')
-    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+    np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
+
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Create environment.
     def environment_builder():
         return gym_env.create_classic_environment(
             env_name=FLAGS.environment_name,
             obscure_epsilon=FLAGS.obscure_epsilon,
-            seed=random_state.randint(1, 2**32),
+            seed=random_state.randint(1, 2**10),
         )
 
     train_env = environment_builder()
@@ -134,8 +137,8 @@ def main(argv):
         exploration_epsilon=exploration_epsilon_schedule,
         batch_size=FLAGS.batch_size,
         min_replay_size=FLAGS.min_replay_size,
-        learn_frequency=FLAGS.learn_frequency,
-        target_network_update_frequency=FLAGS.target_network_update_frequency,
+        learn_interval=FLAGS.learn_interval,
+        target_net_update_interval=FLAGS.target_net_update_interval,
         discount=FLAGS.discount,
         unroll_length=FLAGS.unroll_length,
         clip_grad=FLAGS.clip_grad,
@@ -160,18 +163,17 @@ def main(argv):
     # Run the training and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_frames=FLAGS.num_train_frames,
-        num_eval_frames=FLAGS.num_eval_frames,
-        network=network,
+        num_train_steps=FLAGS.num_train_steps,
+        num_eval_steps=FLAGS.num_eval_steps,
         train_agent=train_agent,
         train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,
         csv_file=FLAGS.results_csv_path,
-        tensorboard=FLAGS.tensorboard,
+        use_tensorboard=FLAGS.use_tensorboard,
         tag=FLAGS.tag,
-        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
+        debug_screenshots_interval=FLAGS.debug_screenshots_interval,
     )
 
 

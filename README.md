@@ -2,7 +2,7 @@ Deep RL Zoo
 =============================
 A collection of Deep RL algorithms implemented with PyTorch to solve Atari games and classic control tasks like CartPole, LunarLander, and MountainCar.
 
-This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to run with PyTorch, and implemented some SOTA algorithms like PPO, IMPALA, R2D2, and Agent57.
+This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to run with PyTorch, and implemented some SOTA algorithms like PPO, RND, R2D2, and Agent57.
 
 
 # Content
@@ -20,16 +20,15 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 
 # Environment and Requirements
-* Python        3.9.12
-* pip           22.3.1
-* PyTorch       1.12.1
+* Python        3.10.6
+* pip           23.0.1
+* PyTorch       2.0.1
 * openAI Gym    0.25.2
-* tensorboard   2.11.0
-* numpy         1.23.4
+* Tensorboard   2.13.0
 
 
 # Implemented Algorithms
-## Policy Gradient Algorithms
+## Policy-based RL Algorithms
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                                               | Note |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---- |
@@ -45,7 +44,7 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 <!-- mdformat on -->
 
 
-## Deep Q Learning Algorithms
+## Value-based RL Algorithms
 <!-- mdformat off(for readability) -->
 | Directory            | Reference Paper                                                                                               | Note |
 | -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
@@ -71,124 +70,50 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 <!-- mdformat on -->
 **Notes**:
-* `P` means support parallel training with multiple actors and a single learner, all running on a single machine.
-* `*` means not fully tested on Atari games.
+* `P` means support distributed training with multiple actors and a single learner running in parallel (only supports running on a single machine).
+* `*` means only tested on Atari Pong or Breakout.
 
 # Code Structure
 *   `deep_rl_zoo` directory contains all the source code for different algorithms:
     *   each directory contains a algorithm, more specifically:
         - `agent.py` module contains an agent class that includes `reset()`, `step()` methods,
-        for agent that supports parallel training, we have `Actor` and `Learner` classes for the specific agent.
+        for agent that supports distributed training, we have `Actor` and `Learner` classes for the specific agent.
         - `run_classic.py` module use simple MLP network to solve classic problems like CartPole, MountainCar, and LunarLander.
-        - `run_atari.py` module use Conv2d networks to solve Atari games, the default environment_name is set to Pong.
-        - `eval_agent.py` module evaluate trained agents by using a greedy actor and loading model state from checkpoint file,
+        - `run_atari.py` module use Conv2d neural network to solve Atari games.
+        - `eval_agent.py` module evaluate trained agents by loading model state from checkpoint file with a greedy actor,
         you can run testing on both classic problems like CartPole, MountainCar, LunarLander, and Atari games.
-    *   `main_loop.py` module contains functions run single thread and parallel training loops,
+    *   `main_loop.py` module contains functions run single thread and distributed training loops,
         it also contains the `run_env_loop` function where the agent interaction with the environment.
     *   `networks` directory contains both policy networks and q networks used by the agents.
+        - `value.py` module contains neural networks for value-based RL agents like DQN, and it's variants.
+        - `policy.py` module contains neural networks for policy-based RL agents like Actor-Critic, PPO, and it's variants.
+        - `curiosity.py` module contains neural networks for curiosity driven explorations like RND modules used by PPO, NGU, and Agent57.
     *   `trackers.py` module is used to accumulating statistics during training and testing/evaluation,
         it also writes log to Tensorboard if desired.
     *   `replay.py` module contains functions and classes relating to experience replay.
-    *   `value_learning.py` module contains functions to calculate q learning loss.
-    *   `policy_gradient.py` module contains functions to calculate policy gradient loss.
+    *   `value_learning.py` module contains functions to calculate losses for value-based RL agents like DQN, and it's variants.
+    *   `policy_gradient.py` module contains functions to calculate losses policy-based RL agents like Actor-Critic, PPO, and it's variants.
     *   `gym_env.py` module contains components for standard Atari environment preprocessing.
     *   `greedy_actors.py` module contains all the greedy actors for testing/evaluation.
         for example `EpsilonGreedyActor` for DQN agents, `PolicyGreedyActor` for general policy gradient agents.
-*   `tests` directory contains the code for unit and end-to-end testing.
-*   `screenshots` directory contains images of Tensorboard statistics for some of the test runs.
+*   `unit_tests` directory contains the scripts for unit and end-to-end testing.
+*   `runs` directory contains Tensorboard logs for some of the runs.
+*   `screenshots` directory contains images of Tensorboard statistics for some of the runs.
 
 
 # Author's Notes
-* Only support episodic environment with discrete action space (except PPO which also supports continuous action space).
-* Focus on study and implementation of each algorithms, rather than creating a standard library.
-* Some code might not be optimal, especially the parts involving Python Multiprocessing, as speed of code execution is not our main focus.
+* Most agents only support episodic environment with discrete action space (except PPO which also supports continuous action space).
+* Focus on studying the individual algorithms rather than creating a standard library.
+* Some code might not be optimal, especially the parts involving Python multiprocessing, as speed of code execution is not our main focus.
 * Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup.
 * The hyper-parameters and network architectures are not fine-tuned.
-* All agents have been fully tested on classic control tasks like CartPole, LunarLander on M1 Mac (CPU only), we also run some light tests on Ubuntu 18.04 with a single Nvidia RTX 2080Ti GPU.
-* For Atari games, we only use Pong or Breakout for most of the agents, and we stop training once the agent have made some progress.
+* For Atari games, we only use Pong or Breakout to test the agents, and we stop training once the agent have made some progress.
 * We can't guarantee it's bug free.
 
 
 # Quick Start
 
-## Install required packages on Mac
-```
-# install homebrew, skip this step if already installed
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# upgrade pip
-python3 -m pip install --upgrade pip setuptools
-
-# install swig which is required for box-2d
-brew install swig
-
-# install ffmpeg for recording agent self-play
-brew install ffmpeg
-
-# install snappy for compress numpy.array on M1 mac
-brew install snappy
-CPPFLAGS="-I/opt/homebrew/include -L/opt/homebrew/lib" pip3 install python-snappy
-
-git clone https://github.com/michaelnny/deep_rl_zoo.git
-
-cd deep_rl_zoo
-
-pip3 install -r requirements.txt
-
-# optional, install pre-commit and hooks
-pip3 install pre-commit
-
-pre-commit install
-```
-
-## Install required packages on Ubuntu Linux
-```
-# install swig which is required for box-2d
-sudo apt install swig
-
-# install ffmpeg for recording agent self-play
-sudo apt-get install ffmpeg
-
-# upgrade pip
-python3 -m pip install --upgrade pip setuptools
-
-git clone https://github.com/michaelnny/deep_rl_zoo.git
-
-cd deep_rl_zoo
-
-pip3 install -r requirements.txt
-
-# optional, install pre-commit and hooks
-pip3 install pre-commit
-
-pre-commit install
-```
-
-## Install required packages on openSUSE 15 Tumbleweed Linux
-```
-# install required dev packages
-sudo zypper install gcc gcc-c++ python3-devel
-
-# install swig which is required for box-2d
-sudo zypper install swig
-
-# install ffmpeg for recording agent self-play
-sudo zypper install ffmpeg
-
-# upgrade pip
-python3 -m pip install --upgrade pip setuptools
-
-git clone https://github.com/michaelnny/deep_rl_zoo.git
-
-cd deep_rl_zoo
-
-pip3 install -r requirements.txt
-
-# optional, install pre-commit and hooks
-pip3 install pre-commit
-
-pre-commit install
-```
+Please check the instructions in the `QUICK_START.md` file on how to setup the project.
 
 # Train Agents
 
@@ -220,23 +145,27 @@ python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Pong
 python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
 ```
 
-## Training with multiple actors and single learner (on the same machine)
-For agents that support parallel training, we can adjust the parameter `num_actors` to specify how many actors to run.
-When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
+## Distributed training with multiple actors and a single learner (on the same machine)
+For agents that support distributed training, we can adjust the parameter `num_actors` to specify how many actors to run.
 
 ```
-python3 -m deep_rl_zoo.a2c.run_classic --num_actors=8
+python3 -m deep_rl_zoo.ppo.run_classic --num_actors=8
 ```
 
-The following is a high level overview of the parallel training architect. Where each actor has an own copy of the neural network. For the learner, the parameters of neural network is shared between these actors by using the `network.share_memory()` option from PyTorch. So that the actors can copy the latest parameters from learner's neural network instance without using additional queue.
+The following is a high level overview of the distributed training architect. Where each actor has it's own copy of the neural network. And we use the multiprocessing.Queue to transfer the transitions between the actors and the leaner. We also use a shared dictionary to store the latest copy of the neural network's parameters, so the actors can get update it's local copy of the neural network later on.
 
 ![parallel training architecture](/ideas/parallel_training_architecture.png)
 
-**Notice the code DOES NOT SUPPORT running on multiple GPUs out of the box**, as we don't have access to such environment. You can try to adapt the code in either `run_classic.py` or `run_atari.py` modules to support your needs, but **there's NO GUARANTEE it will work**.
+By default, if you have multiple GPUs and you set the option `actors_on_gpu` to true, the script will evenly distribute the actors on all available GPUs. When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
+
 ```
-# Change here to map to dedicated device if have multiple GPUs
-actor_devices = [runtime_device] * FLAGS.num_actors
+# This will evenly distribute the actors on all GPUs
+python3 -m deep_rl_zoo.ppo.run_atari --num_actors=16 --actors_on_gpu
+
+# This will run all actors on CPU even if you have multiple GPUs
+python3 -m deep_rl_zoo.ppo.run_atari --num_actors=16 --noactors_on_gpu
 ```
+
 
 # Evaluate Agents
 Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
@@ -246,17 +175,17 @@ To run a agent on Atari game, use the following command, replace the <agent_name
 ```
 python3 -m deep_rl_zoo.<agent_name>.eval_agent
 
-# Using pre-trained rainbow model on Pong
-python3 -m deep_rl_zoo.rainbow.eval_agent --environment_name=Pong --load_checkpoint_file=saved_checkpoints/Rainbow_Pong_0.ckpt
+# Example of load pre-trained PPO model on Breakout
+python3 -m deep_rl_zoo.ppo.eval_agent --environment_name=Breakout --load_checkpoint_file=./checkpoints/PPO_Breakout_0.ckpt
 ```
 
 
 # Monitoring with Tensorboard
-By default, both training, evaluation, and testing will log to Tensorboard at the `runs` directory.
-To disable this, use the option `--notensorboard`.
+By default, both training, evaluation will log to Tensorboard at the `runs` directory.
+To disable this, use the option `--nouse_tensorboard`.
 
 ```
-tensorboard --logdir=runs
+tensorboard --logdir=./runs
 ```
 
 The classes for write logs to Tensorboard is implemented in `trackers.py` module.
@@ -264,42 +193,42 @@ The classes for write logs to Tensorboard is implemented in `trackers.py` module
 * to improve performance, we only write logs at end of episode
 * we separate training and evaluation logs
 * if algorithm support parallel training, we separate actor, learner logs
-* for agents that support parallel training, only log the first and last actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
+* for agents that support parallel training, only log maximum of 8 actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
 
 ## Measurements available on Tensorboard
 `performance(env_steps)`:
 * the statistics are measured over env steps (or frames for Atari), if use frame_skip, it's counted after frame skip
-* `episode_return` the non-discounted sum of raw rewards of last episode
-* `episode_steps` the last episode length or steps
+* `episode_return` the non-discounted sum of raw rewards of current episode
+* `episode_steps` the current episode length or steps
 * `num_episodes` how many episodes have been conducted
 * `step_rate(second)` step per seconds, per actors
 
 `agent_statistics(env_steps)`:
 * the statistics are measured over env steps (or frames for Atari), if use frame_skip, it's counted after frame skip
-* it'll log whatever is exposed in the agent's `statistics` property such as train loss, learning rate, discount, updates etc.
-* for algorithm support parallel training (multiple actors), this is only the statistics for the actors.
+* it'll log whatever is exposed in the agent's `statistics` property such as training loss, learning rate, discount, updates etc.
+* for algorithm support distributed training (multiple actors), this is only the statistics for the actors.
 
 `learner_statistics(learner_steps)`:
-* only available if the agent supports parallel training (multiple actors one learner)
-* it'll log whatever is exposed in the learner's `statistics` property such as train loss, learning rate, discount, updates etc.
+* only available if the agent supports distributed training (multiple actors one learner)
+* it'll log whatever is exposed in the learner's `statistics` property such as training loss, learning rate, discount, updates etc.
 * to improve performance, it only logs every 100 learner steps
 
-![DQN on Pong](/screenshots/DQN_on_Pong.png)
-![DQN on Breakout](/screenshots/DQN_on_Breakout.png)
+![DQN on Pong](/screenshots/Variety_DQN_on_Pong.png)
 
 ## Add tags to Tensorboard
-This could be handy if we want to compare different hyper parameter's performances
+This could be handy if we want to compare different hyper parameter's performances or different runs with various seeds
 ```
-python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.001 --tag=LSTM-LR0.001
+python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.00045 --tag=LSTM-LR0.00045
 ```
 
 ## Debug with environment screenshots
-This could be handy if we want to see what's happening during the training, we can set the `debug_screenshots_frequency` (measured over episode) to some value, and it'll add screenshots of the terminal state to Tensorboard. This should be used for debug only as it may use more resources and slows down the training process.
+This could be handy if we want to see what's happening during the training, we can set the `debug_screenshots_interval` (measured over number of episode) to some value, and it'll add screenshots of the terminal state to Tensorboard.
 
 ```
-python3 -m deep_rl_zoo.r2d2.run_classic --environment_name=MountainCar-v0 --debug_screenshots_frequency=100
+# Example of creating terminal state screenshot every 100 episodes
+python3 -m deep_rl_zoo.ppo_rnd.run_atari --environment_name=MontezumaRevenge --debug_screenshots_interval=100
 ```
-![Tensorboard screenshot images](/screenshots/Tensorboard_debug_screenshots.png)
+![PPO-RND on MontezumaRevenge](/screenshots/PPO_RND_on_MontezumaRevenge_screenshots.png)
 
 # Acknowledgments
 

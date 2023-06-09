@@ -45,31 +45,38 @@ flags.DEFINE_float('learning_rate', 0.00025, 'Learning rate for policy network.'
 flags.DEFINE_float('value_learning_rate', 0.0005, 'Learning rate for value network.')
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
-flags.DEFINE_integer('num_train_frames', int(1e6 / 4), 'Number of training frames (after frame skip) to run per iteration.')
-flags.DEFINE_integer('num_eval_frames', int(1e5), 'Number of evaluation frames (after frame skip) to run per iteration.')
+flags.DEFINE_integer(
+    'num_train_steps', int(5e5), 'Number of training steps (environment steps or frames) to run per iteration.'
+)
+flags.DEFINE_integer(
+    'num_eval_steps', int(2e4), 'Number of evaluation steps (environment steps or frames) to run per iteration.'
+)
 flags.DEFINE_integer('max_episode_steps', 108000, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('actors_on_gpu', True, 'Run actors on GPU, default on.')
 flags.DEFINE_integer(
-    'debug_screenshots_frequency',
+    'debug_screenshots_interval',
     0,
     'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
-flags.DEFINE_string('results_csv_path', 'logs/reinforce_baseline_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', '', 'Path for checkpoint directory.')
+flags.DEFINE_string('results_csv_path', './logs/reinforce_baseline_atari_results.csv', 'Path for CSV log file.')
+flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
     """Trains REINFORCE-BASELINE agent on Atari."""
     del argv
     runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Runs REINFORCE with baseline agent on {runtime_device}')
-    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
+    logging.info(f'Runs REINFORCE with value agent on {runtime_device}')
+    np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
     if torch.backends.cudnn.enabled:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
+
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     # Create environment.
     def environment_builder():
@@ -80,7 +87,7 @@ def main(argv):
             frame_skip=FLAGS.environment_frame_skip,
             frame_stack=FLAGS.environment_frame_stack,
             max_episode_steps=FLAGS.max_episode_steps,
-            seed=random_state.randint(1, 2**32),
+            seed=random_state.randint(1, 2**10),
             noop_max=30,
             terminal_on_life_loss=True,
         )
@@ -105,22 +112,22 @@ def main(argv):
     policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # Create state value network and optimizer
-    baseline_network = CriticConvNet(state_dim=state_dim)
-    baseline_optimizer = torch.optim.Adam(baseline_network.parameters(), lr=FLAGS.value_learning_rate)
+    value_network = CriticConvNet(state_dim=state_dim)
+    baseline_optimizer = torch.optim.Adam(value_network.parameters(), lr=FLAGS.value_learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
     pi_logits = policy_network(s).pi_logits
-    baseline = baseline_network(s).baseline
+    value = value_network(s).value
     assert pi_logits.shape == (1, action_dim)
-    assert baseline.shape == (1, 1)
+    assert value.shape == (1, 1)
 
-    # Create reinforce with baseline agent instance
+    # Create reinforce with value agent instance
     train_agent = agent.ReinforceBaseline(
         policy_network=policy_network,
         policy_optimizer=policy_optimizer,
         discount=FLAGS.discount,
-        baseline_network=baseline_network,
+        value_network=value_network,
         baseline_optimizer=baseline_optimizer,
         transition_accumulator=replay_lib.TransitionAccumulator(),
         normalize_returns=FLAGS.normalize_returns,
@@ -141,23 +148,22 @@ def main(argv):
         environment_name=FLAGS.environment_name, agent_name='REINFORCE-BASELINE', save_dir=FLAGS.checkpoint_dir
     )
     checkpoint.register_pair(('policy_network', policy_network))
-    checkpoint.register_pair(('baseline_network', baseline_network))
+    checkpoint.register_pair(('value_network', value_network))
 
     # Run the training and evaluation for N iterations.
     main_loop.run_single_thread_training_iterations(
         num_iterations=FLAGS.num_iterations,
-        num_train_frames=FLAGS.num_train_frames,
-        num_eval_frames=FLAGS.num_eval_frames,
-        network=policy_network,
+        num_train_steps=FLAGS.num_train_steps,
+        num_eval_steps=FLAGS.num_eval_steps,
         train_agent=train_agent,
         train_env=train_env,
         eval_agent=eval_agent,
         eval_env=eval_env,
         checkpoint=checkpoint,
         csv_file=FLAGS.results_csv_path,
-        tensorboard=FLAGS.tensorboard,
+        use_tensorboard=FLAGS.use_tensorboard,
         tag=FLAGS.tag,
-        debug_screenshots_frequency=FLAGS.debug_screenshots_frequency,
+        debug_screenshots_interval=FLAGS.debug_screenshots_interval,
     )
 
 

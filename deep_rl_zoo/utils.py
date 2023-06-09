@@ -23,6 +23,11 @@ import numpy as np
 
 def split_indices_into_bins(bin_size: int, max_indices: int, min_indices: int = 0, shuffle: bool = False) -> Iterable[int]:
     """Split indices to small bins."""
+
+    bin_size = int(bin_size)
+    max_indices = int(max_indices)
+    min_indices = int(min_indices)
+
     if max_indices < bin_size:
         raise ValueError(f'Expect max_indices to be greater than bin_size, got {max_indices} and {bin_size}')
 
