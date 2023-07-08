@@ -128,7 +128,7 @@ class EpisodicBonusModule:
         distance_rate = nn_distances_sq / (self._cdist_normalizer.mean + 1e-8)
 
         # The distance rate becomes 0 if already small: r <- max(r-ξ, 0).
-        distance_rate = torch.min((distance_rate - self._cluster_distance), torch.tensor(0.0))
+        distance_rate = torch.max((distance_rate - self._cluster_distance), torch.tensor(0.0))
 
         # Compute the Kernel value K(xₖ, x) = ε/(rate + ε).
         kernel_output = self._kernel_epsilon / (distance_rate + self._kernel_epsilon)

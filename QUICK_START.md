@@ -57,10 +57,10 @@ pip3 install pre-commit
 pre-commit install
 ```
 
-## Install required packages on openSUSE 15 Tumbleweed Linux
+## Install required packages on openSUSE Leap 15 or openSUSE Tumbleweed Linux
 ```
 # install required dev packages
-sudo zypper install gcc gcc-c++ python3-devel
+sudo zypper install gcc gcc-c++ python3-devel snappy-devel
 
 # install swig which is required for box-2d
 sudo zypper install swig

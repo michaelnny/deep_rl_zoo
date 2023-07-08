@@ -1,8 +1,8 @@
 Deep RL Zoo
 =============================
-A collection of Deep RL algorithms implemented with PyTorch to solve Atari games and classic control tasks like CartPole, LunarLander, and MountainCar.
+A collection of Deep Reinforcement Learning algorithms implemented with PyTorch to solve Atari games and classic control tasks like CartPole, LunarLander, and MountainCar.
 
-This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to run with PyTorch, and implemented some SOTA algorithms like PPO, RND, R2D2, and Agent57.
+The overall project structure was based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to support PyTorch, in addition also implemented some SOTA algorithms like PPO, RND, R2D2, and Agent57.
 
 
 # Content
@@ -102,13 +102,12 @@ This repo is based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo).
 
 
 # Author's Notes
+* This project is for education and research purpose only. Where we focus on studying the individual algorithms rather than creating a standard library. If you're looking for a ready to use library for your productive application, this is probably the wrong place.
 * Most agents only support episodic environment with discrete action space (except PPO which also supports continuous action space).
-* Focus on studying the individual algorithms rather than creating a standard library.
 * Some code might not be optimal, especially the parts involving Python multiprocessing, as speed of code execution is not our main focus.
-* Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup.
-* The hyper-parameters and network architectures are not fine-tuned.
+* Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup. Also, the hyper-parameters and network architectures are not fine-tuned.
 * For Atari games, we only use Pong or Breakout to test the agents, and we stop training once the agent have made some progress.
-* We can't guarantee it's bug free.
+* We can't guarantee it's bug free. So bug report and pull request are welcome.
 
 
 # Quick Start
@@ -230,18 +229,18 @@ python3 -m deep_rl_zoo.ppo_rnd.run_atari --environment_name=MontezumaRevenge --d
 ```
 ![PPO-RND on MontezumaRevenge](/screenshots/PPO_RND_on_MontezumaRevenge_screenshots.png)
 
+
 # Acknowledgments
 
-## This project is based on the work of DeepMind's projects.
-* [DeepMind DQN Zoo](http://github.com/deepmind/dqn_zoo) (for code structure, replay, DQN agents, trackers, and more)
-* [DeepMind RLax](https://github.com/deepmind/rlax) (for modules to calculate losses for all different algorithms)
-* [DeepMind TRFL](https://github.com/deepmind/trfl) (for modules to calculate losses for all different algorithms)
+This project is based on the work of DeepMind, specifically the following projects:
+* [DeepMind DQN Zoo](http://github.com/deepmind/dqn_zoo)
+* [DeepMind RLax](https://github.com/deepmind/rlax)
 
-## Other reference projects which have been very helpful when we build our project
-* [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) (for basic policy gradient agents)
-* [OpenAI Spinning Up](https://github.com/openai/spinningup) (for basic policy gradient agents)
-* [SEED RL](https://github.com/google-research/seed_rl) (for IMPALA, R2D2 and more)
-* [TorchBeast](https://github.com/facebookresearch/torchbeast) (for IMPALA)
+In addition, other reference projects from the community have been very helpful to us, including:
+* [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3)
+* [OpenAI Spinning Up](https://github.com/openai/spinningup)
+* [SEED RL](https://github.com/google-research/seed_rl)
+* [TorchBeast](https://github.com/facebookresearch/torchbeast)
 
 
 # License
