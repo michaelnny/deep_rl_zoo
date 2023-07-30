@@ -73,12 +73,20 @@ flags.DEFINE_integer(
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
 )
-flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')  # 64
+flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')
 
 flags.DEFINE_float('policy_beta', 0.3, 'Scalar for the intrinsic reward scale.')
 flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
 
-flags.DEFINE_integer('episodic_memory_capacity', 2500, 'Maximum size of episodic memory.')  # 30000
+flags.DEFINE_integer('episodic_memory_capacity', 3000, 'Maximum size of episodic memory.')  # 30000
+flags.DEFINE_bool(
+    'reset_episodic_memory',
+    True,
+    'Reset the episodic_memory on every episode, only applicable to actors, default on.'
+    'From NGU Paper on MontezumaRevenge, Instead of resetting the memory after every episode, we do it after a small number of '
+    'consecutive episodes, which we call a meta-episode. This structure plays an important role when the'
+    'agent faces irreversible choices.',
+)
 flags.DEFINE_integer('num_neighbors', 10, 'Number of K-nearest neighbors.')
 flags.DEFINE_float('kernel_epsilon', 0.0001, 'K-nearest neighbors kernel epsilon.')
 flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distance.')
@@ -292,6 +300,7 @@ def main(argv):
             num_policies=FLAGS.num_policies,
             policy_beta=FLAGS.policy_beta,
             episodic_memory_capacity=FLAGS.episodic_memory_capacity,
+            reset_episodic_memory=FLAGS.reset_episodic_memory,
             num_neighbors=FLAGS.num_neighbors,
             kernel_epsilon=FLAGS.kernel_epsilon,
             cluster_distance=FLAGS.cluster_distance,

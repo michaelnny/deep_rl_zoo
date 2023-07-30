@@ -128,6 +128,7 @@ class Actor(types_lib.Agent):
         ucb_beta: float,
         ucb_epsilon: float,
         episodic_memory_capacity: int,
+        reset_episodic_memory: bool,
         num_neighbors: int,
         cluster_distance: float,
         kernel_epsilon: float,
@@ -157,6 +158,7 @@ class Actor(types_lib.Agent):
             ucb_beta: beta for the sliding window UCB algorithm.
             ucb_epsilon: exploration epsilon for sliding window UCB algorithm.
             episodic_memory_capacity: maximum capacity of episodic memory.
+            reset_episodic_memory: Reset the episodic_memory on every episode.
             num_neighbors: number of K-NN neighbors for compute episodic bonus.
             cluster_distance: K-NN neighbors cluster distance for compute episodic bonus.
             kernel_epsilon: K-NN kernel epsilon for compute episodic bonus.
@@ -249,6 +251,8 @@ class Actor(types_lib.Agent):
         self._policy_discount = None
         self._sample_policy()
 
+        self._reset_episodic_memory = reset_episodic_memory
+
         # E-greedy policy epsilon, rank 0 has the lowest noise, while rank N-1 has the highest noise.
         epsilons = distributed.get_actor_exploration_epsilon(num_actors)
         self._exploration_epsilon = epsilons[self.rank]
@@ -332,7 +336,8 @@ class Actor(types_lib.Agent):
         """This method should be called at the beginning of every episode before take any action."""
         self._unroll.reset()
 
-        self._episodic_module.reset()  # Is this necessary?
+        if self._reset_episodic_memory:
+            self._episodic_module.reset()
 
         self._update_actor_network(True)
 
@@ -760,7 +765,7 @@ class Learner(types_lib.Learner):
         discount_t = (~done).float() * discount  # (T+1, B)
 
         # Derive target policy probabilities from q values.
-        target_policy_probs = F.softmax(q_t, dim=-1)  # [T+1, B, action_dim]
+        target_policy_probs = F.softmax(target_q_t, dim=-1)  # [T+1, B, action_dim]
 
         if self._transformed_retrace:
             transform_tx_pair = nonlinear_bellman.SIGNED_HYPERBOLIC_PAIR
@@ -773,8 +778,8 @@ class Learner(types_lib.Learner):
             q_t=target_q_t[1:],
             a_tm1=a_t[:-1],
             a_t=a_t[1:],
-            r_t=r_t[:-1],
-            discount_t=discount_t[:-1],
+            r_t=r_t[1:],
+            discount_t=discount_t[1:],
             pi_t=target_policy_probs[1:],
             mu_t=behavior_prob_a_t[1:],
             lambda_=self._retrace_lambda,

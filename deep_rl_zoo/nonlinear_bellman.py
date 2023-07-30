@@ -97,7 +97,7 @@ def transformed_retrace(
       q_t: Q-values at time t, this is often from the target Q network, shape [T, B, action_dim].
       a_tm1: action index at time t-1, the action the agent took in state s_tm1, shape [T, B].
       a_t: action index at time t, the action the agent took in state s_t, shape [T, B].
-      r_t: reward at time t, for state-action pair (s_tm1, a_tm1), shape [T, B].
+      r_t: reward at time t, shape [T, B].
       discount_t: discount at time t, shape [T, B].
       pi_t: target policy probs at time t, shape [T, B, action_dim].
       mu_t: behavior policy probs at time t, shape [T, B, action_dim].

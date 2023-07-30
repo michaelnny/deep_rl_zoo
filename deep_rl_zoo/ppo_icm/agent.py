@@ -523,7 +523,7 @@ class Learner(types_lib.Learner):
         return_t = advantage_t + v_t
 
         # Normalize advantages
-        advantage_t = (advantage_t - advantage_t.mean()) / advantage_t.std()
+        advantage_t = (advantage_t - advantage_t.mean()) / (advantage_t.std() + 1e-8)
 
         advantage_t = advantage_t.cpu().numpy()
         return_t = return_t.cpu().numpy()

@@ -108,6 +108,7 @@ class Actor(types_lib.Agent):
         num_policies: int,
         policy_beta: float,
         episodic_memory_capacity: int,
+        reset_episodic_memory: bool,
         num_neighbors: int,
         cluster_distance: float,
         kernel_epsilon: float,
@@ -134,6 +135,7 @@ class Actor(types_lib.Agent):
             num_policies: number of exploring and exploiting policies.
             policy_beta: intrinsic reward scale beta.
             episodic_memory_capacity: maximum capacity of episodic memory.
+            reset_episodic_memory: Reset the episodic_memory on every episode.
             num_neighbors: number of K-NN neighbors for compute episodic bonus.
             cluster_distance: K-NN neighbors cluster distance for compute episodic bonus.
             kernel_epsilon: K-NN kernel epsilon for compute episodic bonus.
@@ -217,6 +219,8 @@ class Actor(types_lib.Agent):
         self._policy_discount = None
         self._sample_policy()
 
+        self._reset_episodic_memory = reset_episodic_memory
+
         # E-greedy policy epsilon, rank 0 has the lowest noise, while rank N-1 has the highest noise.
         epsilons = distributed.get_actor_exploration_epsilon(num_actors)
         self._exploration_epsilon = epsilons[self.rank]
@@ -253,7 +257,7 @@ class Actor(types_lib.Agent):
         self._step_t += 1
 
         if self._step_t % self._actor_update_q_network_interval == 0:
-            self._update_q_network_actor_network(False)
+            self._update_actor_network(False)
 
         q_t, a_t, prob_a_t, hidden_s = self.act(timestep)
 
@@ -295,9 +299,17 @@ class Actor(types_lib.Agent):
         """This method should be called at the beginning of every episode before take any action."""
         self._unroll.reset()
 
-        self._episodic_module.reset()  # Is this necessary?
+        # From NGU Paper on MONTEZUMA’S REVENGE:
+        """
+        Instead of resetting the memory after every episode, we do it after a small number of
+        consecutive episodes, which we call a meta-episode. This structure plays an important role when the
+        agent faces irreversible choices.
+        """
 
-        self._update_q_network_actor_network(True)
+        if self._reset_episodic_memory:
+            self._episodic_module.reset()
+
+        self._update_actor_network(True)
 
         self._sample_policy()
 
@@ -355,7 +367,7 @@ class Actor(types_lib.Agent):
         # Important note, store hidden states for every step in the unroll will consume HUGE memory.
         self._queue.put(unrolled_transition)
 
-    def _update_q_network_actor_network(self, update_embed: bool = False):
+    def _update_actor_network(self, update_embed: bool = False):
         q_state_dict = self._shared_params['network']
         embed_state_dict = self._shared_params['embedding_network']
         rnd_state_dict = self._shared_params['rnd_predictor_network']
@@ -563,7 +575,7 @@ class Learner(types_lib.Learner):
 
         # Copy Q network parameters to target Q network, every m updates
         if self._update_t > 1 and self._update_t % self._target_net_update_interval == 0:
-            self._update_q_network_target_network()
+            self._update_target_network()
 
     def _update_q_network(self, transitions: NguTransition, weights: np.ndarray) -> np.ndarray:
         """Update online Q network."""
@@ -677,7 +689,7 @@ class Learner(types_lib.Learner):
         discount_t = (~done).float() * discount  # (T+1, B)
 
         # Derive target policy probabilities from q values.
-        target_policy_probs = F.softmax(q_t, dim=-1)  # [T+1, B, action_dim]
+        target_policy_probs = F.softmax(target_q_t, dim=-1)  # [T+1, B, action_dim]
 
         if self._transformed_retrace:
             transform_tx_pair = nonlinear_bellman.SIGNED_HYPERBOLIC_PAIR
@@ -690,8 +702,8 @@ class Learner(types_lib.Learner):
             q_t=target_q_t[1:],
             a_tm1=a_t[:-1],
             a_t=a_t[1:],
-            r_t=r_t[:-1],
-            discount_t=discount_t[:-1],
+            r_t=r_t[1:],
+            discount_t=discount_t[1:],
             pi_t=target_policy_probs[1:],
             mu_t=behavior_prob_a_t[1:],
             lambda_=self._retrace_lambda,
@@ -861,7 +873,7 @@ class Learner(types_lib.Learner):
 
         return (init_h, init_c)
 
-    def _update_q_network_target_network(self):
+    def _update_target_network(self):
         self._target_network.load_state_dict(self._network.state_dict())
         self._target_update_t += 1
 

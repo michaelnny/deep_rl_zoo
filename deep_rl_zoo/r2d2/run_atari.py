@@ -87,7 +87,7 @@ flags.DEFINE_integer(
     1500,
     'The interval (meassured in Q network updates) to update target Q networks.',
 )
-flags.DEFINE_integer('actor_update_interval', 100, 'The frequency (measured in actor steps) to update actor local Q network.')
+flags.DEFINE_integer('actor_update_interval', 400, 'The frequency (measured in actor steps) to update actor local Q network.')
 flags.DEFINE_float('eval_exploration_epsilon', 0.01, 'Fixed exploration rate in e-greedy policy for evaluation.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
 flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')

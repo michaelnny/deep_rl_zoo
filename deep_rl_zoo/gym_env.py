@@ -221,19 +221,17 @@ class ResizeAndGrayscaleFrame(gym.ObservationWrapper):
             dtype=np.uint8,
         )
 
-    def observation(self, observation):
-        frame = observation
-
-        # pylint: disable=no-member
-        if self.grayscale:
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(frame, (self.frame_width, self.frame_height), interpolation=cv2.INTER_AREA)
+    def observation(self, obs):
         # pylint: disable=no-member
 
         if self.grayscale:
-            frame = np.expand_dims(frame, -1)
+            obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+        obs = cv2.resize(obs, (self.frame_width, self.frame_height), interpolation=cv2.INTER_AREA)
+        # pylint: disable=no-member
 
-        obs = frame
+        if self.grayscale:
+            obs = np.expand_dims(obs, -1)
+
         return obs
 
 
@@ -314,10 +312,10 @@ class ScaleFrame(gym.ObservationWrapper):
         gym.ObservationWrapper.__init__(self, env)
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=env.observation_space.shape, dtype=np.float32)
 
-    def observation(self, observation):
+    def observation(self, obs):
         # careful! This undoes the memory optimization, use
         # with smaller replay buffers only.
-        return np.array(observation).astype(np.float32) / 255.0
+        return np.array(obs).astype(np.float32) / 255.0
 
 
 class VisitedRoomInfo(gym.Wrapper):
@@ -354,10 +352,10 @@ class ObscureObservation(gym.ObservationWrapper):
             raise ValueError(f'Expect obscure epsilon should be between [0.0, 1), got {epsilon}')
         self._eps = epsilon
 
-    def observation(self, observation):
+    def observation(self, obs):
         if self.env.unwrapped.np_random.random() <= self._eps:
-            observation = np.zeros_like(observation, dtype=self.observation_space.dtype)
-        return observation
+            obs = np.zeros_like(obs, dtype=self.observation_space.dtype)
+        return obs
 
 
 class ClipRewardWithBound(gym.RewardWrapper):
@@ -382,10 +380,10 @@ class ObservationChannelFirst(gym.ObservationWrapper):
         new_dtype = env.observation_space.dtype if not scale_obs else np.float32
         self.observation_space = Box(low=_low, high=_high, shape=new_shape, dtype=new_dtype)
 
-    def observation(self, observation):
+    def observation(self, obs):
         # permute [H, W, C] array to in the range [C, H, W]
         # return np.transpose(observation, axes=(2, 0, 1)).astype(self.observation_space.dtype)
-        obs = np.asarray(observation, dtype=self.observation_space.dtype).transpose(2, 0, 1)
+        obs = np.asarray(obs, dtype=self.observation_space.dtype).transpose(2, 0, 1)
         # make sure it's C-contiguous for compress state
         return np.ascontiguousarray(obs, dtype=self.observation_space.dtype)
 
@@ -393,8 +391,8 @@ class ObservationChannelFirst(gym.ObservationWrapper):
 class ObservationToNumpy(gym.ObservationWrapper):
     """Make the observation into numpy ndarrays."""
 
-    def observation(self, observation):
-        return np.asarray(observation, dtype=self.observation_space.dtype)
+    def observation(self, obs):
+        return np.asarray(obs, dtype=self.observation_space.dtype)
 
 
 class ClipObservationWithBound(gym.ObservationWrapper):
@@ -404,8 +402,8 @@ class ClipObservationWithBound(gym.ObservationWrapper):
         super().__init__(env)
         self._max_abs_value = max_abs_value
 
-    def observation(self, observation):
-        return np.clip(observation, -self._max_abs_value, self._max_abs_value)
+    def observation(self, obs):
+        return np.clip(obs, -self._max_abs_value, self._max_abs_value)
 
 
 class RecordRawReward(gym.Wrapper):

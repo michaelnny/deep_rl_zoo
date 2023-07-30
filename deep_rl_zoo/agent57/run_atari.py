@@ -65,15 +65,15 @@ flags.DEFINE_float(
 flags.DEFINE_float('ext_discount', 0.997, 'Extrinsic reward discount rate.')
 flags.DEFINE_float('int_discount', 0.99, 'Intrinsic reward discount rate.')
 flags.DEFINE_float('adam_eps', 0.0001, 'Epsilon for adam.')
-flags.DEFINE_integer('unroll_length', 80, 'Sequence of transitions to unroll before add to replay.')  # 160
+flags.DEFINE_integer('unroll_length', 80, 'Sequence of transitions to unroll before add to replay.')
 flags.DEFINE_integer(
     'burn_in',
     40,
     'Sequence of transitions used to pass RNN before actual learning.'
     'The effective length of unrolls will be burn_in + unroll_length, '
     'two consecutive unrolls will overlap on burn_in steps.',
-)  # 80
-flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')  # 64
+)
+flags.DEFINE_integer('batch_size', 32, 'Batch size for learning.')
 
 flags.DEFINE_float('policy_beta', 0.3, 'Scalar for the intrinsic reward scale.')
 flags.DEFINE_integer('num_policies', 32, 'Number of directed policies to learn, scaled by intrinsic reward scale beta.')
@@ -81,7 +81,15 @@ flags.DEFINE_integer('ucb_window_size', 90, 'Sliding window size of the UCB algo
 flags.DEFINE_float('ucb_beta', 1.0, 'Beta for the UCB algorithm.')
 flags.DEFINE_float('ucb_epsilon', 0.5, 'Exploration epsilon for the UCB algorithm.')
 
-flags.DEFINE_integer('episodic_memory_capacity', 2500, 'Maximum size of episodic memory.')  # 30000
+flags.DEFINE_integer('episodic_memory_capacity', 3000, 'Maximum size of episodic memory.')  # 30000
+flags.DEFINE_bool(
+    'reset_episodic_memory',
+    True,
+    'Reset the episodic_memory on every episode, only applicable to actors, default on.'
+    'From NGU Paper on MontezumaRevenge, Instead of resetting the memory after every episode, we do it after a small number of '
+    'consecutive episodes, which we call a meta-episode. This structure plays an important role when the'
+    'agent faces irreversible choices.',
+)
 flags.DEFINE_integer('num_neighbors', 10, 'Number of K-nearest neighbors.')
 flags.DEFINE_float('kernel_epsilon', 0.0001, 'K-nearest neighbors kernel epsilon.')
 flags.DEFINE_float('cluster_distance', 0.008, 'K-nearest neighbors custer distance.')
@@ -305,6 +313,7 @@ def main(argv):
             ucb_beta=FLAGS.ucb_beta,
             ucb_epsilon=FLAGS.ucb_epsilon,
             episodic_memory_capacity=FLAGS.episodic_memory_capacity,
+            reset_episodic_memory=FLAGS.reset_episodic_memory,
             num_neighbors=FLAGS.num_neighbors,
             kernel_epsilon=FLAGS.kernel_epsilon,
             cluster_distance=FLAGS.cluster_distance,
