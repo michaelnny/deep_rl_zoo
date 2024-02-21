@@ -160,8 +160,7 @@ def clipped_surrogate_gradient_loss(
     base.assert_rank_and_dtype(prob_ratios_t, 1, torch.float32)
     base.assert_rank_and_dtype(adv_t, 1, torch.float32)
 
-    # clipped_ratios_t = torch.clamp(prob_ratios_t, 1.0 - epsilon, 1.0 + epsilon)
-    clipped_ratios_t = torch.where(adv_t > 0, 1.0 + epsilon, 1.0 - epsilon)
+    clipped_ratios_t = torch.clamp(prob_ratios_t, 1.0 - epsilon, 1.0 + epsilon)
     clipped_objective = torch.min(prob_ratios_t * adv_t.detach(), clipped_ratios_t * adv_t.detach())
 
     return base.LossOutput(clipped_objective, extra=None)
